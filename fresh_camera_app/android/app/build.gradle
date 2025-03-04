@@ -1,0 +1,9 @@
+android {
+    namespace "com.example.fresh_camera_app"
+    compileSdkVersion 34
+    ndkVersion "27.0.12077973"
+
+    compileOptions {
+// ... existing code ...
+    }
+} 

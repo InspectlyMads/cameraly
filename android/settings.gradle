@@ -1,0 +1,43 @@
+pluginManagement {
+    def flutterSdkPath = {
+        def properties = new Properties()
+        def propertiesFile = new File(rootDir.parentFile, "local.properties")
+        if (propertiesFile.exists()) {
+            properties.load(propertiesFile.newDataInputStream())
+            def sdkPath = properties.getProperty('flutter.sdk')
+            if (sdkPath != null) {
+                return sdkPath
+            }
+        }
+        def envPath = System.getenv('FLUTTER_ROOT')
+        if (envPath != null) {
+            return envPath
+        }
+        throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file or with FLUTTER_ROOT environment variable.")
+    }()
+
+    includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-gradle-plugin"
+    id "com.android.application" version "8.2.1" apply false
+    id "org.jetbrains.kotlin.android" version "1.9.22" apply false
+}
+
+include ":app"
+
+def localPropertiesFile = new File(rootProject.projectDir, "local.properties")
+def properties = new Properties()
+
+assert localPropertiesFile.exists()
+localPropertiesFile.withReader("UTF-8") { reader -> properties.load(reader) }
+
+def flutterSdkPath = properties.getProperty("flutter.sdk")
+assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
