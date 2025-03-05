@@ -1,10 +1,13 @@
-name: camera_app
-description: "A new Flutter project"
-publish_to: 'none'
-version: 1.0.0+1
+name: cameraly
+description: "A Flutter package that provides an enhanced camera experience with a developer-friendly API, building on top of the official Flutter camera plugin."
+version: 0.1.0
+homepage: https://github.com/InspectlyMads/cameraly
+repository: https://github.com/InspectlyMads/cameraly
+issue_tracker: https://github.com/InspectlyMads/cameraly/issues
 
 environment:
   sdk: '>=3.6.1 <4.0.0'
+  flutter: ">=3.16.0"
 
 dependencies:
   flutter:
@@ -17,6 +20,7 @@ dependencies:
   path: ^1.8.3
   permission_handler: ^11.3.0
   cupertino_icons: ^1.0.6
+  meta: ^1.10.0
 
 dev_dependencies:
   flutter_test:
@@ -24,11 +28,4 @@ dev_dependencies:
   flutter_lints: ^3.0.1
 
 flutter:
-  uses-material-design: true
-  plugin:
-    platforms:
-      android:
-        package: com.example.cameraly
-        pluginClass: CameralyPlugin
-      ios:
-        pluginClass: CameralyPlugin 
+  uses-material-design: true 

@@ -5,24 +5,34 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "camera_app_final",
-            "cwd": "camera_app_final",
+            "name": "cameraly_example",
+            "cwd": "example",
             "request": "launch",
             "type": "dart"
         },
         {
-            "name": "camera_app_final (profile mode)",
-            "cwd": "camera_app_final",
+            "name": "cameraly_example (profile mode)",
+            "cwd": "example",
             "request": "launch",
             "type": "dart",
             "flutterMode": "profile"
         },
         {
-            "name": "camera_app_final (release mode)",
-            "cwd": "camera_app_final",
+            "name": "cameraly_example (release mode)",
+            "cwd": "example",
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"
+        },
+        {
+            "name": "cameraly (all devices)",
+            "cwd": "example",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "-d",
+                "all"
+            ]
         }
     ]
 }
