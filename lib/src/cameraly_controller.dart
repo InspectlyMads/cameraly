@@ -1,5 +1,4 @@
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'cameraly_value.dart';
@@ -14,7 +13,7 @@ class CameralyController extends ValueNotifier<CameralyValue> {
     CaptureSettings? settings,
   })  : _description = description,
         _settings = settings ?? const CaptureSettings(),
-        _permissionHandler = CameralyPermissionHandler(),
+        _permissionHandler = const CameralyPermissionHandler(),
         super(const CameralyValue.uninitialized());
 
   final CameraDescription _description;
@@ -64,6 +63,7 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         focusMode: _settings.focusMode,
         deviceOrientation: _settings.deviceOrientation,
         permissionState: CameraPermissionState.granted,
+        isFrontCamera: _description.lensDirection == CameraLensDirection.front,
       );
 
       // Apply initial settings
@@ -251,6 +251,160 @@ class CameralyController extends ValueNotifier<CameralyValue> {
     } on CameraException catch (e) {
       value = value.copyWith(error: e.description);
       rethrow;
+    }
+  }
+
+  /// Toggles the flash mode between off and auto.
+  Future<void> toggleFlash() async {
+    if (!value.isInitialized) return;
+
+    final FlashMode newMode;
+    switch (value.flashMode) {
+      case FlashMode.off:
+        newMode = FlashMode.auto;
+        break;
+      case FlashMode.auto:
+        newMode = FlashMode.always;
+        break;
+      case FlashMode.always:
+        newMode = FlashMode.torch;
+        break;
+      case FlashMode.torch:
+        newMode = FlashMode.off;
+        break;
+    }
+
+    await setFlashMode(newMode);
+  }
+
+  /// Switches between front and back cameras.
+  Future<CameralyController?> switchCamera() async {
+    if (!value.isInitialized) return null;
+
+    try {
+      // Get available cameras
+      final cameras = await availableCameras();
+
+      // Find a camera facing the opposite direction
+      final lensDirection = _description.lensDirection;
+      final newDirection = lensDirection == CameraLensDirection.front ? CameraLensDirection.back : CameraLensDirection.front;
+
+      final newCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == newDirection,
+        orElse: () => _description,
+      );
+
+      // If we found a different camera, dispose the current one and initialize the new one
+      if (newCamera.name != _description.name) {
+        final previousSettings = _settings;
+
+        // Dispose current controller
+        await _controller?.dispose();
+
+        // Create a new controller with the new camera
+        final newController = CameralyController(
+          description: newCamera,
+          settings: previousSettings,
+        );
+
+        // Initialize the new controller
+        await newController.initialize();
+
+        // Return the new controller
+        return newController;
+      }
+
+      return null;
+    } catch (e) {
+      value = value.copyWith(
+        error: 'Failed to switch camera: $e',
+      );
+      rethrow;
+    }
+  }
+
+  /// Captures a photo or toggles video recording based on the current state.
+  Future<XFile?> captureMedia() async {
+    if (!value.isInitialized) return null;
+
+    try {
+      if (value.isRecordingVideo) {
+        // If recording, stop recording and return the video file
+        return await stopVideoRecording();
+      } else {
+        // Otherwise take a picture
+        return await takePicture();
+      }
+    } catch (e) {
+      value = value.copyWith(
+        error: 'Failed to capture media: $e',
+      );
+      return null;
+    }
+  }
+
+  /// Toggles video recording (starts or stops).
+  Future<XFile?> toggleVideoRecording() async {
+    if (!value.isInitialized) return null;
+
+    try {
+      if (value.isRecordingVideo) {
+        // If recording, stop recording and return the video file
+        return await stopVideoRecording();
+      } else {
+        // Otherwise start recording
+        await startVideoRecording();
+        return null;
+      }
+    } catch (e) {
+      value = value.copyWith(
+        error: 'Failed to toggle video recording: $e',
+      );
+      return null;
+    }
+  }
+
+  /// Sets the focus and exposure point.
+  Future<void> setFocusAndExposurePoint(Offset point) async {
+    if (!value.isInitialized) return;
+
+    try {
+      // Debug print
+      print('Setting focus and exposure at: $point');
+
+      // The point is already normalized (0.0 to 1.0) from the CameralyPreview
+      // Make sure it's within valid bounds
+      final normalizedPoint = Offset(
+        point.dx.clamp(0.0, 1.0),
+        point.dy.clamp(0.0, 1.0),
+      );
+
+      // Update the value with the new focus and exposure points immediately
+      // This will trigger the UI update for the focus circle right away
+      value = value.copyWith(
+        focusPoint: normalizedPoint,
+        exposurePoint: normalizedPoint,
+        focusMode: FocusMode.auto,
+        exposureMode: ExposureMode.auto,
+        error: null, // Clear any previous errors
+      );
+
+      // Set focus mode to auto to enable tap-to-focus
+      await _controller!.setFocusMode(FocusMode.auto);
+
+      // Set exposure mode to auto to enable tap-to-expose
+      await _controller!.setExposureMode(ExposureMode.auto);
+
+      // Set the focus point
+      await _controller!.setFocusPoint(normalizedPoint);
+
+      // Set the exposure point
+      await _controller!.setExposurePoint(normalizedPoint);
+    } catch (e) {
+      print('Error setting focus and exposure: $e');
+      value = value.copyWith(
+        error: 'Failed to set focus and exposure point: $e',
+      );
     }
   }
 

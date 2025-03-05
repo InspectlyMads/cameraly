@@ -244,4 +244,34 @@ Once these requirements are met, we will proceed with implementing additional ca
 - [ ] Custom overlays
 - [ ] Advanced camera controls
 
-Progress: 28/33 tasks completed (85%) 
+## Overlay System Implementation
+The next priority is to implement a flexible overlay system for the CameralyPreview widget:
+
+### Overlay Architecture
+- [x] Define `CameralyOverlayType` enum (none, defaultOverlay, custom)
+- [x] Create base overlay interface/abstract class
+- [x] Design overlay positioning system (enum for standard positions)
+- [x] Implement overlay theme support for styling
+
+### Default Overlay
+- [x] Create `DefaultCameralyOverlay` widget
+- [x] Implement capture button with photo/video modes
+- [x] Add camera switch button
+- [x] Add flash mode toggle
+- [x] Implement focus indicator
+- [x] Add zoom controls
+- [ ] Create recording timer for video mode
+- [x] Add gallery thumbnail (optional)
+
+### Custom Overlay Support
+- [x] Modify `CameralyPreview` to accept overlay configuration
+- [x] Implement overlay type switching logic
+- [x] Add support for custom overlay widgets
+- [x] Create overlay-controller communication system
+
+### Documentation & Examples
+- [x] Document overlay usage in README.md
+- [x] Add overlay examples to the example app
+- [x] Create a custom overlay example
+
+Progress: 43/46 tasks completed (93%) 

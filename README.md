@@ -34,6 +34,8 @@ Cameraly builds on top of the official Flutter camera plugin to provide a more d
 - 🔒 **Permission handling** with built-in request flow and UI
 - 🛠️ **Extensive customization** options for UI elements and camera behavior
 - 📱 **Platform-specific optimizations** for Android and iOS
+- 🎨 **Beautiful default camera UI** with photo/video mode toggle, capture button, flash control, and more
+- 🎭 **Flexible overlay system** - Use the built-in camera UI, create your own custom overlay, or use a clean preview
 
 ## Platform Support
 
@@ -90,7 +92,7 @@ Add camera usage descriptions to your `Info.plist`:
 
 ## Usage
 
-### Basic Camera Preview
+### Basic Camera Preview with Default UI
 
 ```dart
 import 'package:cameraly/cameraly.dart';
@@ -103,6 +105,7 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameralyController _controller;
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -111,9 +114,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCamera() async {
-    _controller = CameralyController();
+    final cameras = await availableCameras();
+    _controller = CameralyController(description: cameras.first);
     await _controller.initialize();
-    setState(() {});
+    setState(() {
+      _isInitialized = true;
+    });
   }
 
   @override
@@ -124,20 +130,19 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_controller.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
+    if (!_isInitialized) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
     
     return Scaffold(
       body: CameralyPreview(
         controller: _controller,
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final photo = await _controller.takePicture();
-          // Use the captured photo
+        // The default overlay is used automatically
+        onTap: (position) {
+          _controller.setFocusAndExposurePoint(position);
         },
-        child: const Icon(Icons.camera),
       ),
     );
   }
@@ -167,8 +172,8 @@ await _controller.switchCamera();
 ### Flash Control
 
 ```dart
-// Cycle through flash modes (auto, on, off)
-await _controller.cycleFlashMode();
+// Cycle through flash modes (auto, on, off, torch)
+await _controller.toggleFlash();
 
 // Or set a specific flash mode
 await _controller.setFlashMode(FlashMode.auto);
@@ -189,14 +194,60 @@ final videoFile = await _controller.stopVideoRecording();
 ```dart
 // Configure camera with specific settings
 _controller = CameralyController(
-  photoSettings: PhotoSettings(
-    resolution: PhotoResolution.max,
+  description: cameras.first,
+  settings: CaptureSettings(
+    resolution: ResolutionPreset.max,
+    enableAudio: true,
     flashMode: FlashMode.auto,
   ),
-  videoSettings: VideoSettings(
-    resolution: VideoResolution.high,
-    enableAudio: true,
+);
+```
+
+### Customizing the Overlay System
+
+Cameraly provides a flexible overlay system that allows you to customize the camera UI:
+
+```dart
+// Customize the default overlay
+CameralyPreview(
+  controller: _controller,
+  defaultOverlay: DefaultCameralyOverlay(
+    controller: _controller,
+    // Customize which controls to show
+    showCaptureButton: true,
+    showFlashButton: true,
+    showSwitchCameraButton: true,
+    showGalleryButton: true,
+    showZoomControls: true,
+    showModeToggle: true,
+    // Customize the theme
+    theme: CameralyOverlayTheme(
+      primaryColor: Colors.blue,
+      secondaryColor: Colors.red,
+      backgroundColor: Colors.black54,
+      opacity: 0.7,
+    ),
+    // Handle gallery button tap
+    onGalleryTap: () {
+      // Open gallery
+    },
   ),
+);
+
+// Or create a custom overlay
+CameralyPreview(
+  controller: _controller,
+  overlayType: CameralyOverlayType.custom,
+  customOverlay: YourCustomOverlayWidget(
+    controller: _controller,
+    // Your custom properties
+  ),
+);
+
+// Or use no overlay at all
+CameralyPreview(
+  controller: _controller,
+  overlayType: CameralyOverlayType.none,
 );
 ```
 

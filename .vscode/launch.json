@@ -33,6 +33,16 @@
                 "-d",
                 "all"
             ]
+        },
+        {
+            "name": "cameraly_example on Pixel 8",
+            "cwd": "example",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "-d",
+                "43260DLJH000DX"
+            ]
         }
     ]
 }

@@ -98,6 +98,35 @@ export 'src/cameraly_preview.dart';
 /// initialization status, recording status, and current settings.
 export 'src/cameraly_value.dart';
 
+/// Theme class for styling camera overlays
+///
+/// [CameralyOverlayTheme] provides styling options for colors, sizes,
+/// and other visual properties of camera overlays.
+export 'src/overlays/cameraly_overlay_theme.dart';
+
+/// Overlay system for camera UI
+///
+/// The following exports provide classes for creating and customizing
+/// camera overlays with controls and UI elements.
+
+/// Defines the types of overlays that can be displayed
+///
+/// [CameralyOverlayType] is used to specify whether to show no overlay,
+/// the default overlay, or a custom overlay.
+export 'src/overlays/cameraly_overlay_type.dart';
+
+/// Default camera overlay implementation
+///
+/// [DefaultCameralyOverlay] is a ready-to-use overlay with standard
+/// camera controls like capture button, flash toggle, and camera switch.
+export 'src/overlays/default_cameraly_overlay.dart';
+
+/// Position utilities for overlay elements
+///
+/// [OverlayPosition] defines standard positions for UI elements in
+/// camera overlays and provides utilities for positioning widgets.
+export 'src/overlays/overlay_position.dart';
+
 /// Camera device information
 ///
 /// Contains information about available camera devices and their capabilities.

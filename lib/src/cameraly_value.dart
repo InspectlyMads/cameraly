@@ -1,6 +1,6 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
 
 /// The state of camera permissions.
 enum CameraPermissionState {
@@ -30,6 +30,9 @@ class CameralyValue {
     this.permissionState = CameraPermissionState.unknown,
     this.error,
     this.zoomLevel = 1.0,
+    this.focusPoint,
+    this.exposurePoint,
+    this.isFrontCamera = false,
   });
 
   /// Creates an uninitialized value.
@@ -44,7 +47,10 @@ class CameralyValue {
         deviceOrientation = DeviceOrientation.portraitUp,
         permissionState = CameraPermissionState.unknown,
         error = null,
-        zoomLevel = 1.0;
+        zoomLevel = 1.0,
+        focusPoint = null,
+        exposurePoint = null,
+        isFrontCamera = false;
 
   /// Whether the camera has been initialized
   final bool isInitialized;
@@ -79,6 +85,15 @@ class CameralyValue {
   /// The current zoom level
   final double zoomLevel;
 
+  /// The current focus point (normalized coordinates)
+  final Offset? focusPoint;
+
+  /// The current exposure point (normalized coordinates)
+  final Offset? exposurePoint;
+
+  /// Whether the current camera is the front-facing camera
+  final bool isFrontCamera;
+
   /// Creates a copy of this value with the given fields replaced.
   CameralyValue copyWith({
     bool? isInitialized,
@@ -92,6 +107,9 @@ class CameralyValue {
     CameraPermissionState? permissionState,
     String? error,
     double? zoomLevel,
+    Offset? focusPoint,
+    Offset? exposurePoint,
+    bool? isFrontCamera,
   }) {
     return CameralyValue(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -105,6 +123,9 @@ class CameralyValue {
       permissionState: permissionState ?? this.permissionState,
       error: error,
       zoomLevel: zoomLevel ?? this.zoomLevel,
+      focusPoint: focusPoint,
+      exposurePoint: exposurePoint,
+      isFrontCamera: isFrontCamera ?? this.isFrontCamera,
     );
   }
 
@@ -123,7 +144,10 @@ class CameralyValue {
           deviceOrientation == other.deviceOrientation &&
           permissionState == other.permissionState &&
           error == other.error &&
-          zoomLevel == other.zoomLevel;
+          zoomLevel == other.zoomLevel &&
+          focusPoint == other.focusPoint &&
+          exposurePoint == other.exposurePoint &&
+          isFrontCamera == other.isFrontCamera;
 
   @override
   int get hashCode =>
@@ -137,7 +161,10 @@ class CameralyValue {
       deviceOrientation.hashCode ^
       permissionState.hashCode ^
       error.hashCode ^
-      zoomLevel.hashCode;
+      zoomLevel.hashCode ^
+      focusPoint.hashCode ^
+      exposurePoint.hashCode ^
+      isFrontCamera.hashCode;
 
   @override
   String toString() => 'CameralyValue('
@@ -151,5 +178,8 @@ class CameralyValue {
       'deviceOrientation: $deviceOrientation, '
       'permissionState: $permissionState, '
       'error: $error, '
-      'zoomLevel: $zoomLevel)';
+      'zoomLevel: $zoomLevel, '
+      'focusPoint: $focusPoint, '
+      'exposurePoint: $exposurePoint, '
+      'isFrontCamera: $isFrontCamera)';
 }

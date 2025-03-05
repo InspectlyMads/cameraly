@@ -4,6 +4,8 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'overlay_example.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -25,7 +27,7 @@ class LandingPage extends StatelessWidget {
     if (status.isGranted) {
       final cameras = await availableCameras();
       if (context.mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => CameraScreen(cameras: cameras)));
+        Navigator.of(context).push(MaterialPageRoute(builder: (context) => CameraScreen(cameras: cameras)));
       }
     } else {
       if (context.mounted) {
@@ -61,7 +63,20 @@ class LandingPage extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                       textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                    child: const Text('Get Started'),
+                    child: const Text('Basic Camera Example'),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (context) => const OverlayExample()));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.8),
+                      foregroundColor: Colors.deepPurple,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    child: const Text('Overlay System Example'),
                   ),
                 ],
               ),
@@ -104,7 +119,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   double _currentZoom = 1.0;
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
-  bool _showZoomSlider = false;
+  final bool _showZoomSlider = false;
 
   @override
   void initState() {
@@ -400,26 +415,6 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                       );
                     },
                   ),
-                ),
-                // Double tap for zoom
-                GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onDoubleTap: () {
-                    setState(() {
-                      _showZoomSlider = !_showZoomSlider;
-                    });
-                    // Hide zoom slider after 3 seconds
-                    if (_showZoomSlider) {
-                      Future.delayed(const Duration(seconds: 3), () {
-                        if (mounted) {
-                          setState(() {
-                            _showZoomSlider = false;
-                          });
-                        }
-                      });
-                    }
-                  },
-                  child: Container(color: Colors.transparent),
                 ),
               ],
             ),
