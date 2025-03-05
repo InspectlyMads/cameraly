@@ -37,6 +37,8 @@ class CameralyValue {
     this.focusPoint,
     this.exposurePoint,
     this.isFrontCamera = false,
+    this.lastCapturedPhoto,
+    this.lastRecordedVideo,
   });
 
   /// Creates an uninitialized value.
@@ -55,7 +57,9 @@ class CameralyValue {
         initialZoomLevel = null,
         focusPoint = null,
         exposurePoint = null,
-        isFrontCamera = false;
+        isFrontCamera = false,
+        lastCapturedPhoto = null,
+        lastRecordedVideo = null;
 
   /// Whether the camera has been initialized
   final bool isInitialized;
@@ -102,6 +106,12 @@ class CameralyValue {
   /// Whether the current camera is the front-facing camera
   final bool isFrontCamera;
 
+  /// The last photo captured by the camera
+  final XFile? lastCapturedPhoto;
+
+  /// The last video recorded by the camera
+  final XFile? lastRecordedVideo;
+
   /// Creates a copy of this value with the given fields replaced.
   CameralyValue copyWith({
     bool? isInitialized,
@@ -119,6 +129,8 @@ class CameralyValue {
     Offset? focusPoint,
     Offset? exposurePoint,
     bool? isFrontCamera,
+    XFile? lastCapturedPhoto,
+    XFile? lastRecordedVideo,
   }) {
     return CameralyValue(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -136,6 +148,8 @@ class CameralyValue {
       focusPoint: focusPoint,
       exposurePoint: exposurePoint,
       isFrontCamera: isFrontCamera ?? this.isFrontCamera,
+      lastCapturedPhoto: lastCapturedPhoto ?? this.lastCapturedPhoto,
+      lastRecordedVideo: lastRecordedVideo ?? this.lastRecordedVideo,
     );
   }
 
@@ -158,7 +172,9 @@ class CameralyValue {
           initialZoomLevel == other.initialZoomLevel &&
           focusPoint == other.focusPoint &&
           exposurePoint == other.exposurePoint &&
-          isFrontCamera == other.isFrontCamera;
+          isFrontCamera == other.isFrontCamera &&
+          lastCapturedPhoto?.path == other.lastCapturedPhoto?.path &&
+          lastRecordedVideo?.path == other.lastRecordedVideo?.path;
 
   @override
   int get hashCode =>
@@ -176,7 +192,9 @@ class CameralyValue {
       initialZoomLevel.hashCode ^
       focusPoint.hashCode ^
       exposurePoint.hashCode ^
-      isFrontCamera.hashCode;
+      isFrontCamera.hashCode ^
+      lastCapturedPhoto.hashCode ^
+      lastRecordedVideo.hashCode;
 
   @override
   String toString() => 'CameralyValue('
@@ -194,5 +212,7 @@ class CameralyValue {
       'initialZoomLevel: $initialZoomLevel, '
       'focusPoint: $focusPoint, '
       'exposurePoint: $exposurePoint, '
-      'isFrontCamera: $isFrontCamera)';
+      'isFrontCamera: $isFrontCamera, '
+      'lastCapturedPhoto: ${lastCapturedPhoto?.path}, '
+      'lastRecordedVideo: ${lastRecordedVideo?.path})';
 }

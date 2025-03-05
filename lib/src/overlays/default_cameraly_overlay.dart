@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../cameraly_controller.dart';
 import '../types/camera_mode.dart';
@@ -25,6 +26,9 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.showModeToggle = true,
     this.showFocusCircle = true,
     this.onGalleryTap,
+    this.onPictureTaken,
+    this.onMediaSelected,
+    this.allowMultipleSelection = false,
     super.key,
   });
 
@@ -56,7 +60,18 @@ class DefaultCameralyOverlay extends StatefulWidget {
   final bool showFocusCircle;
 
   /// Callback when the gallery button is tapped.
+  /// If this is provided, it will be called instead of showing the image picker.
   final VoidCallback? onGalleryTap;
+
+  /// Callback when a picture is taken, returns the captured photo file.
+  final void Function(XFile photoFile)? onPictureTaken;
+
+  /// Callback when media is selected from the gallery.
+  /// Returns a list of selected files.
+  final void Function(List<XFile> mediaFiles)? onMediaSelected;
+
+  /// Whether to allow multiple selection in the gallery picker.
+  final bool allowMultipleSelection;
 
   @override
   State<DefaultCameralyOverlay> createState() => _DefaultCameralyOverlayState();
@@ -78,6 +93,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Timer? _zoomSliderTimer;
   Timer? _recordingTimer;
   Duration _recordingDuration = Duration.zero;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -316,10 +332,18 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       }
 
       final file = await _controller.takePicture();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Picture saved: ${file.path}')),
-        );
+
+      // Call the callback if provided
+      if (widget.onPictureTaken != null) {
+        widget.onPictureTaken!(file);
+      } else {
+        // Only show the snackbar if no callback is provided
+        // This prevents duplicate notifications when the parent widget also shows a snackbar
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Picture saved: ${file.path}')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -368,6 +392,59 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error setting zoom: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openGallery() async {
+    if (widget.onGalleryTap != null) {
+      widget.onGalleryTap!();
+      return;
+    }
+
+    try {
+      List<XFile> selectedMedia = [];
+
+      // Determine which media types to allow based on camera mode
+      switch (_controller.settings.cameraMode) {
+        case CameraMode.photoOnly:
+          if (widget.allowMultipleSelection) {
+            selectedMedia = await _imagePicker.pickMultiImage();
+          } else {
+            final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
+            if (image != null) {
+              selectedMedia = [image];
+            }
+          }
+          break;
+
+        case CameraMode.videoOnly:
+          final XFile? video = await _imagePicker.pickVideo(source: ImageSource.gallery);
+          if (video != null) {
+            selectedMedia = [video];
+          }
+          break;
+
+        case CameraMode.both:
+          if (widget.allowMultipleSelection) {
+            selectedMedia = await _imagePicker.pickMultipleMedia();
+          } else {
+            final XFile? media = await _imagePicker.pickMedia();
+            if (media != null) {
+              selectedMedia = [media];
+            }
+          }
+          break;
+      }
+
+      if (selectedMedia.isNotEmpty && widget.onMediaSelected != null) {
+        widget.onMediaSelected!(selectedMedia);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking media: $e')),
         );
       }
     }
@@ -697,7 +774,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               ),
             if (widget.showGalleryButton)
               IconButton.filled(
-                onPressed: widget.onGalleryTap,
+                onPressed: _openGallery,
                 icon: const Icon(Icons.photo_library),
                 iconSize: 30,
                 style: IconButton.styleFrom(
@@ -825,7 +902,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             Padding(
               padding: EdgeInsets.only(top: isWideScreen ? 24 : 16),
               child: IconButton.filled(
-                onPressed: widget.onGalleryTap,
+                onPressed: _openGallery,
                 icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
                 style: IconButton.styleFrom(
                   backgroundColor: Colors.white24,

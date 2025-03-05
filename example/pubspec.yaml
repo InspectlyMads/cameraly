@@ -38,6 +38,8 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.1
   permission_handler: ^11.4.0
+  cross_file: ^0.3.4
+  image_picker: ^1.0.7
   cameraly:
     path: ../
 

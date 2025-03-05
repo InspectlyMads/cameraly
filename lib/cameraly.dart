@@ -127,6 +127,12 @@ export 'src/overlays/default_cameraly_overlay.dart';
 /// camera overlays and provides utilities for positioning widgets.
 export 'src/overlays/overlay_position.dart';
 
+/// Video limiter overlay implementation
+///
+/// [VideoLimiterOverlay] extends the default overlay to add a time limit
+/// for video recording with a visual timer and progress indicator.
+export 'src/overlays/video_limiter_overlay.dart';
+
 /// Camera device information
 ///
 /// Contains information about available camera devices and their capabilities.

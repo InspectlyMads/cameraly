@@ -297,6 +297,47 @@ CameralyPreview(
 )
 ```
 
+## Video Limiter Overlay Example
+
+The `VideoLimiterOverlay` extends the default overlay to add a time limit for video recording with a visual timer and progress indicator.
+
+```dart
+CameralyPreview(
+  controller: _controller,
+  overlayType: CameralyOverlayType.custom,
+  customOverlay: VideoLimiterOverlay(
+    controller: _controller,
+    // Set maximum recording duration
+    maxDuration: const Duration(seconds: 30),
+    
+    // Customize the theme
+    theme: CameralyOverlayTheme(
+      primaryColor: Colors.white,
+      secondaryColor: Colors.red,
+      backgroundColor: Colors.black.withOpacity(0.5),
+    ),
+    
+    // Control which buttons are visible
+    showCaptureButton: true,
+    showFlashButton: true,
+    showSwitchCameraButton: true,
+    showGalleryButton: true,
+    showZoomControls: true,
+    showModeToggle: true,
+    showFocusCircle: true,
+    
+    // Handle when maximum duration is reached
+    onMaxDurationReached: () {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Maximum recording duration reached')),
+      );
+    },
+  ),
+)
+```
+
+The `VideoLimiterOverlay` displays a timer and progress bar at the top of the screen when recording is in progress. The progress bar changes color to red when approaching the maximum duration.
+
 ## Responsive Layout Example
 
 ```dart

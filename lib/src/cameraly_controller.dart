@@ -291,7 +291,10 @@ class CameralyController extends ValueNotifier<CameralyValue> {
     try {
       value = value.copyWith(isTakingPicture: true);
       final file = await _controller!.takePicture();
-      value = value.copyWith(isTakingPicture: false);
+      value = value.copyWith(
+        isTakingPicture: false,
+        lastCapturedPhoto: file,
+      );
       return file;
     } catch (e) {
       value = value.copyWith(
@@ -381,7 +384,10 @@ class CameralyController extends ValueNotifier<CameralyValue> {
 
     try {
       final file = await _controller!.stopVideoRecording();
-      value = value.copyWith(isRecordingVideo: false);
+      value = value.copyWith(
+        isRecordingVideo: false,
+        lastRecordedVideo: file,
+      );
       return file;
     } on CameraException catch (e) {
       value = value.copyWith(error: e.description);
