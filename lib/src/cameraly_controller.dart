@@ -226,6 +226,9 @@ class CameralyController extends ValueNotifier<CameralyValue> {
       // Listen for camera value changes to update our value
       _controller!.addListener(_updateValueFromController);
 
+      // Default to assuming flash is available, we'll update this if we detect otherwise
+      bool hasFlashCapability = true;
+
       value = CameralyValue(
         isInitialized: true,
         flashMode: _settings.flashMode,
@@ -235,10 +238,21 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         permissionState: CameraPermissionState.granted,
         isFrontCamera: _description.lensDirection == CameraLensDirection.front,
         zoomLevel: 1.0,
+        hasFlashCapability: hasFlashCapability,
       );
 
       // Apply initial settings
-      await setFlashMode(_settings.flashMode);
+      // Try to set flash mode, but handle gracefully if it fails
+      try {
+        await setFlashMode(_settings.flashMode);
+      } catch (e) {
+        debugPrint('Failed to set initial flash mode: $e');
+        // If we get an error setting flash mode, update our state to indicate no flash capability
+        if (e.toString().toLowerCase().contains('flash') || e.toString().toLowerCase().contains('torch')) {
+          value = value.copyWith(hasFlashCapability: false);
+        }
+      }
+
       await setExposureMode(_settings.exposureMode);
       await setFocusMode(_settings.focusMode);
 
@@ -308,12 +322,29 @@ class CameralyController extends ValueNotifier<CameralyValue> {
   /// Sets the flash mode.
   Future<void> setFlashMode(FlashMode mode) async {
     if (!value.isInitialized) return;
+
+    // If the camera doesn't have flash capability, don't try to set the flash mode
+    if (!value.hasFlashCapability) {
+      debugPrint('Camera does not have flash capabilities, ignoring flash mode change');
+      return;
+    }
+
     try {
+      // Try to set the flash mode, but catch any exceptions related to flash capabilities
       await _controller!.setFlashMode(mode);
       value = value.copyWith(flashMode: mode);
     } on CameraException catch (e) {
-      value = value.copyWith(error: e.description);
-      rethrow;
+      debugPrint('Error setting flash mode: ${e.description}');
+
+      // Check if the error is related to flash capabilities
+      if (e.description?.toLowerCase().contains('flash') == true || e.description?.toLowerCase().contains('torch') == true) {
+        // If it's a flash-related error, update the value to indicate no flash capability
+        debugPrint('Camera does not have flash capabilities, updating state');
+        value = value.copyWith(flashMode: FlashMode.off, hasFlashCapability: false);
+      } else {
+        // For other types of errors, update the error state
+        value = value.copyWith(error: e.description);
+      }
     }
   }
 

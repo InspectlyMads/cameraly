@@ -39,6 +39,7 @@ class CameralyValue {
     this.isFrontCamera = false,
     this.lastCapturedPhoto,
     this.lastRecordedVideo,
+    this.hasFlashCapability = true,
   });
 
   /// Creates an uninitialized value.
@@ -59,7 +60,8 @@ class CameralyValue {
         exposurePoint = null,
         isFrontCamera = false,
         lastCapturedPhoto = null,
-        lastRecordedVideo = null;
+        lastRecordedVideo = null,
+        hasFlashCapability = true;
 
   /// Whether the camera has been initialized
   final bool isInitialized;
@@ -112,6 +114,9 @@ class CameralyValue {
   /// The last video recorded by the camera
   final XFile? lastRecordedVideo;
 
+  /// Whether the camera has flash capability
+  final bool hasFlashCapability;
+
   /// Creates a copy of this value with the given fields replaced.
   CameralyValue copyWith({
     bool? isInitialized,
@@ -131,6 +136,7 @@ class CameralyValue {
     bool? isFrontCamera,
     XFile? lastCapturedPhoto,
     XFile? lastRecordedVideo,
+    bool? hasFlashCapability,
   }) {
     return CameralyValue(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -150,6 +156,7 @@ class CameralyValue {
       isFrontCamera: isFrontCamera ?? this.isFrontCamera,
       lastCapturedPhoto: lastCapturedPhoto ?? this.lastCapturedPhoto,
       lastRecordedVideo: lastRecordedVideo ?? this.lastRecordedVideo,
+      hasFlashCapability: hasFlashCapability ?? this.hasFlashCapability,
     );
   }
 
@@ -174,7 +181,8 @@ class CameralyValue {
           exposurePoint == other.exposurePoint &&
           isFrontCamera == other.isFrontCamera &&
           lastCapturedPhoto?.path == other.lastCapturedPhoto?.path &&
-          lastRecordedVideo?.path == other.lastRecordedVideo?.path;
+          lastRecordedVideo?.path == other.lastRecordedVideo?.path &&
+          hasFlashCapability == other.hasFlashCapability;
 
   @override
   int get hashCode =>
@@ -194,7 +202,8 @@ class CameralyValue {
       exposurePoint.hashCode ^
       isFrontCamera.hashCode ^
       lastCapturedPhoto.hashCode ^
-      lastRecordedVideo.hashCode;
+      lastRecordedVideo.hashCode ^
+      hasFlashCapability.hashCode;
 
   @override
   String toString() => 'CameralyValue('
@@ -214,5 +223,6 @@ class CameralyValue {
       'exposurePoint: $exposurePoint, '
       'isFrontCamera: $isFrontCamera, '
       'lastCapturedPhoto: ${lastCapturedPhoto?.path}, '
-      'lastRecordedVideo: ${lastRecordedVideo?.path})';
+      'lastRecordedVideo: ${lastRecordedVideo?.path}, '
+      'hasFlashCapability: $hasFlashCapability)';
 }

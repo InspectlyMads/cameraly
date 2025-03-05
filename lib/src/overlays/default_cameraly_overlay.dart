@@ -527,7 +527,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           ),
 
         // Flash control
-        if (widget.showFlashButton && !_isVideoMode && !_isFrontCamera)
+        if (widget.showFlashButton && !_isVideoMode && !_isFrontCamera && _controller.value.hasFlashCapability)
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             left: isLandscape ? 16 : null,
