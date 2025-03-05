@@ -12,6 +12,9 @@ enum CameraPermissionState {
 
   /// Camera permission has been denied
   denied,
+
+  /// Camera permission has been denied but the user has chosen to continue
+  deniedButContinued,
 }
 
 /// Holds the current state of the camera.
@@ -30,6 +33,7 @@ class CameralyValue {
     this.permissionState = CameraPermissionState.unknown,
     this.error,
     this.zoomLevel = 1.0,
+    this.initialZoomLevel,
     this.focusPoint,
     this.exposurePoint,
     this.isFrontCamera = false,
@@ -48,6 +52,7 @@ class CameralyValue {
         permissionState = CameraPermissionState.unknown,
         error = null,
         zoomLevel = 1.0,
+        initialZoomLevel = null,
         focusPoint = null,
         exposurePoint = null,
         isFrontCamera = false;
@@ -85,6 +90,9 @@ class CameralyValue {
   /// The current zoom level
   final double zoomLevel;
 
+  /// The initial zoom level
+  final double? initialZoomLevel;
+
   /// The current focus point (normalized coordinates)
   final Offset? focusPoint;
 
@@ -107,6 +115,7 @@ class CameralyValue {
     CameraPermissionState? permissionState,
     String? error,
     double? zoomLevel,
+    double? initialZoomLevel,
     Offset? focusPoint,
     Offset? exposurePoint,
     bool? isFrontCamera,
@@ -123,6 +132,7 @@ class CameralyValue {
       permissionState: permissionState ?? this.permissionState,
       error: error,
       zoomLevel: zoomLevel ?? this.zoomLevel,
+      initialZoomLevel: initialZoomLevel,
       focusPoint: focusPoint,
       exposurePoint: exposurePoint,
       isFrontCamera: isFrontCamera ?? this.isFrontCamera,
@@ -145,6 +155,7 @@ class CameralyValue {
           permissionState == other.permissionState &&
           error == other.error &&
           zoomLevel == other.zoomLevel &&
+          initialZoomLevel == other.initialZoomLevel &&
           focusPoint == other.focusPoint &&
           exposurePoint == other.exposurePoint &&
           isFrontCamera == other.isFrontCamera;
@@ -162,6 +173,7 @@ class CameralyValue {
       permissionState.hashCode ^
       error.hashCode ^
       zoomLevel.hashCode ^
+      initialZoomLevel.hashCode ^
       focusPoint.hashCode ^
       exposurePoint.hashCode ^
       isFrontCamera.hashCode;
@@ -179,6 +191,7 @@ class CameralyValue {
       'permissionState: $permissionState, '
       'error: $error, '
       'zoomLevel: $zoomLevel, '
+      'initialZoomLevel: $initialZoomLevel, '
       'focusPoint: $focusPoint, '
       'exposurePoint: $exposurePoint, '
       'isFrontCamera: $isFrontCamera)';

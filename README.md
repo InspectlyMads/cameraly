@@ -36,6 +36,7 @@ Cameraly builds on top of the official Flutter camera plugin to provide a more d
 - 📱 **Platform-specific optimizations** for Android and iOS
 - 🎨 **Beautiful default camera UI** with photo/video mode toggle, capture button, flash control, and more
 - 🎭 **Flexible overlay system** - Use the built-in camera UI, create your own custom overlay, or use a clean preview
+- Pinch-to-zoom gesture support
 
 ## Platform Support
 
@@ -114,12 +115,14 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCamera() async {
-    final cameras = await availableCameras();
-    _controller = CameralyController(description: cameras.first);
-    await _controller.initialize();
-    setState(() {
-      _isInitialized = true;
-    });
+    // Simplified camera initialization
+    final controller = await CameralyController.initializeCamera();
+    if (controller != null) {
+      setState(() {
+        _controller = controller;
+        _isInitialized = true;
+      });
+    }
   }
 
   @override
@@ -147,6 +150,28 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 }
+
+### Alternative Initialization Methods
+
+You can also initialize the camera with more control:
+
+```dart
+// Method 1: Using the static convenience method
+final controller = await CameralyController.initializeCamera(
+  cameraIndex: 1, // Use the second camera (usually front camera)
+  settings: CaptureSettings(
+    resolution: ResolutionPreset.high,
+    enableAudio: true,
+  ),
+);
+
+// Method 2: Manual initialization
+final cameras = await CameralyController.getAvailableCameras();
+final controller = CameralyController(
+  description: cameras.first,
+  settings: CaptureSettings(...),
+);
+await controller.initialize();
 ```
 
 ### Handling Permissions
@@ -297,3 +322,47 @@ Please make sure your code follows the project's style guidelines and includes a
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Zoom Controls
+
+Cameraly provides built-in zoom functionality with intuitive pinch-to-zoom gestures. The zoom is handled internally by the `CameralyController` and includes:
+
+- Automatic sensitivity adjustment for smoother zooming
+- Visual zoom level indicator
+- Zoom slider for precise control
+- Zoom button for quick access
+
+The zoom functionality is automatically enabled when using the default overlay with `showZoomControls: true`.
+
+```dart
+// Example of using the built-in zoom functionality
+CameralyPreview(
+  controller: _controller,
+  overlayType: CameralyOverlayType.defaultOverlay,
+  defaultOverlay: DefaultCameralyOverlay(
+    controller: _controller,
+    showZoomControls: true, // Enable zoom controls in the UI
+  ),
+  // The onScale callback is optional as zoom is handled internally
+  onScale: (scale) {
+    // Optional: Use this callback to update UI elements or perform additional actions
+    setState(() {
+      _currentZoom = _controller.value.zoomLevel;
+    });
+  },
+)
+```
+
+You can also programmatically control the zoom level:
+
+```dart
+// Set zoom level directly
+await _controller.setZoomLevel(2.0);
+
+// Get current zoom level
+final currentZoom = _controller.value.zoomLevel;
+
+// Get min/max zoom levels
+final minZoom = await _controller.getMinZoomLevel();
+final maxZoom = await _controller.getMaxZoomLevel();
+```

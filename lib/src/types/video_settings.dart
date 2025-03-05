@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
 
+import 'camera_mode.dart';
 import 'capture_settings.dart';
 
 /// Settings specific to video capture operations.
@@ -15,6 +16,7 @@ class VideoSettings extends CaptureSettings {
     super.focusMode = FocusMode.auto,
     super.deviceOrientation = DeviceOrientation.portraitUp,
     super.enableAudio = true,
+    super.cameraMode = CameraMode.videoOnly,
     this.maxDuration,
     this.videoBitrate,
     this.audioBitrate = 128000,
@@ -46,6 +48,7 @@ class VideoSettings extends CaptureSettings {
     FocusMode? focusMode,
     DeviceOrientation? deviceOrientation,
     bool? enableAudio,
+    CameraMode? cameraMode,
     Duration? maxDuration,
     int? videoBitrate,
     int? audioBitrate,
@@ -59,6 +62,7 @@ class VideoSettings extends CaptureSettings {
       focusMode: focusMode ?? this.focusMode,
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
       enableAudio: enableAudio ?? this.enableAudio,
+      cameraMode: cameraMode ?? this.cameraMode,
       maxDuration: maxDuration ?? this.maxDuration,
       videoBitrate: videoBitrate ?? this.videoBitrate,
       audioBitrate: audioBitrate ?? this.audioBitrate,
@@ -73,6 +77,7 @@ class VideoSettings extends CaptureSettings {
         flashMode: FlashMode.off,
         exposureMode: ExposureMode.auto,
         focusMode: FocusMode.auto,
+        cameraMode: CameraMode.videoOnly,
         videoBitrate: 10000000, // 10 Mbps
         audioBitrate: 256000, // 256 kbps
         stabilizationMode: VideoStabilizationMode.standard,
@@ -84,6 +89,7 @@ class VideoSettings extends CaptureSettings {
         flashMode: FlashMode.off,
         exposureMode: ExposureMode.auto,
         focusMode: FocusMode.auto,
+        cameraMode: CameraMode.videoOnly,
         videoBitrate: 2000000, // 2 Mbps
         audioBitrate: 96000, // 96 kbps
         stabilizationMode: VideoStabilizationMode.off,

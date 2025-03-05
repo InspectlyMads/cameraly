@@ -70,6 +70,47 @@ Future<void> _initializeCamera() async {
 }
 ```
 
+#### Camera Initialization
+
+The app demonstrates the simplified camera initialization with appropriate error handling:
+
+```dart
+Future<void> _initCamera() async {
+  try {
+    // Simplified camera initialization with the convenience method
+    final controller = await CameralyController.initializeCamera();
+    
+    if (controller == null) {
+      // Handle initialization failure
+      return;
+    }
+    
+    _controller = controller;
+    setState(() {
+      _isInitialized = true;
+    });
+    
+    // Additional setup...
+  } catch (e) {
+    // Error handling...
+  }
+}
+```
+
+For more control, you can specify camera index and settings:
+
+```dart
+// Initialize with the front camera
+final controller = await CameralyController.initializeCamera(
+  cameraIndex: 1, // Front camera
+  settings: CaptureSettings(
+    resolution: ResolutionPreset.high,
+    enableAudio: true,
+    flashMode: FlashMode.auto,
+  ),
+);
+```
+
 #### Responsive Layout
 
 The app handles both portrait and landscape orientations with a responsive layout:

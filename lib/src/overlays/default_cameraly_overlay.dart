@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../cameraly_controller.dart';
+import '../types/camera_mode.dart';
 import 'cameraly_overlay_theme.dart';
 
 /// A default overlay for the camera preview with standard controls.
@@ -62,6 +63,7 @@ class DefaultCameralyOverlay extends StatefulWidget {
 }
 
 class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with WidgetsBindingObserver {
+  late CameralyController _controller;
   bool _isFrontCamera = false;
   bool _isVideoMode = false;
   bool _isRecording = false;
@@ -80,14 +82,32 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_controllerListener);
+    _controller = widget.controller;
+    _flashMode = _controller.settings.flashMode;
+    _isFrontCamera = _controller.description.lensDirection == CameraLensDirection.front;
+
+    // Set initial video mode based on camera mode setting
+    switch (_controller.settings.cameraMode) {
+      case CameraMode.photoOnly:
+        _isVideoMode = false;
+        break;
+      case CameraMode.videoOnly:
+        _isVideoMode = true;
+        break;
+      case CameraMode.both:
+        // Default behavior, keep as is
+        break;
+    }
+
+    // Listen for changes to the controller
+    _controller.addListener(_handleControllerUpdate);
     WidgetsBinding.instance.addObserver(this);
     _initializeValues();
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_controllerListener);
+    _controller.removeListener(_handleControllerUpdate);
     WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
     _zoomSliderTimer?.cancel();
@@ -107,22 +127,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _initializeValues() async {
-    final value = widget.controller.value;
-
-    // Initialize flash mode
-    _flashMode = value.flashMode;
-
-    // Initialize camera direction
-    _isFrontCamera = widget.controller.description.lensDirection == CameraLensDirection.front;
+    final value = _controller.value;
 
     // Initialize zoom levels
-    _minZoom = await widget.controller.getMinZoomLevel();
-    _maxZoom = await widget.controller.getMaxZoomLevel();
+    _minZoom = await _controller.getMinZoomLevel();
+    _maxZoom = await _controller.getMaxZoomLevel();
     _currentZoom = value.zoomLevel;
   }
 
-  void _controllerListener() {
-    final value = widget.controller.value;
+  void _handleControllerUpdate() {
+    final value = _controller.value;
 
     // Update recording state
     if (value.isRecordingVideo != _isRecording) {
@@ -141,6 +155,21 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     if (value.zoomLevel != _currentZoom) {
       setState(() {
         _currentZoom = value.zoomLevel;
+
+        // Show zoom slider when zoom changes (e.g., from pinch gesture)
+        if (!_showZoomSlider) {
+          _showZoomSlider = true;
+        }
+
+        // Reset the auto-hide timer whenever zoom changes
+        _zoomSliderTimer?.cancel();
+        _zoomSliderTimer = Timer(const Duration(seconds: 3), () {
+          if (mounted) {
+            setState(() {
+              _showZoomSlider = false;
+            });
+          }
+        });
       });
     }
 
@@ -155,7 +184,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
             // Get the camera preview's aspect ratio
-            final previewRatio = widget.controller.cameraController!.value.aspectRatio;
+            final previewRatio = _controller.cameraController!.value.aspectRatio;
 
             // Calculate preview dimensions
             final previewAspectRatio = isLandscape ? previewRatio : 1.0 / previewRatio;
@@ -229,7 +258,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final newMode = modes[nextIndex];
 
     try {
-      await widget.controller.setFlashMode(newMode);
+      await _controller.setFlashMode(newMode);
       setState(() {
         _flashMode = newMode;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -262,9 +291,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _switchCamera() async {
-    final newController = await widget.controller.switchCamera();
+    final newController = await _controller.switchCamera();
     if (newController != null) {
       setState(() {
+        _controller = newController;
         _isFrontCamera = !_isFrontCamera;
       });
     }
@@ -282,10 +312,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     try {
       // Ensure flash mode is set correctly before taking the picture
       if (!_isFrontCamera) {
-        await widget.controller.setFlashMode(_flashMode);
+        await _controller.setFlashMode(_flashMode);
       }
 
-      final file = await widget.controller.takePicture();
+      final file = await _controller.takePicture();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Picture saved: ${file.path}')),
@@ -303,14 +333,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Future<void> _toggleRecording() async {
     try {
       if (_isRecording) {
-        final file = await widget.controller.stopVideoRecording();
+        final file = await _controller.stopVideoRecording();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Video saved: ${file.path}')),
           );
         }
       } else {
-        await widget.controller.startVideoRecording();
+        await _controller.startVideoRecording();
       }
     } catch (e) {
       if (mounted) {
@@ -323,7 +353,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Future<void> _setZoom(double zoom) async {
     try {
-      await widget.controller.setZoomLevel(zoom);
+      // Reset the auto-hide timer when slider is used
+      _zoomSliderTimer?.cancel();
+      _zoomSliderTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _showZoomSlider = false;
+          });
+        }
+      });
+
+      await _controller.setZoomLevel(zoom);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -360,7 +400,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.white, width: 2),
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withAlpha((0.3 * 255).round()),
                     ),
                     child: const Center(
                       child: Icon(Icons.center_focus_strong, color: Colors.white, size: 20),
@@ -381,8 +421,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.black.withAlpha((0.4 * 255).round()),
+                  borderRadius: BorderRadius.circular(30),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -420,7 +460,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               opacity: _isRecording ? 0.0 : 1.0,
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
+                  color: Colors.black.withAlpha((0.4 * 255).round()),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Material(
@@ -434,7 +474,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     iconSize: 28,
                     color: Colors.white,
                     style: IconButton.styleFrom(
-                      backgroundColor: _flashMode == FlashMode.always ? Colors.amber.withOpacity(0.3) : Colors.transparent,
+                      backgroundColor: _flashMode == FlashMode.always ? Colors.amber.withAlpha((0.3 * 255).round()) : Colors.transparent,
                       minimumSize: const Size(56, 56),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -453,7 +493,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             left: 0,
             right: 0,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 48),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -470,16 +510,21 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       trackHeight: 2,
                       activeTrackColor: theme.primaryColor,
                       inactiveTrackColor: Colors.white30,
-                      thumbColor: Colors.white,
-                      overlayColor: theme.primaryColor.withOpacity(0.2),
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                      thumbColor: theme.primaryColor,
+                      overlayColor: theme.primaryColor.withAlpha((0.2 * 255).round()),
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                     ),
-                    child: Slider(
-                      value: _currentZoom.clamp(_minZoom, _maxZoom),
-                      min: _minZoom,
-                      max: _maxZoom,
-                      onChanged: _setZoom,
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.7,
+                      child: Center(
+                        child: Slider(
+                          value: _currentZoom.clamp(_minZoom, _maxZoom),
+                          min: _minZoom,
+                          max: _maxZoom,
+                          onChanged: _setZoom,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -497,7 +542,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             right: null, // Removed right positioning
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withAlpha((0.3 * 255).round()),
                 shape: BoxShape.circle,
               ),
               child: IconButton.filled(
@@ -553,9 +598,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 end: isLandscape ? Alignment.centerLeft : Alignment.topCenter,
                 stops: isLandscape ? const [0.0, 0.3, 0.7, 1.0] : const [0.0, 0.15, 0.3, 0.5],
                 colors: [
-                  Colors.black.withOpacity(0.9),
-                  Colors.black.withOpacity(0.7),
-                  Colors.black.withOpacity(0.3),
+                  Colors.black.withAlpha((0.9 * 255).round()),
+                  Colors.black.withAlpha((0.7 * 255).round()),
+                  Colors.black.withAlpha((0.3 * 255).round()),
                   Colors.transparent,
                 ],
               ),
@@ -568,13 +613,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Widget _buildPortraitControls() {
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-
     return Column(
-      mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (widget.showModeToggle && !_isRecording) ...[
+        if (widget.showModeToggle && !_isRecording && _controller.settings.cameraMode == CameraMode.both) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -583,7 +625,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   _isVideoMode = false;
                   // Update flash mode when switching to photo mode
                   if (!_isFrontCamera) {
-                    widget.controller.setFlashMode(_flashMode);
+                    _controller.setFlashMode(_flashMode);
                   }
                 }),
                 style: TextButton.styleFrom(
@@ -596,7 +638,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 onPressed: () => setState(() {
                   _isVideoMode = true;
                   // Turn off flash in video mode
-                  widget.controller.setFlashMode(FlashMode.off);
+                  _controller.setFlashMode(FlashMode.off);
                 }),
                 style: TextButton.styleFrom(
                   foregroundColor: _isVideoMode ? Colors.white : Colors.white60,
@@ -680,11 +722,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Photo/Video toggle to the left of the capture button
-          if (widget.showModeToggle && !_isRecording)
+          if (widget.showModeToggle && !_isRecording && _controller.settings.cameraMode == CameraMode.both)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withAlpha((0.5 * 255).round()),
                 borderRadius: BorderRadius.circular(20),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -696,7 +738,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       _isVideoMode = false;
                       // Update flash mode when switching to photo mode
                       if (!_isFrontCamera) {
-                        widget.controller.setFlashMode(_flashMode);
+                        _controller.setFlashMode(_flashMode);
                       }
                     }),
                     style: TextButton.styleFrom(
@@ -712,7 +754,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     onPressed: () => setState(() {
                       _isVideoMode = true;
                       // Turn off flash in video mode
-                      widget.controller.setFlashMode(FlashMode.off);
+                      _controller.setFlashMode(FlashMode.off);
                     }),
                     style: TextButton.styleFrom(
                       foregroundColor: _isVideoMode ? Colors.white : Colors.white60,

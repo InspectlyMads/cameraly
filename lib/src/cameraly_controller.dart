@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'cameraly_value.dart';
 import 'types/capture_settings.dart';
+import 'types/photo_settings.dart';
+import 'types/video_settings.dart';
 import 'utils/permission_handler.dart';
 
 /// Controller for the Cameraly camera interface.
@@ -33,9 +35,174 @@ class CameralyController extends ValueNotifier<CameralyValue> {
   /// The underlying camera controller
   CameraController? get cameraController => _controller;
 
+  /// Gets a list of available cameras on the device.
+  ///
+  /// This is a convenience method to avoid importing the camera package directly.
+  static Future<List<CameraDescription>> getAvailableCameras() async {
+    try {
+      return await availableCameras();
+    } catch (e) {
+      debugPrint('Error getting available cameras: $e');
+      return [];
+    }
+  }
+
+  /// Creates and initializes a CameralyController with the first available camera.
+  ///
+  /// This is a convenience method that:
+  /// 1. Gets available cameras
+  /// 2. Creates a controller with the first camera (or specified cameraIndex)
+  /// 3. Initializes the controller
+  ///
+  /// Returns null if no cameras are available or initialization fails.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// final controller = await CameralyController.initializeCamera();
+  /// if (controller != null) {
+  ///   // Camera initialized successfully
+  /// }
+  /// ```
+  static Future<CameralyController?> initializeCamera({
+    int cameraIndex = 0,
+    CaptureSettings? settings,
+  }) async {
+    try {
+      // Get available cameras
+      final cameras = await getAvailableCameras();
+      if (cameras.isEmpty) {
+        debugPrint('No cameras available');
+        return null;
+      }
+
+      // Make sure the camera index is valid
+      if (cameraIndex >= cameras.length) {
+        debugPrint('Camera index out of range, using first camera');
+        cameraIndex = 0;
+      }
+
+      // Create controller with the selected camera
+      final controller = CameralyController(
+        description: cameras[cameraIndex],
+        settings: settings,
+      );
+
+      // Initialize the controller
+      await controller.initialize();
+      return controller;
+    } catch (e) {
+      debugPrint('Error initializing camera: $e');
+      return null;
+    }
+  }
+
+  /// Creates and initializes a CameralyController optimized for photo capture.
+  ///
+  /// This is a convenience method that:
+  /// 1. Gets available cameras
+  /// 2. Creates a controller with the first camera (or specified cameraIndex)
+  /// 3. Initializes the controller with photo-specific settings
+  ///
+  /// Returns null if no cameras are available or initialization fails.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// final controller = await CameralyController.initializeForPhotos();
+  /// if (controller != null) {
+  ///   // Camera initialized successfully for photos
+  /// }
+  /// ```
+  static Future<CameralyController?> initializeForPhotos({
+    int cameraIndex = 0,
+    PhotoSettings? settings,
+  }) async {
+    try {
+      // Get available cameras
+      final cameras = await getAvailableCameras();
+      if (cameras.isEmpty) {
+        debugPrint('No cameras available');
+        return null;
+      }
+
+      // Make sure the camera index is valid
+      if (cameraIndex >= cameras.length) {
+        debugPrint('Camera index out of range, using first camera');
+        cameraIndex = 0;
+      }
+
+      // Create controller with the selected camera
+      final controller = CameralyController(
+        description: cameras[cameraIndex],
+        settings: settings ?? const PhotoSettings(),
+      );
+
+      // Initialize the controller
+      await controller.initialize();
+      return controller;
+    } catch (e) {
+      debugPrint('Error initializing camera for photos: $e');
+      return null;
+    }
+  }
+
+  /// Creates and initializes a CameralyController optimized for video recording.
+  ///
+  /// This is a convenience method that:
+  /// 1. Gets available cameras
+  /// 2. Creates a controller with the first camera (or specified cameraIndex)
+  /// 3. Initializes the controller with video-specific settings
+  ///
+  /// Returns null if no cameras are available or initialization fails.
+  ///
+  /// Example usage:
+  /// ```dart
+  /// final controller = await CameralyController.initializeForVideos();
+  /// if (controller != null) {
+  ///   // Camera initialized successfully for videos
+  /// }
+  /// ```
+  static Future<CameralyController?> initializeForVideos({
+    int cameraIndex = 0,
+    VideoSettings? settings,
+  }) async {
+    try {
+      // Get available cameras
+      final cameras = await getAvailableCameras();
+      if (cameras.isEmpty) {
+        debugPrint('No cameras available');
+        return null;
+      }
+
+      // Make sure the camera index is valid
+      if (cameraIndex >= cameras.length) {
+        debugPrint('Camera index out of range, using first camera');
+        cameraIndex = 0;
+      }
+
+      // Create controller with the selected camera
+      final controller = CameralyController(
+        description: cameras[cameraIndex],
+        settings: settings ?? const VideoSettings(),
+      );
+
+      // Initialize the controller
+      await controller.initialize();
+      return controller;
+    } catch (e) {
+      debugPrint('Error initializing camera for videos: $e');
+      return null;
+    }
+  }
+
   /// Initializes the camera controller.
   Future<void> initialize() async {
     try {
+      // Check if we're already in a deniedButContinued state
+      if (value.permissionState == CameraPermissionState.deniedButContinued) {
+        // User has chosen to continue without camera, so we don't try to initialize
+        return;
+      }
+
       final hasPermission = await _permissionHandler.requestPermissions(
         requireAudio: _settings.enableAudio,
       );
@@ -56,6 +223,9 @@ class CameralyController extends ValueNotifier<CameralyValue> {
 
       await _controller!.initialize();
 
+      // Listen for camera value changes to update our value
+      _controller!.addListener(_updateValueFromController);
+
       value = CameralyValue(
         isInitialized: true,
         flashMode: _settings.flashMode,
@@ -64,12 +234,24 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         deviceOrientation: _settings.deviceOrientation,
         permissionState: CameraPermissionState.granted,
         isFrontCamera: _description.lensDirection == CameraLensDirection.front,
+        zoomLevel: 1.0,
       );
 
       // Apply initial settings
       await setFlashMode(_settings.flashMode);
       await setExposureMode(_settings.exposureMode);
       await setFocusMode(_settings.focusMode);
+
+      // Get the actual zoom level after initialization
+      try {
+        final zoom = await _controller!.getMaxZoomLevel();
+        if (zoom > 1.0) {
+          // Only update if we got a valid zoom level
+          value = value.copyWith(zoomLevel: 1.0);
+        }
+      } catch (e) {
+        // Ignore zoom errors during initialization
+      }
     } on CameraException catch (e) {
       value = value.copyWith(
         error: 'Failed to initialize camera: ${e.description}',
@@ -77,6 +259,17 @@ class CameralyController extends ValueNotifier<CameralyValue> {
       );
       rethrow;
     }
+  }
+
+  /// Updates the value from the camera controller.
+  void _updateValueFromController() {
+    if (_controller == null) return;
+
+    // Update our value with the latest from the camera controller
+    value = value.copyWith(
+      isRecordingVideo: _controller!.value.isRecordingVideo,
+      // We don't update zoom level here as it's updated in setZoomLevel
+    );
   }
 
   /// Takes a picture using the current settings.
@@ -254,6 +447,49 @@ class CameralyController extends ValueNotifier<CameralyValue> {
     }
   }
 
+  /// Handles pinch-to-zoom gestures with sensitivity adjustment.
+  ///
+  /// This method takes the raw scale value from a scale gesture and applies
+  /// sensitivity adjustment to make zooming more controlled.
+  ///
+  /// Parameters:
+  /// - [scale]: The raw scale value from the gesture detector
+  /// - [sensitivity]: Optional sensitivity factor (0.0-1.0), defaults to 0.3 (30%)
+  /// - [minZoom]: Optional minimum zoom level, defaults to 1.0
+  /// - [maxZoom]: Optional maximum zoom level, defaults to 5.0
+  ///
+  /// Returns a Future that completes when the zoom is applied.
+  Future<void> handleScale(
+    double scale, {
+    double sensitivity = 0.3,
+    double? minZoom,
+    double? maxZoom,
+  }) async {
+    if (!value.isInitialized) return;
+
+    try {
+      // Get current zoom level and initial zoom level (if set)
+      final baseZoom = value.initialZoomLevel ?? value.zoomLevel;
+
+      // Get min/max zoom levels if not provided
+      final effectiveMinZoom = minZoom ?? await getMinZoomLevel();
+      final effectiveMaxZoom = maxZoom ?? await getMaxZoomLevel();
+
+      // Apply sensitivity adjustment to make zooming more controlled
+      // Use the initial zoom level as the base for calculations to prevent jumps
+      final newZoom = (baseZoom * scale).clamp(
+        effectiveMinZoom,
+        effectiveMaxZoom,
+      );
+
+      // Apply the new zoom level
+      await setZoomLevel(newZoom);
+    } on CameraException catch (e) {
+      value = value.copyWith(error: e.description);
+      rethrow;
+    }
+  }
+
   /// Toggles the flash mode between off and auto.
   Future<void> toggleFlash() async {
     if (!value.isInitialized) return;
@@ -370,7 +606,7 @@ class CameralyController extends ValueNotifier<CameralyValue> {
 
     try {
       // Debug print
-      print('Setting focus and exposure at: $point');
+      debugPrint('Setting focus and exposure at: $point');
 
       // The point is already normalized (0.0 to 1.0) from the CameralyPreview
       // Make sure it's within valid bounds
@@ -401,7 +637,7 @@ class CameralyController extends ValueNotifier<CameralyValue> {
       // Set the exposure point
       await _controller!.setExposurePoint(normalizedPoint);
     } catch (e) {
-      print('Error setting focus and exposure: $e');
+      debugPrint('Error setting focus and exposure: $e');
       value = value.copyWith(
         error: 'Failed to set focus and exposure point: $e',
       );

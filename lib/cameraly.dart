@@ -132,6 +132,11 @@ export 'src/overlays/overlay_position.dart';
 /// Contains information about available camera devices and their capabilities.
 export 'src/types/camera_device.dart';
 
+/// Camera mode options
+///
+/// [CameraMode] defines the available camera modes (photo only, video only, or both).
+export 'src/types/camera_mode.dart';
+
 /// Base class for camera capture settings
 ///
 /// [CaptureSettings] is the base class for both photo and video settings.

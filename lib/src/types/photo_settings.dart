@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
 
+import 'camera_mode.dart';
 import 'capture_settings.dart';
 
 /// Settings specific to photo capture operations.
@@ -14,6 +15,7 @@ class PhotoSettings extends CaptureSettings {
     super.exposureMode = ExposureMode.auto,
     super.focusMode = FocusMode.auto,
     super.deviceOrientation = DeviceOrientation.portraitUp,
+    super.cameraMode = CameraMode.photoOnly,
     this.enableShutterSound = true,
     this.enableRedEyeReduction = false,
     this.imageFormat = ImageFormat.jpeg,
@@ -42,6 +44,7 @@ class PhotoSettings extends CaptureSettings {
     ExposureMode? exposureMode,
     FocusMode? focusMode,
     DeviceOrientation? deviceOrientation,
+    CameraMode? cameraMode,
     bool? enableAudio,
     bool? enableShutterSound,
     bool? enableRedEyeReduction,
@@ -54,6 +57,7 @@ class PhotoSettings extends CaptureSettings {
       exposureMode: exposureMode ?? this.exposureMode,
       focusMode: focusMode ?? this.focusMode,
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
+      cameraMode: cameraMode ?? this.cameraMode,
       enableShutterSound: enableShutterSound ?? this.enableShutterSound,
       enableRedEyeReduction: enableRedEyeReduction ?? this.enableRedEyeReduction,
       imageFormat: imageFormat ?? this.imageFormat,
@@ -67,6 +71,7 @@ class PhotoSettings extends CaptureSettings {
         flashMode: FlashMode.auto,
         exposureMode: ExposureMode.auto,
         focusMode: FocusMode.auto,
+        cameraMode: CameraMode.photoOnly,
         enableRedEyeReduction: true,
       );
 
@@ -76,6 +81,7 @@ class PhotoSettings extends CaptureSettings {
         flashMode: FlashMode.off,
         exposureMode: ExposureMode.auto,
         focusMode: FocusMode.auto,
+        cameraMode: CameraMode.photoOnly,
         deviceOrientation: DeviceOrientation.landscapeRight,
       );
 

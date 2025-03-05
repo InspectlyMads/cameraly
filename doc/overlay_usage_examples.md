@@ -25,9 +25,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCamera() async {
-    _controller = CameralyController();
-    await _controller.initialize();
-    if (mounted) setState(() {});
+    // Simplified camera initialization
+    final controller = await CameralyController.initializeCamera();
+    if (controller != null) {
+      _controller = controller;
+      if (mounted) setState(() {});
+    }
   }
 
   @override

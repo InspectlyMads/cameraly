@@ -1,6 +1,8 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 
+import 'camera_mode.dart';
+
 /// Settings for camera capture.
 class CaptureSettings {
   /// Creates a new [CaptureSettings] instance.
@@ -11,6 +13,7 @@ class CaptureSettings {
     this.exposureMode = ExposureMode.auto,
     this.focusMode = FocusMode.auto,
     this.deviceOrientation = DeviceOrientation.portraitUp,
+    this.cameraMode = CameraMode.both,
   });
 
   /// Whether to enable audio recording.
@@ -31,6 +34,9 @@ class CaptureSettings {
   /// The device orientation to use.
   final DeviceOrientation deviceOrientation;
 
+  /// The camera mode to use.
+  final CameraMode cameraMode;
+
   /// Creates a copy of this settings with the given fields replaced.
   CaptureSettings copyWith({
     bool? enableAudio,
@@ -39,6 +45,7 @@ class CaptureSettings {
     ExposureMode? exposureMode,
     FocusMode? focusMode,
     DeviceOrientation? deviceOrientation,
+    CameraMode? cameraMode,
   }) {
     return CaptureSettings(
       enableAudio: enableAudio ?? this.enableAudio,
@@ -47,6 +54,7 @@ class CaptureSettings {
       exposureMode: exposureMode ?? this.exposureMode,
       focusMode: focusMode ?? this.focusMode,
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
+      cameraMode: cameraMode ?? this.cameraMode,
     );
   }
 
@@ -76,10 +84,11 @@ class CaptureSettings {
           flashMode == other.flashMode &&
           exposureMode == other.exposureMode &&
           focusMode == other.focusMode &&
-          deviceOrientation == other.deviceOrientation;
+          deviceOrientation == other.deviceOrientation &&
+          cameraMode == other.cameraMode;
 
   @override
-  int get hashCode => enableAudio.hashCode ^ resolution.hashCode ^ flashMode.hashCode ^ exposureMode.hashCode ^ focusMode.hashCode ^ deviceOrientation.hashCode;
+  int get hashCode => enableAudio.hashCode ^ resolution.hashCode ^ flashMode.hashCode ^ exposureMode.hashCode ^ focusMode.hashCode ^ deviceOrientation.hashCode ^ cameraMode.hashCode;
 
   @override
   String toString() => 'CaptureSettings('
@@ -88,5 +97,6 @@ class CaptureSettings {
       'flashMode: $flashMode, '
       'exposureMode: $exposureMode, '
       'focusMode: $focusMode, '
-      'deviceOrientation: $deviceOrientation)';
+      'deviceOrientation: $deviceOrientation, '
+      'cameraMode: $cameraMode)';
 }

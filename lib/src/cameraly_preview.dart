@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -5,9 +7,10 @@ import 'cameraly_controller.dart';
 import 'cameraly_value.dart';
 import 'overlays/cameraly_overlay_type.dart';
 import 'overlays/default_cameraly_overlay.dart';
+import 'utils/permission_landing_page.dart';
 
 /// A widget that displays the camera preview.
-class CameralyPreview extends StatelessWidget {
+class CameralyPreview extends StatefulWidget {
   /// Creates a new [CameralyPreview] widget.
   const CameralyPreview({
     required this.controller,
@@ -56,12 +59,48 @@ class CameralyPreview extends StatelessWidget {
   /// Callback for scale (pinch) events on the camera preview.
   ///
   /// The parameter is the scale factor.
+  ///
+  /// Note: The zoom functionality is now handled internally by the CameralyController.
+  /// This callback is optional and can be used to update UI elements or perform
+  /// additional actions when zooming occurs.
   final Function(double)? onScale;
+
+  @override
+  State<CameralyPreview> createState() => _CameralyPreviewState();
+}
+
+class _CameralyPreviewState extends State<CameralyPreview> {
+  Offset? _focusPoint;
+  bool _showFocusCircle = false;
+  Timer? _focusTimer;
+
+  @override
+  void dispose() {
+    _focusTimer?.cancel();
+    super.dispose();
+  }
+
+  void _showFocusCircleAtPosition(Offset screenPosition) {
+    setState(() {
+      _focusPoint = screenPosition;
+      _showFocusCircle = true;
+    });
+
+    // Hide focus circle after 2 seconds
+    _focusTimer?.cancel();
+    _focusTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _showFocusCircle = false;
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
-      valueListenable: controller,
+      valueListenable: widget.controller,
       builder: (context, value, child) {
         if (!value.isInitialized) {
           return Container(
@@ -73,6 +112,16 @@ class CameralyPreview extends StatelessWidget {
         }
 
         if (value.permissionState == CameraPermissionState.denied) {
+          return CameralyPermissionLandingPage(
+            controller: widget.controller,
+            backgroundColor: Colors.black,
+            textColor: Colors.white,
+            buttonColor: Theme.of(context).primaryColor,
+          );
+        }
+
+        // If permissions are denied but user chose to continue, show a placeholder
+        if (value.permissionState == CameraPermissionState.deniedButContinued) {
           return Container(
             color: Colors.black,
             child: Center(
@@ -81,18 +130,24 @@ class CameralyPreview extends StatelessWidget {
                 children: [
                   const Icon(
                     Icons.no_photography,
-                    color: Colors.white,
+                    color: Colors.white54,
                     size: 64,
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    'Camera permission is required',
-                    style: TextStyle(color: Colors.white),
+                    'Camera access not available',
+                    style: TextStyle(color: Colors.white70),
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton(
-                    onPressed: () => controller.initialize(),
-                    child: const Text('Grant Permission'),
+                    onPressed: () {
+                      // Reset permission state and try again
+                      widget.controller.value = widget.controller.value.copyWith(
+                        permissionState: CameraPermissionState.unknown,
+                      );
+                      widget.controller.initialize();
+                    },
+                    child: const Text('Enable Camera'),
                   ),
                 ],
               ),
@@ -102,83 +157,113 @@ class CameralyPreview extends StatelessWidget {
 
         // Determine which overlay to show based on the overlayType
         Widget? overlayWidget;
-        switch (overlayType) {
+        switch (widget.overlayType) {
           case CameralyOverlayType.none:
             overlayWidget = null;
             break;
           case CameralyOverlayType.defaultOverlay:
-            overlayWidget = defaultOverlay ??
+            overlayWidget = widget.defaultOverlay ??
                 DefaultCameralyOverlay(
-                  controller: controller,
+                  controller: widget.controller,
                 );
             break;
           case CameralyOverlayType.custom:
-            overlayWidget = customOverlay;
+            overlayWidget = widget.customOverlay;
             break;
         }
 
         final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-        final previewRatio = controller.cameraController!.value.aspectRatio;
+        final previewRatio = widget.controller.cameraController!.value.aspectRatio;
 
         return Container(
           color: Colors.black,
           child: GestureDetector(
-            onTapUp: onTap != null
-                ? (TapUpDetails details) {
-                    if (!value.isInitialized) return;
+            onTapUp: (TapUpDetails details) {
+              if (!value.isInitialized) return;
 
-                    final size = MediaQuery.of(context).size;
-                    final previewSize = controller.cameraController!.value.previewSize!;
-                    final cameraRatio = previewSize.width / previewSize.height;
+              final size = MediaQuery.of(context).size;
 
-                    // Get the preview widget size and position
-                    final previewAspectRatio = isLandscape ? previewRatio : 1.0 / previewRatio;
-                    final previewWidth = isLandscape ? size.width : size.height * previewAspectRatio;
-                    final previewHeight = isLandscape ? size.width / previewAspectRatio : size.height;
+              // Get the preview widget size and position
+              final previewAspectRatio = isLandscape ? previewRatio : 1.0 / previewRatio;
+              final previewWidth = isLandscape ? size.width : size.height * previewAspectRatio;
+              final previewHeight = isLandscape ? size.width / previewAspectRatio : size.height;
 
-                    // Calculate the preview's position on screen
-                    final previewLeft = (size.width - previewWidth) / 2;
-                    final previewTop = (size.height - previewHeight) / 2;
+              // Calculate the preview's position on screen
+              final previewLeft = (size.width - previewWidth) / 2;
+              final previewTop = (size.height - previewHeight) / 2;
 
-                    // Check if tap is within the preview bounds
-                    final tapPosition = details.globalPosition;
-                    if (tapPosition.dx >= previewLeft && tapPosition.dx <= previewLeft + previewWidth && tapPosition.dy >= previewTop && tapPosition.dy <= previewTop + previewHeight) {
-                      // Calculate normalized coordinates (0-1) for the camera controller
-                      double normalizedX;
-                      double normalizedY;
+              // Check if tap is within the preview bounds
+              final tapPosition = details.globalPosition;
 
-                      if (isLandscape) {
-                        // In landscape, map directly to the preview
-                        normalizedX = (tapPosition.dx - previewLeft) / previewWidth;
-                        normalizedY = (tapPosition.dy - previewTop) / previewHeight;
-                      } else {
-                        // In portrait, we need to account for the rotated camera preview
-                        // The camera is sideways, so we swap x and y
-                        normalizedX = (tapPosition.dy - previewTop) / previewHeight;
-                        normalizedY = (tapPosition.dx - previewLeft) / previewWidth;
+              if (tapPosition.dx >= previewLeft && tapPosition.dx <= previewLeft + previewWidth && tapPosition.dy >= previewTop && tapPosition.dy <= previewTop + previewHeight) {
+                // Calculate normalized coordinates (0-1) for the camera controller
+                double normalizedX;
+                double normalizedY;
 
-                        // Adjust based on camera orientation
-                        final sensorOrientation = controller.description.sensorOrientation;
-                        if (sensorOrientation == 90) {
-                          // Most Android devices
-                          normalizedY = 1.0 - normalizedY;
-                        } else if (sensorOrientation == 270) {
-                          // Some devices
-                          normalizedX = 1.0 - normalizedX;
-                        }
-                      }
+                if (isLandscape) {
+                  // In landscape, map directly to the preview
+                  normalizedX = (tapPosition.dx - previewLeft) / previewWidth;
+                  normalizedY = (tapPosition.dy - previewTop) / previewHeight;
+                } else {
+                  // In portrait, we need to account for the rotated camera preview
+                  // The camera is sideways, so we swap x and y
+                  normalizedX = (tapPosition.dy - previewTop) / previewHeight;
+                  normalizedY = (tapPosition.dx - previewLeft) / previewWidth;
 
-                      // Adjust for front camera mirroring
-                      if (value.isFrontCamera) {
-                        normalizedX = 1.0 - normalizedX;
-                      }
-
-                      // Call the onTap callback with the normalized coordinates
-                      onTap!(Offset(normalizedX, normalizedY));
-                    }
+                  // Adjust based on camera orientation
+                  final sensorOrientation = widget.controller.description.sensorOrientation;
+                  if (sensorOrientation == 90) {
+                    // Most Android devices
+                    normalizedY = 1.0 - normalizedY;
+                  } else if (sensorOrientation == 270) {
+                    // Some devices
+                    normalizedX = 1.0 - normalizedX;
                   }
-                : null,
-            onScaleUpdate: onScale != null ? (details) => onScale!(details.scale) : null,
+                }
+
+                // Adjust for front camera mirroring
+                if (value.isFrontCamera) {
+                  normalizedX = 1.0 - normalizedX;
+                }
+
+                // Create the normalized position
+                final normalizedPosition = Offset(normalizedX, normalizedY);
+
+                // Call the onTap callback if provided
+                if (widget.onTap != null) {
+                  widget.onTap!(normalizedPosition);
+                }
+
+                // Always set focus and exposure point when tapping
+                widget.controller.setFocusAndExposurePoint(normalizedPosition);
+
+                // Always show focus circle at tap position
+                _showFocusCircleAtPosition(tapPosition);
+              }
+            },
+            onScaleStart: (details) {
+              // Store the initial scale value to use as a reference point
+              widget.controller.value = widget.controller.value.copyWith(
+                initialZoomLevel: widget.controller.value.zoomLevel,
+              );
+            },
+            onScaleUpdate: widget.onScale != null
+                ? (details) {
+                    // Call the user's onScale callback if provided
+                    widget.onScale!(details.scale);
+
+                    // Also handle the scale internally using the controller's method
+                    // This allows the package to handle zoom internally while still
+                    // notifying the app about scale changes via the callback
+                    widget.controller.handleScale(details.scale);
+                  }
+                : (details) {
+                    // If no onScale callback is provided, still handle zoom internally
+                    widget.controller.handleScale(details.scale);
+                  },
+            onScaleEnd: (_) {
+              // Reset any scale-related temporary state if needed
+            },
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -198,7 +283,7 @@ class CameralyPreview extends StatelessWidget {
                                     child: Transform.scale(
                                       scaleX: value.isFrontCamera ? -1.0 : 1.0,
                                       scaleY: 1.0,
-                                      child: CameraPreview(controller.cameraController!),
+                                      child: CameraPreview(widget.controller.cameraController!),
                                     ),
                                   ),
                                 )
@@ -212,7 +297,7 @@ class CameralyPreview extends StatelessWidget {
                                     child: Transform.scale(
                                       scaleX: value.isFrontCamera ? -1.0 : 1.0,
                                       scaleY: 1.0,
-                                      child: CameraPreview(controller.cameraController!),
+                                      child: CameraPreview(widget.controller.cameraController!),
                                     ),
                                   ),
                                 ),
@@ -227,6 +312,42 @@ class CameralyPreview extends StatelessWidget {
 
                 // Show the selected overlay
                 if (overlayWidget != null) overlayWidget,
+
+                // Show focus circle when tapping - enhanced visibility
+                if (_showFocusCircle && _focusPoint != null)
+                  Positioned(
+                    left: _focusPoint!.dx - 30, // Larger offset for bigger circle
+                    top: _focusPoint!.dy - 30, // Larger offset for bigger circle
+                    child: TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 300), // Slower animation
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      builder: (context, value, child) => Transform.scale(
+                        scale: 2.5 - value * 1.5, // More dramatic scale effect
+                        child: Opacity(
+                          opacity: value,
+                          child: Container(
+                            height: 60, // Larger circle
+                            width: 60, // Larger circle
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.white, width: 3), // Thick white border
+                              shape: BoxShape.circle,
+                              color: Colors.transparent, // Transparent center to see through
+                            ),
+                            child: Center(
+                              child: Container(
+                                height: 10, // Inner dot
+                                width: 10,
+                                decoration: const BoxDecoration(
+                                  color: Colors.white, // Bright center dot
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
 
                 // Error display
                 if (value.error != null)
@@ -249,7 +370,7 @@ class CameralyPreview extends StatelessWidget {
           ),
         );
       },
-      child: child,
+      child: widget.child,
     );
   }
 }
