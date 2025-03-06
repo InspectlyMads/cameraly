@@ -243,6 +243,26 @@ Once these requirements are met, we will proceed with implementing additional ca
 - [ ] Image filters
 - [ ] Custom overlays
 - [ ] Advanced camera controls
+- [ ] Video recording enhancements
+  - [ ] Pause/resume functionality
+  - [ ] Video compression options
+  - [ ] Custom video codecs
+- [ ] Extended platform support
+  - [ ] Web support
+  - [ ] Desktop support (Windows, macOS, Linux)
+- [ ] Enhanced gallery integration
+  - [ ] Basic editing capabilities
+  - [ ] Filters and effects
+  - [ ] Custom gallery view
+
+## Known Issues and Improvements
+- [ ] Fix mode switching in photo and video mode - currently difficult to switch between modes and sometimes triggers focus visuals instead
+- [ ] Fix camera switch functionality - the lens swap button (front/back camera toggle) is currently non-functional
+- [ ] Add example with default overlay where every customizable widget is displayed with a colored box for better visualization
+- [ ] Fix UI inconsistency: Switch camera and gallery buttons in top-right corner have brighter backgrounds than zoom/flash buttons when using custom left/right buttons
+- [ ] Make bottom overlay visibility during recording configurable instead of automatically hiding it
+- [ ] Fix image orientation on Android devices - landscape captures are rotated 90 degrees on some devices (e.g., Pixel 8)
+- [ ] Re-enable and fix media stack display for showing recently captured photos/videos
 
 ## Overlay System Implementation
 The next priority is to implement a flexible overlay system for the CameralyPreview widget:

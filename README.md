@@ -16,27 +16,45 @@ and the Flutter guide for
 [![pub package](https://img.shields.io/pub/v/cameraly.svg)](https://pub.dev/packages/cameraly)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A powerful and flexible camera package for Flutter that simplifies camera integration while providing advanced features and customization options.
-
-Cameraly builds on top of the official Flutter camera plugin to provide a more developer-friendly API, additional features, and better error handling.
+A powerful and flexible camera package for Flutter that simplifies camera integration while providing advanced features and customization options. Cameraly builds on top of the official Flutter camera plugin to provide a more developer-friendly API, additional features, and better error handling.
 
 ## Features
 
-- 📸 **Easy camera integration** - Simple API for camera preview, photo capture, and video recording
-- 🔄 **Seamless switching** between front and back cameras
-- 📱 **Responsive UI** that adapts to different screen orientations and device sizes
-- 🔍 **Zoom controls** with intuitive pinch-to-zoom gesture support
-- 🔦 **Flash mode control** (auto, on, off) for photo capture
-- 🎯 **Tap-to-focus** functionality with visual focus indicator
-- 📊 **Exposure control** for manual brightness adjustment
-- 🎚️ **Resolution settings** for both photo and video capture
-- 🎬 **Video recording** with customizable quality settings
-- 🔒 **Permission handling** with built-in request flow and UI
-- 🛠️ **Extensive customization** options for UI elements and camera behavior
-- 📱 **Platform-specific optimizations** for Android and iOS
-- 🎨 **Beautiful default camera UI** with photo/video mode toggle, capture button, flash control, and more
-- 🎭 **Flexible overlay system** - Use the built-in camera UI, create your own custom overlay, or use a clean preview
-- Pinch-to-zoom gesture support
+- 📸 **Easy camera integration**
+  - Simple API for camera preview and capture
+  - Photo and video modes with quality settings
+  - Automatic permission handling
+  - Built-in error handling
+
+- 🎨 **Flexible Overlay System**
+  - Beautiful default camera UI
+  - Customizable control positions
+  - Support for custom overlays
+  - Theme customization
+
+- 📱 **Responsive Design**
+  - Adapts to different screen orientations
+  - Handles device rotations
+  - Supports various aspect ratios
+  - Platform-specific optimizations
+
+- 🎮 **Advanced Controls**
+  - Tap-to-focus with visual indicator
+  - Pinch-to-zoom gesture support
+  - Flash mode control (auto, on, off, torch)
+  - Exposure adjustment
+
+- 🎬 **Video Features**
+  - Duration limits
+  - Quality settings
+  - Pause/resume support
+  - Recording indicator
+
+- 📦 **Media Management**
+  - Built-in media stack display
+  - Custom storage locations
+  - Gallery integration
+  - Thumbnail generation
 
 ## Platform Support
 
@@ -49,10 +67,10 @@ Cameraly builds on top of the official Flutter camera plugin to provide a more d
 ### Prerequisites
 
 Ensure you have:
-- Flutter SDK (2.10.0 or higher)
-- Dart SDK (2.16.0 or higher)
+- Flutter SDK (3.16.0 or higher)
+- Dart SDK (3.6.1 or higher)
 - For iOS: Xcode 13.0+, iOS 11.0+
-- For Android: Android Studio, minSdkVersion 21+
+- For Android: minSdkVersion 21+
 
 ### Installation
 
@@ -91,14 +109,11 @@ Add camera usage descriptions to your `Info.plist`:
 <string>This app needs microphone access to record videos</string>
 ```
 
-## Usage
+## Basic Usage
 
-### Basic Camera Preview with Default UI
+### Photo Only Camera
 
 ```dart
-import 'package:cameraly/cameraly.dart';
-import 'package:flutter/material.dart';
-
 class CameraScreen extends StatefulWidget {
   @override
   _CameraScreenState createState() => _CameraScreenState();
@@ -106,7 +121,6 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameralyController _controller;
-  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -115,213 +129,147 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCamera() async {
-    // Simplified camera initialization
-    final controller = await CameralyController.initializeCamera();
-    if (controller != null) {
-      setState(() {
-        _controller = controller;
-        _isInitialized = true;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    final cameras = await CameralyController.getAvailableCameras();
+    _controller = CameralyController(
+      description: cameras.first,
+      settings: const CaptureSettings(
+        cameraMode: CameraMode.photoOnly,
+      ),
+    );
+    await _controller.initialize();
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-    
     return Scaffold(
       body: CameralyPreview(
         controller: _controller,
-        // The default overlay is used automatically
-        onTap: (position) {
-          _controller.setFocusAndExposurePoint(position);
-        },
+        overlay: DefaultCameralyOverlay(
+          controller: _controller,
+          onPictureTaken: (file) {
+            print('Picture saved to: ${file.path}');
+          },
+        ),
       ),
     );
   }
 }
-
-### Alternative Initialization Methods
-
-You can also initialize the camera with more control:
-
-```dart
-// Method 1: Using the static convenience method
-final controller = await CameralyController.initializeCamera(
-  cameraIndex: 1, // Use the second camera (usually front camera)
-  settings: CaptureSettings(
-    resolution: ResolutionPreset.high,
-    enableAudio: true,
-  ),
-);
-
-// Method 2: Manual initialization
-final cameras = await CameralyController.getAvailableCameras();
-final controller = CameralyController(
-  description: cameras.first,
-  settings: CaptureSettings(...),
-);
-await controller.initialize();
 ```
 
-### Handling Permissions
-
-Cameraly includes built-in permission handling:
+### Video Recording with Duration Limit
 
 ```dart
-final permissionResult = await _controller.requestCameraPermission();
-if (permissionResult == PermissionStatus.granted) {
-  // Camera permission granted, proceed with camera initialization
-} else {
-  // Show permission denied UI
-}
-```
-
-### Switching Cameras
-
-```dart
-// Switch between front and back cameras
-await _controller.switchCamera();
-```
-
-### Flash Control
-
-```dart
-// Cycle through flash modes (auto, on, off, torch)
-await _controller.toggleFlash();
-
-// Or set a specific flash mode
-await _controller.setFlashMode(FlashMode.auto);
-```
-
-### Video Recording
-
-```dart
-// Start recording
-await _controller.startVideoRecording();
-
-// Stop recording and get the video file
-final videoFile = await _controller.stopVideoRecording();
-```
-
-### Advanced Configuration
-
-```dart
-// Configure camera with specific settings
-_controller = CameralyController(
-  description: cameras.first,
-  settings: CaptureSettings(
-    resolution: ResolutionPreset.max,
-    enableAudio: true,
-    flashMode: FlashMode.auto,
-  ),
-);
-```
-
-### Customizing the Overlay System
-
-Cameraly provides a flexible overlay system that allows you to customize the camera UI:
-
-```dart
-// Customize the default overlay
 CameralyPreview(
   controller: _controller,
-  defaultOverlay: DefaultCameralyOverlay(
+  overlay: DefaultCameralyOverlay(
     controller: _controller,
-    // Customize which controls to show
-    showCaptureButton: true,
-    showFlashButton: true,
-    showSwitchCameraButton: true,
-    showGalleryButton: true,
-    showZoomControls: true,
-    showModeToggle: true,
-    // Customize the theme
-    theme: CameralyOverlayTheme(
-      primaryColor: Colors.blue,
-      secondaryColor: Colors.red,
-      backgroundColor: Colors.black54,
-      opacity: 0.7,
-    ),
-    // Handle gallery button tap
-    onGalleryTap: () {
-      // Open gallery
+    maxVideoDuration: const Duration(seconds: 15),
+    onMaxDurationReached: (file) {
+      print('Video saved to: ${file.path}');
     },
   ),
-);
+)
+```
 
-// Or create a custom overlay
+### Custom Overlay
+
+```dart
 CameralyPreview(
   controller: _controller,
-  overlayType: CameralyOverlayType.custom,
-  customOverlay: YourCustomOverlayWidget(
+  overlay: DefaultCameralyOverlay(
     controller: _controller,
-    // Your custom properties
+    theme: const CameralyOverlayTheme(
+      primaryColor: Colors.blue,
+      secondaryColor: Colors.white,
+      backgroundColor: Colors.black87,
+      opacity: 0.8,
+    ),
+    customLeftButton: YourCustomWidget(),
+    customRightButton: YourCustomWidget(),
+    topLeftWidget: YourCustomWidget(),
+    centerLeftWidget: YourCustomWidget(),
+    bottomOverlayWidget: YourCustomWidget(),
   ),
+)
+```
+
+## Advanced Features
+
+### Media Management
+
+```dart
+final mediaManager = CameralyMediaManager(
+  maxItems: 30,
+  onMediaAdded: (file) async {
+    // Handle new media file
+  },
 );
 
-// Or use no overlay at all
 CameralyPreview(
   controller: _controller,
-  overlayType: CameralyOverlayType.none,
+  overlay: DefaultCameralyOverlay(
+    controller: _controller,
+    onPictureTaken: (file) => mediaManager.addMedia(file),
+  ),
+)
+```
+
+### Custom Storage Location
+
+```dart
+final appDir = await getApplicationDocumentsDirectory();
+final savePath = path.join(appDir.path, 'camera');
+await Directory(savePath).create(recursive: true);
+
+// Use the path in your media manager
+final mediaManager = CameralyMediaManager(
+  maxItems: 30,
+  onMediaAdded: (file) async {
+    final fileName = path.basename(file.path);
+    final newPath = path.join(savePath, fileName);
+    await File(file.path).copy(newPath);
+  },
 );
 ```
 
-## Complete Example App
+## Examples
 
-A complete example application is included in the `example` directory of the repository. This example demonstrates:
+The package includes several example implementations:
 
-- Responsive camera preview that adapts to different screen orientations
-- Photo capture with flash control (auto, on, off)
-- Video recording with start/stop functionality
-- Front/back camera switching
-- Tap-to-focus with visual indicator
-- Pinch-to-zoom gesture support
-- Permission handling flow
-- Proper lifecycle management
-- Orientation handling
-- UI controls with proper layout in both portrait and landscape
+1. Basic camera usage
+2. Photo-only mode with custom UI
+3. Video recording with duration limits
+4. Custom overlay implementation
+5. Persistent storage example
+6. Display customization demo
 
-To run the example app:
+Check the [example](example) folder for complete implementations.
 
-```bash
-cd example
-flutter pub get
-flutter run
-```
+## Documentation
 
-The example app provides a comprehensive implementation that you can use as a reference for your own camera integration.
-
-## API Documentation
-
-For detailed API documentation, visit the [API reference](https://pub.dev/documentation/cameraly/latest/).
+- [Quick Start Guide](QUICK_START.md)
+- [API Documentation](https://pub.dev/documentation/cameraly/latest/)
+- [Project Structure](PROJECT_STRUCTURE.md)
+- [Development Tasks](TASKS.md)
 
 ## Contributing
 
-Contributions are welcome! If you find a bug or want a feature, please open an issue.
-
-If you want to contribute code, please:
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Please make sure your code follows the project's style guidelines and includes appropriate tests.
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Built on top of the official [camera](https://pub.dev/packages/camera) plugin
+- Inspired by the needs of real-world camera applications
+- Special thanks to all contributors
+
+## Support
+
+If you find a bug or want a feature, please file an [issue](https://github.com/InspectlyMads/cameraly/issues).
 
 ## Zoom Controls
 
@@ -338,8 +286,7 @@ The zoom functionality is automatically enabled when using the default overlay w
 // Example of using the built-in zoom functionality
 CameralyPreview(
   controller: _controller,
-  overlayType: CameralyOverlayType.defaultOverlay,
-  defaultOverlay: DefaultCameralyOverlay(
+  overlay: DefaultCameralyOverlay(
     controller: _controller,
     showZoomControls: true, // Enable zoom controls in the UI
   ),
@@ -366,3 +313,38 @@ final currentZoom = _controller.value.zoomLevel;
 final minZoom = await _controller.getMinZoomLevel();
 final maxZoom = await _controller.getMaxZoomLevel();
 ```
+
+## Initialization
+
+Initialize the camera with a single, flexible method:
+
+```dart
+// Initialize for both photo and video (default)
+final controller = await CameralyController.initializeCamera(
+  settings: CaptureSettings(
+    cameraMode: CameraMode.both,
+    resolution: ResolutionPreset.high,
+    enableAudio: true,
+  )
+);
+
+// Initialize for photos only
+final photoController = await CameralyController.initializeCamera(
+  settings: CaptureSettings(
+    cameraMode: CameraMode.photoOnly,
+    resolution: ResolutionPreset.high,
+    flashMode: FlashMode.auto,
+  )
+);
+
+// Initialize for videos only
+final videoController = await CameralyController.initializeCamera(
+  settings: CaptureSettings(
+    cameraMode: CameraMode.videoOnly,
+    resolution: ResolutionPreset.high,
+    enableAudio: true,
+  )
+);
+```
+
+> **Note:** The specialized methods `initializeForPhotos()` and `initializeForVideos()` are deprecated and will be removed in a future version. Please use `initializeCamera()` with the appropriate `CameraMode` instead.

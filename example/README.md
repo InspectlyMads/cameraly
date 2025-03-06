@@ -184,3 +184,69 @@ This example demonstrates best practices for camera implementation in Flutter:
 - Providing visual feedback for user interactions
 
 You can use this example as a reference for implementing camera functionality in your own Flutter applications.
+
+# Cameraly Custom Widget Slots
+
+This example demonstrates how to use the custom widget slots in the Cameraly package to add your own UI elements to the camera overlay.
+
+## Available Widget Slots
+
+The `DefaultCameralyOverlay` provides three customizable widget slots:
+
+1. **topLeftWidget**: Positioned in the top-left corner of the screen
+2. **centerLeftWidget**: Positioned in the center-left area of the screen
+3. **bottomOverlayWidget**: Positioned above the capture button and mode toggle
+
+## Examples
+
+### 1. Placeholder Demo
+
+The `placeholder_demo.dart` file shows how to enable the placeholder widgets to visualize where each custom widget slot will appear. This is useful during development to understand the positioning of each slot.
+
+```dart
+DefaultCameralyOverlay(
+  controller: cameralyController,
+  showPlaceholders: true, // Set to true to see colored placeholders
+)
+```
+
+### 2. Custom Widgets Demo
+
+The `custom_widgets_demo.dart` file demonstrates how to add your own custom widgets to each slot:
+
+```dart
+DefaultCameralyOverlay(
+  controller: cameralyController,
+  topLeftWidget: _buildExposureControl(),
+  centerLeftWidget: _buildGridToggle(),
+  bottomOverlayWidget: _buildCameraInfo(),
+)
+```
+
+## Running the Examples
+
+1. Make sure you have Flutter installed and set up
+2. Navigate to the example directory
+3. Run the placeholder demo:
+   ```
+   flutter run -t lib/placeholder_demo.dart
+   ```
+4. Run the custom widgets demo:
+   ```
+   flutter run -t lib/custom_widgets_demo.dart
+   ```
+
+## Screenshots
+
+### Placeholder Demo
+![Placeholder Demo](screenshots/placeholder_demo.png)
+
+### Custom Widgets Demo
+![Custom Widgets Demo](screenshots/custom_widgets_demo.png)
+
+## Implementation Notes
+
+- The placeholders are only visible when `showPlaceholders` is set to `true`
+- In production, set `showPlaceholders` to `false` to hide the placeholders when no custom widgets are provided
+- The widget slots adapt to different screen orientations (portrait and landscape)
+- You can provide any Flutter widget to these slots, including buttons, sliders, text, or complex custom UI components

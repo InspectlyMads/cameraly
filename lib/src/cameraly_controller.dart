@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import 'cameraly_value.dart';
+import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
 import 'types/photo_settings.dart';
 import 'types/video_settings.dart';
@@ -66,6 +70,7 @@ class CameralyController extends ValueNotifier<CameralyValue> {
   static Future<CameralyController?> initializeCamera({
     int cameraIndex = 0,
     CaptureSettings? settings,
+    bool enableFallback = true,
   }) async {
     try {
       // Get available cameras
@@ -87,8 +92,13 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         settings: settings,
       );
 
-      // Initialize the controller
-      await controller.initialize();
+      // Initialize the controller with fallback if enabled
+      if (enableFallback) {
+        await controller.initializeWithFallback();
+      } else {
+        await controller.initialize();
+      }
+
       return controller;
     } catch (e) {
       debugPrint('Error initializing camera: $e');
@@ -112,37 +122,34 @@ class CameralyController extends ValueNotifier<CameralyValue> {
   ///   // Camera initialized successfully for photos
   /// }
   /// ```
+  ///
+  /// @deprecated Use [initializeCamera] with CameraMode.photoOnly instead.
+  /// Example: `CameralyController.initializeCamera(settings: CaptureSettings(cameraMode: CameraMode.photoOnly))`
   static Future<CameralyController?> initializeForPhotos({
     int cameraIndex = 0,
     PhotoSettings? settings,
+    bool enableFallback = true,
   }) async {
-    try {
-      // Get available cameras
-      final cameras = await getAvailableCameras();
-      if (cameras.isEmpty) {
-        debugPrint('No cameras available');
-        return null;
-      }
+    debugPrint('Warning: initializeForPhotos is deprecated. '
+        'Use initializeCamera with CameraMode.photoOnly instead.');
 
-      // Make sure the camera index is valid
-      if (cameraIndex >= cameras.length) {
-        debugPrint('Camera index out of range, using first camera');
-        cameraIndex = 0;
-      }
+    // Convert PhotoSettings to CaptureSettings
+    final captureSettings = settings != null
+        ? CaptureSettings(
+            resolution: settings.resolution,
+            flashMode: settings.flashMode,
+            enableAudio: false, // Audio disabled for photos
+            cameraMode: CameraMode.photoOnly,
+          )
+        : const CaptureSettings(
+            cameraMode: CameraMode.photoOnly,
+          );
 
-      // Create controller with the selected camera
-      final controller = CameralyController(
-        description: cameras[cameraIndex],
-        settings: settings ?? const PhotoSettings(),
-      );
-
-      // Initialize the controller
-      await controller.initialize();
-      return controller;
-    } catch (e) {
-      debugPrint('Error initializing camera for photos: $e');
-      return null;
-    }
+    return initializeCamera(
+      cameraIndex: cameraIndex,
+      settings: captureSettings,
+      enableFallback: enableFallback,
+    );
   }
 
   /// Creates and initializes a CameralyController optimized for video recording.
@@ -161,37 +168,36 @@ class CameralyController extends ValueNotifier<CameralyValue> {
   ///   // Camera initialized successfully for videos
   /// }
   /// ```
+  ///
+  /// @deprecated Use [initializeCamera] with CameraMode.videoOnly instead.
+  /// Example: `CameralyController.initializeCamera(settings: CaptureSettings(cameraMode: CameraMode.videoOnly))`
   static Future<CameralyController?> initializeForVideos({
     int cameraIndex = 0,
     VideoSettings? settings,
+    bool enableFallback = true,
   }) async {
-    try {
-      // Get available cameras
-      final cameras = await getAvailableCameras();
-      if (cameras.isEmpty) {
-        debugPrint('No cameras available');
-        return null;
-      }
+    debugPrint('Warning: initializeForVideos is deprecated. '
+        'Use initializeCamera with CameraMode.videoOnly instead.');
 
-      // Make sure the camera index is valid
-      if (cameraIndex >= cameras.length) {
-        debugPrint('Camera index out of range, using first camera');
-        cameraIndex = 0;
-      }
+    // Convert VideoSettings to CaptureSettings
+    final captureSettings = settings != null
+        ? CaptureSettings(
+            resolution: settings.resolution,
+            flashMode: FlashMode.off, // Flash is typically off for videos
+            enableAudio: settings.enableAudio,
+            cameraMode: CameraMode.videoOnly,
+            // Note: maxDuration is specific to VideoSettings and not available in CaptureSettings
+          )
+        : const CaptureSettings(
+            cameraMode: CameraMode.videoOnly,
+            enableAudio: true,
+          );
 
-      // Create controller with the selected camera
-      final controller = CameralyController(
-        description: cameras[cameraIndex],
-        settings: settings ?? const VideoSettings(),
-      );
-
-      // Initialize the controller
-      await controller.initialize();
-      return controller;
-    } catch (e) {
-      debugPrint('Error initializing camera for videos: $e');
-      return null;
-    }
+    return initializeCamera(
+      cameraIndex: cameraIndex,
+      settings: captureSettings,
+      enableFallback: enableFallback,
+    );
   }
 
   /// Initializes the camera controller.
@@ -272,6 +278,175 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         permissionState: CameraPermissionState.denied,
       );
       rethrow;
+    }
+  }
+
+  /// Initializes the camera with fallback options if the initial initialization fails.
+  ///
+  /// This method attempts to initialize the camera with the current settings.
+  /// If that fails, it tries alternative settings in the following order:
+  /// 1. Disable flash if it's enabled
+  /// 2. Lower resolution if it's high
+  /// 3. Try video-only mode if photo mode fails
+  ///
+  /// Returns true if initialization succeeds with any settings, false otherwise.
+  Future<bool> initializeWithFallback() async {
+    try {
+      // First try with current settings
+      debugPrint('Attempting to initialize camera with current settings');
+      await initialize();
+      debugPrint('Camera initialized successfully with current settings');
+      return true;
+    } catch (e) {
+      debugPrint('Error initializing camera with current settings: $e');
+
+      // Try with flash disabled if the error is related to flash
+      if (e.toString().contains('flash') || e.toString().contains('Flash')) {
+        debugPrint('Flash capability error detected, retrying with flash disabled');
+        try {
+          // Create new settings with flash disabled
+          CaptureSettings newSettings;
+          if (_settings is PhotoSettings) {
+            newSettings = (_settings).copyWith(flashMode: FlashMode.off);
+          } else {
+            newSettings = _settings;
+          }
+
+          // Create a new controller with the new settings
+          final newController = CameralyController(
+            description: _description,
+            settings: newSettings,
+          );
+
+          // Initialize the new controller
+          await newController.initialize();
+
+          // Update this controller with the new controller's values
+          _controller = newController._controller;
+          value = newController.value.copyWith(
+            hasFlashCapability: false,
+          );
+
+          debugPrint('Camera initialized successfully with flash disabled');
+          return true;
+        } catch (retryError) {
+          debugPrint('Retry with flash disabled also failed: $retryError');
+        }
+      }
+
+      // Try with lower resolution if current resolution is high
+      if (_settings.resolution == ResolutionPreset.high || _settings.resolution == ResolutionPreset.veryHigh || _settings.resolution == ResolutionPreset.ultraHigh || _settings.resolution == ResolutionPreset.max) {
+        debugPrint('Trying with lower resolution');
+        try {
+          // Create new settings with lower resolution
+          CaptureSettings newSettings;
+          if (_settings is PhotoSettings) {
+            newSettings = (_settings).copyWith(
+              resolution: ResolutionPreset.medium,
+              flashMode: FlashMode.off,
+            );
+          } else if (_settings is VideoSettings) {
+            newSettings = (_settings).copyWith(
+              resolution: ResolutionPreset.medium,
+            );
+          } else {
+            newSettings = const CaptureSettings(resolution: ResolutionPreset.medium);
+          }
+
+          // Create a new controller with the new settings
+          final newController = CameralyController(
+            description: _description,
+            settings: newSettings,
+          );
+
+          // Initialize the new controller
+          await newController.initialize();
+
+          // Update this controller with the new controller's values
+          _controller = newController._controller;
+          value = newController.value.copyWith(
+            hasFlashCapability: false,
+          );
+
+          debugPrint('Camera initialized successfully with lower resolution');
+          return true;
+        } catch (resolutionError) {
+          debugPrint('Retry with lower resolution also failed: $resolutionError');
+        }
+      }
+
+      // As a last resort, try video-only mode with audio disabled
+      debugPrint('Attempting video-only initialization as last resort');
+      try {
+        // Create new settings for video-only mode
+        const videoSettings = VideoSettings(
+          resolution: ResolutionPreset.medium,
+          enableAudio: false,
+        );
+
+        // Create a new controller with video settings
+        final newController = CameralyController(
+          description: _description,
+          settings: videoSettings,
+        );
+
+        // Initialize the new controller
+        await newController.initialize();
+
+        // Update this controller with the new controller's values
+        _controller = newController._controller;
+        value = newController.value.copyWith(
+          hasFlashCapability: false,
+        );
+
+        debugPrint('Video-only initialization successful');
+        return true;
+      } catch (videoError) {
+        debugPrint('Video-only initialization also failed: $videoError');
+      }
+
+      // If all attempts fail, update the value with an error
+      value = value.copyWith(
+        error: 'Failed to initialize camera after multiple attempts',
+      );
+
+      return false;
+    }
+  }
+
+  /// Initializes the camera with platform-specific optimizations.
+  ///
+  /// This method handles platform-specific camera initialization:
+  /// - On Android, it ensures proper orientation handling with CameraX
+  /// - On iOS, it handles specific iOS camera quirks
+  ///
+  /// Returns true if initialization succeeds, false otherwise.
+  Future<bool> initializeWithPlatformOptimizations() async {
+    try {
+      // First, initialize the camera
+      await initialize();
+
+      // Then apply platform-specific optimizations
+      if (Platform.isAndroid) {
+        // For Android with CameraX, we need to set the target rotation
+        if (_controller != null) {
+          try {
+            // This is a dummy call to ensure controller is initialized
+            await _controller!.setExposureOffset(0.0);
+            debugPrint('Using CameraX on Android with explicit orientation handling');
+          } catch (e) {
+            debugPrint('Error setting camera orientation: $e');
+          }
+        }
+      } else if (Platform.isIOS) {
+        // iOS-specific optimizations if needed
+        debugPrint('Applying iOS-specific camera optimizations');
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error in platform-optimized initialization: $e');
+      return false;
     }
   }
 

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import 'cameraly_controller.dart';
 import 'cameraly_value.dart';
-import 'overlays/cameraly_overlay_type.dart';
 import 'overlays/default_cameraly_overlay.dart';
 import 'utils/permission_landing_page.dart';
 
@@ -14,10 +13,7 @@ class CameralyPreview extends StatefulWidget {
   /// Creates a new [CameralyPreview] widget.
   const CameralyPreview({
     required this.controller,
-    this.child,
-    this.overlayType = CameralyOverlayType.defaultOverlay,
-    this.defaultOverlay,
-    this.customOverlay,
+    this.overlay,
     this.onTap,
     this.onScale,
     super.key,
@@ -26,29 +22,11 @@ class CameralyPreview extends StatefulWidget {
   /// The controller for the camera.
   final CameralyController controller;
 
-  /// Optional child widget to overlay on top of the camera preview.
+  /// The overlay widget to display on top of the camera preview.
   ///
-  /// This is kept for backward compatibility. For new code, use
-  /// [overlayType] and [customOverlay] instead.
-  final Widget? child;
-
-  /// The type of overlay to display on top of the camera preview.
-  ///
-  /// Defaults to [CameralyOverlayType.defaultOverlay], which shows the standard camera UI.
-  /// Use [CameralyOverlayType.none] for a clean camera preview without controls,
-  /// or [CameralyOverlayType.custom] to provide your own overlay.
-  final CameralyOverlayType overlayType;
-
-  /// Configuration for the default overlay.
-  ///
-  /// This is used when [overlayType] is [CameralyOverlayType.defaultOverlay].
-  /// If null, a default configuration will be used.
-  final DefaultCameralyOverlay? defaultOverlay;
-
-  /// A custom overlay widget to display on top of the camera preview.
-  ///
-  /// This is used when [overlayType] is [CameralyOverlayType.custom].
-  final Widget? customOverlay;
+  /// This can be a [DefaultCameralyOverlay] or any custom widget.
+  /// If null, no overlay will be shown.
+  final Widget? overlay;
 
   /// Callback for tap events on the camera preview.
   ///
@@ -153,23 +131,6 @@ class _CameralyPreviewState extends State<CameralyPreview> {
               ),
             ),
           );
-        }
-
-        // Determine which overlay to show based on the overlayType
-        Widget? overlayWidget;
-        switch (widget.overlayType) {
-          case CameralyOverlayType.none:
-            overlayWidget = null;
-            break;
-          case CameralyOverlayType.defaultOverlay:
-            overlayWidget = widget.defaultOverlay ??
-                DefaultCameralyOverlay(
-                  controller: widget.controller,
-                );
-            break;
-          case CameralyOverlayType.custom:
-            overlayWidget = widget.customOverlay;
-            break;
         }
 
         final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
@@ -310,8 +271,8 @@ class _CameralyPreviewState extends State<CameralyPreview> {
                 // Show the legacy child for backward compatibility
                 if (child != null) child,
 
-                // Show the selected overlay
-                if (overlayWidget != null) overlayWidget,
+                // Show the overlay
+                if (widget.overlay != null) widget.overlay!,
 
                 // Show focus circle when tapping - enhanced visibility
                 if (_showFocusCircle && _focusPoint != null)
@@ -370,7 +331,6 @@ class _CameralyPreviewState extends State<CameralyPreview> {
           ),
         );
       },
-      child: widget.child,
     );
   }
 }

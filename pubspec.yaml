@@ -1,9 +1,16 @@
 name: cameraly
-description: "A Flutter package that provides an enhanced camera experience with a developer-friendly API, building on top of the official Flutter camera plugin."
+description: A powerful and flexible camera package for Flutter that enhances the official camera plugin with a developer-friendly API, advanced features, and better error handling. Includes customizable overlays, media management, and comprehensive examples.
 version: 0.1.0
 homepage: https://github.com/InspectlyMads/cameraly
 repository: https://github.com/InspectlyMads/cameraly
 issue_tracker: https://github.com/InspectlyMads/cameraly/issues
+documentation: https://github.com/InspectlyMads/cameraly/wiki
+topics:
+  - camera
+  - photography
+  - video
+  - media
+  - ui
 
 environment:
   sdk: '>=3.6.1 <4.0.0'
@@ -13,7 +20,7 @@ dependencies:
   flutter:
     sdk: flutter
   camera: ^0.11.1
-  camera_android: ^0.10.8+16
+  camera_android: ^0.10.10
   camera_avfoundation: ^0.9.13+10
   camera_platform_interface: ^2.7.0
   path_provider: ^2.1.2
@@ -23,6 +30,7 @@ dependencies:
   meta: ^1.10.0
   cross_file: ^0.3.3+8
   image_picker: ^1.0.7
+  video_player: ^2.8.2
 
 dev_dependencies:
   flutter_test:

@@ -109,12 +109,6 @@ export 'src/overlays/cameraly_overlay_theme.dart';
 /// The following exports provide classes for creating and customizing
 /// camera overlays with controls and UI elements.
 
-/// Defines the types of overlays that can be displayed
-///
-/// [CameralyOverlayType] is used to specify whether to show no overlay,
-/// the default overlay, or a custom overlay.
-export 'src/overlays/cameraly_overlay_type.dart';
-
 /// Default camera overlay implementation
 ///
 /// [DefaultCameralyOverlay] is a ready-to-use overlay with standard
@@ -127,11 +121,10 @@ export 'src/overlays/default_cameraly_overlay.dart';
 /// camera overlays and provides utilities for positioning widgets.
 export 'src/overlays/overlay_position.dart';
 
-/// Video limiter overlay implementation
+/// Screens
 ///
-/// [VideoLimiterOverlay] extends the default overlay to add a time limit
-/// for video recording with a visual timer and progress indicator.
-export 'src/overlays/video_limiter_overlay.dart';
+/// [Screens] contains various screens related to camera operations.
+export 'src/screens/screens.dart';
 
 /// Camera device information
 ///
@@ -164,6 +157,11 @@ export 'src/types/video_settings.dart';
 ///
 /// [CameralyUtils] provides helper functions for common camera operations.
 export 'src/utils/cameraly_utils.dart';
+
+/// Media management utilities
+///
+/// Provides classes for managing captured media files and displaying them in the UI.
+export 'src/utils/media_manager.dart';
 
 /// Permission handling utilities
 ///
