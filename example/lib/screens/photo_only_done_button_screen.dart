@@ -1,6 +1,3 @@
-import 'dart:io';
-
-import 'package:camera/camera.dart' show XFile;
 import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
 
@@ -14,8 +11,8 @@ class PhotoOnlyDoneButtonScreen extends StatefulWidget {
 
 class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
   late CameralyController _controller;
+  late CameralyMediaManager _mediaManager;
   bool _isInitialized = false;
-  XFile? _capturedImage;
 
   @override
   void initState() {
@@ -24,6 +21,18 @@ class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
   }
 
   Future<void> _initializeCamera() async {
+    // Initialize the media manager first
+    _mediaManager = CameralyMediaManager(
+      maxItems: 30, // Keep last 30 photos
+      onMediaAdded: (file) {
+        print('Media added to manager: ${file.path}'); // Debug print
+        // Optional: Show feedback when photo is captured
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Photo captured: ${file.path.split('/').last}'), duration: const Duration(seconds: 2)));
+        }
+      },
+    );
+
     final cameras = await CameralyController.getAvailableCameras();
     if (cameras.isEmpty) {
       if (mounted) {
@@ -52,18 +61,33 @@ class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
   }
 
   Widget _buildCameraPreview() {
-    return CameralyPreview(
-      controller: _controller,
-      overlay: DefaultCameralyOverlay(
-        controller: _controller,
-        showModeToggle: false, // Hide mode toggle since we're in photo-only mode
-        onPictureTaken: (file) {
-          setState(() {
-            _capturedImage = file;
-          });
-        },
-        customRightButton: FloatingActionButton(onPressed: () => Navigator.of(context).pop(), backgroundColor: Colors.white, foregroundColor: Colors.black87, child: const Icon(Icons.check)),
-      ),
+    return Stack(
+      fit: StackFit.expand, // Make sure stack fills the screen
+      children: [
+        CameralyPreview(
+          controller: _controller,
+          overlay: DefaultCameralyOverlay(
+            controller: _controller,
+            showModeToggle: false, // Hide mode toggle since we're in photo-only mode
+            onPictureTaken: (file) {
+              print('Picture taken: ${file.path}'); // Debug print
+              _mediaManager.addMedia(file);
+            },
+            customRightButton: FloatingActionButton(
+              onPressed: () {
+                print('Done button pressed with ${_mediaManager.count} photos'); // Debug print
+                Navigator.of(context).pop(_mediaManager.media);
+              },
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black87,
+              child: const Icon(Icons.check),
+            ),
+            // Configure the media stack
+            showMediaStack: true,
+            mediaManager: _mediaManager,
+          ),
+        ),
+      ],
     );
   }
 
@@ -71,42 +95,6 @@ class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
   Widget build(BuildContext context) {
     if (!_isInitialized) {
       return Scaffold(appBar: AppBar(title: const Text('Photo Only with Done Button')), body: const Center(child: CircularProgressIndicator()));
-    }
-
-    if (_capturedImage != null) {
-      // Show the captured image
-      return Scaffold(
-        appBar: AppBar(title: const Text('Captured Photo')),
-        body: Column(
-          children: [
-            Expanded(child: Image.file(File(_capturedImage!.path), fit: BoxFit.contain)),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _capturedImage = null;
-                      });
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Take Another'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context, _capturedImage);
-                    },
-                    icon: const Icon(Icons.check),
-                    label: const Text('Use This Photo'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
     }
 
     return Scaffold(body: _buildCameraPreview());

@@ -85,6 +85,8 @@ class _CustomDisplayScreenState extends State<CustomDisplayScreen> {
                       showZoomControls: true,
                       // Enable camera switch button (it will move to top)
                       showSwitchCameraButton: true,
+                      // Disable media stack since we're providing centerLeftWidget
+                      showMediaStack: false,
                       // Add custom buttons with colored boxes
                       customLeftButton: Container(
                         width: 60,

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../cameraly_controller.dart';
 import '../types/camera_mode.dart';
+import '../utils/media_manager.dart';
 import 'cameraly_overlay_theme.dart';
 
 /// A default overlay for the camera preview with standard controls.
@@ -69,6 +70,8 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.showZoomControls = true,
     this.showModeToggle = true,
     this.showFocusCircle = true,
+    this.showMediaStack = true,
+    this.mediaManager,
     this.onGalleryTap,
     this.onPictureTaken,
     this.onMediaSelected,
@@ -84,7 +87,10 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.maxVideoDuration,
     this.onMaxDurationReached,
     super.key,
-  });
+  }) : assert(
+          !showMediaStack || mediaManager != null,
+          'mediaManager must be provided when showMediaStack is true',
+        );
 
   /// Creates a DefaultCameralyOverlay with custom buttons on both sides.
   ///
@@ -409,6 +415,15 @@ class DefaultCameralyOverlay extends StatefulWidget {
   /// Whether to show the focus circle when focus point changes.
   final bool showFocusCircle;
 
+  /// Whether to show the media stack in the center-left position.
+  /// If true, [mediaManager] must be provided.
+  /// If [centerLeftWidget] is provided, this will be ignored.
+  final bool showMediaStack;
+
+  /// The media manager for the media stack.
+  /// Required if [showMediaStack] is true.
+  final CameralyMediaManager? mediaManager;
+
   /// Callback when the gallery button is tapped.
   /// If this is provided, it will be called instead of showing the image picker.
   final VoidCallback? onGalleryTap;
@@ -427,6 +442,7 @@ class DefaultCameralyOverlay extends StatefulWidget {
   final Widget? topLeftWidget;
 
   /// Optional widget to display in the center-left area of the camera overlay.
+  /// If provided, this will override the media stack even if [showMediaStack] is true.
   final Widget? centerLeftWidget;
 
   /// Optional widget to display at the bottom of the overlay, above the capture button and mode toggle.
@@ -976,11 +992,36 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _openGallery() async {
+    // If onGalleryTap is provided, use that
     if (widget.onGalleryTap != null) {
       widget.onGalleryTap!();
       return;
     }
 
+    // If media stack is enabled and has media, show our custom gallery view
+    if (widget.showMediaStack && widget.mediaManager != null && widget.mediaManager!.isNotEmpty) {
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => CameralyGalleryView(
+              mediaManager: widget.mediaManager!,
+              onDelete: (file) => widget.mediaManager!.removeMedia(file),
+              backgroundColor: Colors.black,
+              appBarColor: Colors.black,
+              appBarTextColor: Colors.white,
+              gridSpacing: 2,
+              gridCrossAxisCount: 3,
+              emptyStateWidget: const Center(
+                child: Text('No photos yet', style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Otherwise, use the system gallery picker
     try {
       List<XFile> selectedMedia = [];
 
@@ -1552,89 +1593,71 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Center left widget
-        if (widget.centerLeftWidget != null || widget.showPlaceholders)
+        // Center left widget or media stack
+        if (widget.centerLeftWidget != null || (widget.showMediaStack && widget.mediaManager != null) || widget.showPlaceholders)
           isLandscape
               ? Positioned(
                   left: 16,
                   top: MediaQuery.of(context).size.height / 2 - 40,
                   child: widget.centerLeftWidget ??
-                      Container(
-                        width: 100,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(255, 255, 255, 0.7),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'Center Left',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
+                      (widget.showMediaStack && widget.mediaManager != null
+                          ? CameralyMediaStack(
+                              mediaManager: widget.mediaManager!,
+                              onTap: _openGallery,
+                              itemSize: 60,
+                              maxDisplayItems: 3,
+                              borderColor: Colors.white,
+                              borderWidth: 2,
+                              borderRadius: 8,
+                              showCountBadge: true,
+                              countBadgeColor: theme.primaryColor,
+                            )
+                          : Container(
+                              width: 100,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                color: const Color.fromRGBO(255, 255, 255, 0.7),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'Center Left',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            )),
                 )
               : Positioned(
                   left: 16,
                   top: MediaQuery.of(context).size.height / 2 - 40,
                   child: widget.centerLeftWidget ??
-                      Container(
-                        width: 100,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(255, 255, 255, 0.7),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'Center Left',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
+                      (widget.showMediaStack && widget.mediaManager != null
+                          ? CameralyMediaStack(
+                              mediaManager: widget.mediaManager!,
+                              onTap: _openGallery,
+                              itemSize: 60,
+                              maxDisplayItems: 3,
+                              borderColor: Colors.white,
+                              borderWidth: 2,
+                              borderRadius: 8,
+                              showCountBadge: true,
+                              countBadgeColor: theme.primaryColor,
+                            )
+                          : Container(
+                              width: 100,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                color: const Color.fromRGBO(255, 255, 255, 0.7),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'Center Left',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            )),
                 ),
-
-        // Zoom slider
-        if (widget.showZoomControls && _showZoomSlider)
-          Align(
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${_currentZoom.toStringAsFixed(1)}x',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SliderTheme(
-                    data: SliderThemeData(
-                      trackHeight: 2,
-                      activeTrackColor: theme.primaryColor,
-                      inactiveTrackColor: Colors.white30,
-                      thumbColor: theme.primaryColor,
-                      overlayColor: theme.primaryColor.withAlpha((0.2 * 255).round()),
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                    ),
-                    child: SizedBox(
-                      width: MediaQuery.of(context).size.width * (isLandscape ? 0.4 : 0.7),
-                      child: Slider(
-                        value: _currentZoom.clamp(_minZoom, _maxZoom),
-                        min: _minZoom,
-                        max: _maxZoom,
-                        onChanged: _setZoom,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
       ],
     );
   }
