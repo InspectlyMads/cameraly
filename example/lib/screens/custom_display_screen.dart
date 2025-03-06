@@ -34,7 +34,7 @@ class _CustomDisplayScreenState extends State<CustomDisplayScreen> {
     }
 
     // Initialize the camera controller
-    _controller = CameralyController(description: cameras.first, settings: CaptureSettings(cameraMode: CameraMode.both));
+    _controller = CameralyController(description: cameras.first, settings: CaptureSettings(cameraMode: CameraMode.both), mediaManager: _mediaManager);
 
     try {
       await _controller.initialize();
@@ -85,8 +85,8 @@ class _CustomDisplayScreenState extends State<CustomDisplayScreen> {
                       showZoomControls: true,
                       // Enable camera switch button (it will move to top)
                       showSwitchCameraButton: true,
-                      // Disable media stack since we're providing centerLeftWidget
-                      showMediaStack: false,
+                      // Enable media stack
+                      showMediaStack: true,
                       // Add custom buttons with colored boxes
                       customLeftButton: Container(
                         width: 60,
@@ -139,10 +139,10 @@ class _CustomDisplayScreenState extends State<CustomDisplayScreen> {
                   ),
 
                   // Media stack in the bottom-right corner
-                  SafeArea(
-                    child: Positioned(
-                      right: 16,
-                      bottom: 100,
+                  Positioned(
+                    right: 16,
+                    bottom: 100,
+                    child: SafeArea(
                       child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Theme.of(context).primaryColor),
                     ),
                   ),

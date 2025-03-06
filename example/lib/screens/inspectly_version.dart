@@ -2,14 +2,14 @@ import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
 
 /// A screen that demonstrates the photo-only camera with a done button
-class PhotoOnlyDoneButtonScreen extends StatefulWidget {
-  const PhotoOnlyDoneButtonScreen({super.key});
+class InspectlyVersionScreen extends StatefulWidget {
+  const InspectlyVersionScreen({super.key});
 
   @override
-  State<PhotoOnlyDoneButtonScreen> createState() => _PhotoOnlyDoneButtonScreenState();
+  State<InspectlyVersionScreen> createState() => _InspectlyVersionScreenState();
 }
 
-class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
+class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
   late CameralyController _controller;
   late CameralyMediaManager _mediaManager;
   bool _isInitialized = false;
@@ -42,7 +42,11 @@ class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
     }
 
     // Create a controller with photo-only mode
-    _controller = CameralyController(description: cameras.first, settings: const CaptureSettings(cameraMode: CameraMode.photoOnly));
+    _controller = CameralyController(
+      description: cameras.first,
+      settings: const CaptureSettings(cameraMode: CameraMode.photoOnly),
+      mediaManager: _mediaManager, // Pass the media manager to the controller
+    );
 
     try {
       await _controller.initialize();
@@ -68,7 +72,6 @@ class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
           controller: _controller,
           overlay: DefaultCameralyOverlay(
             controller: _controller,
-            showModeToggle: false, // Hide mode toggle since we're in photo-only mode
             onPictureTaken: (file) {
               print('Picture taken: ${file.path}'); // Debug print
               _mediaManager.addMedia(file);
@@ -84,7 +87,6 @@ class _PhotoOnlyDoneButtonScreenState extends State<PhotoOnlyDoneButtonScreen> {
             ),
             // Configure the media stack
             showMediaStack: true,
-            mediaManager: _mediaManager,
           ),
         ),
       ],

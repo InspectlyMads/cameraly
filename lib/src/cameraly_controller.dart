@@ -9,6 +9,7 @@ import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
 import 'types/photo_settings.dart';
 import 'types/video_settings.dart';
+import 'utils/media_manager.dart';
 import 'utils/permission_handler.dart';
 
 /// Controller for the Cameraly camera interface.
@@ -17,14 +18,17 @@ class CameralyController extends ValueNotifier<CameralyValue> {
   CameralyController({
     required CameraDescription description,
     CaptureSettings? settings,
+    CameralyMediaManager? mediaManager,
   })  : _description = description,
         _settings = settings ?? const CaptureSettings(),
         _permissionHandler = const CameralyPermissionHandler(),
+        _mediaManager = mediaManager ?? CameralyMediaManager(),
         super(const CameralyValue.uninitialized());
 
   final CameraDescription _description;
   final CaptureSettings _settings;
   final CameralyPermissionHandler _permissionHandler;
+  final CameralyMediaManager _mediaManager;
   CameraController? _controller;
 
   /// The camera description this controller is using
@@ -38,6 +42,9 @@ class CameralyController extends ValueNotifier<CameralyValue> {
 
   /// The underlying camera controller
   CameraController? get cameraController => _controller;
+
+  /// The media manager for handling captured photos and videos
+  CameralyMediaManager get mediaManager => _mediaManager;
 
   /// Gets a list of available cameras on the device.
   ///
@@ -484,6 +491,7 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         isTakingPicture: false,
         lastCapturedPhoto: file,
       );
+      // Remove automatic media addition since it's handled by the callback
       return file;
     } catch (e) {
       value = value.copyWith(
@@ -594,9 +602,14 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         isRecordingVideo: false,
         lastRecordedVideo: file,
       );
+      // Add the recorded video to the media manager
+      _mediaManager.addMedia(file);
       return file;
     } on CameraException catch (e) {
       value = value.copyWith(error: e.description);
+      rethrow;
+    } catch (e) {
+      value = value.copyWith(error: e.toString());
       rethrow;
     }
   }
@@ -731,7 +744,7 @@ class CameralyController extends ValueNotifier<CameralyValue> {
 
     try {
       // Get available cameras
-      final cameras = await availableCameras();
+      final cameras = await getAvailableCameras();
 
       // Find a camera facing the opposite direction
       final lensDirection = _description.lensDirection;
@@ -745,9 +758,16 @@ class CameralyController extends ValueNotifier<CameralyValue> {
       // If we found a different camera, dispose the current one and initialize the new one
       if (newCamera.name != _description.name) {
         final previousSettings = _settings;
+        final wasRecording = value.isRecordingVideo;
+
+        // Stop recording if needed
+        if (wasRecording) {
+          await stopVideoRecording();
+        }
 
         // Dispose current controller
         await _controller?.dispose();
+        _controller = null;
 
         // Create a new controller with the new camera
         final newController = CameralyController(
@@ -755,8 +775,13 @@ class CameralyController extends ValueNotifier<CameralyValue> {
           settings: previousSettings,
         );
 
-        // Initialize the new controller
-        await newController.initialize();
+        // Initialize the new controller with fallback options
+        await newController.initializeWithFallback();
+
+        // Restore previous state
+        if (wasRecording) {
+          await newController.startVideoRecording();
+        }
 
         // Return the new controller
         return newController;

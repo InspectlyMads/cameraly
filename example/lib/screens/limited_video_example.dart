@@ -98,13 +98,12 @@ class _LimitedVideoExampleState extends State<LimitedVideoExample> {
               },
               // Set maximum video duration to 15 seconds
               maxVideoDuration: const Duration(seconds: 15),
-              onMaxDurationReached: _handleMaxDurationReached,
+              onMaxDurationReached: () => _handleMaxDurationReached(XFile('')),
               // Show video-specific controls
               showFlashButton: true, // For torch mode
               showSwitchCameraButton: true,
               showGalleryButton: true,
               showZoomControls: true,
-              showModeToggle: false, // Hide mode toggle since we're video-only
               // Add custom buttons that match the top-right style
               customRightButton: Container(
                 decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
@@ -145,7 +144,11 @@ class _LimitedVideoExampleState extends State<LimitedVideoExample> {
           ),
 
           // Media stack in the bottom-right corner
-          Positioned(right: 16, bottom: 100, child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Colors.orange)),
+          Positioned(
+            right: 16,
+            bottom: 100,
+            child: SafeArea(child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Colors.orange)),
+          ),
         ],
       ),
     );

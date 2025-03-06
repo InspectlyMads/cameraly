@@ -7,7 +7,7 @@ import 'custom_display_screen.dart';
 import 'custom_overlay_example.dart';
 import 'limited_video_example.dart';
 import 'persistent_storage_example.dart';
-import 'photo_only_done_button_screen.dart';
+import 'inspectly_version.dart';
 
 /// Home screen with examples list
 class HomeScreen extends StatelessWidget {
@@ -25,7 +25,7 @@ class HomeScreen extends StatelessWidget {
             subtitle: 'Inspectly version',
             icon: Icons.check_circle,
             color: Colors.teal,
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PhotoOnlyDoneButtonScreen())),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const InspectlyVersionScreen())),
           ),
           _buildExampleTile(
             context,

@@ -54,6 +54,7 @@ class VideoSettings extends CaptureSettings {
     int? audioBitrate,
     VideoFormat? videoFormat,
     VideoStabilizationMode? stabilizationMode,
+    Duration? maxVideoDuration,
   }) {
     return VideoSettings(
       resolution: resolution ?? this.resolution,

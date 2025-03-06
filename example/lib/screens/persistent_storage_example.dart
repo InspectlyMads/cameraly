@@ -100,7 +100,7 @@ class _PersistentStorageExampleState extends State<PersistentStorageExample> {
           Positioned(
             right: 16,
             bottom: 100,
-            child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Theme.of(context).primaryColor),
+            child: SafeArea(child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Theme.of(context).primaryColor)),
           ),
 
           // Storage path indicator

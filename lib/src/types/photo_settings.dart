@@ -50,6 +50,7 @@ class PhotoSettings extends CaptureSettings {
     bool? enableRedEyeReduction,
     ImageFormat? imageFormat,
     int? quality,
+    Duration? maxVideoDuration,
   }) {
     return PhotoSettings(
       resolution: resolution ?? this.resolution,

@@ -40,22 +40,29 @@ import 'cameraly_overlay_theme.dart';
 /// ```dart
 /// // Basic usage with default controls
 /// DefaultCameralyOverlay(
-///   controller: cameraController,
+///   controller: cameralyController,
 /// )
 ///
 /// // Photo-only camera with a done button that pops the view
 /// DefaultCameralyOverlay(
-///   controller: cameraController,
+///   controller: cameralyController,
 ///   showModeToggle: false, // Hide mode toggle for photo-only mode
 ///   onPictureTaken: (file) {
 ///     // Handle the captured photo
 ///   },
-///   customRightButton: FloatingActionButton(
-///     onPressed: () => Navigator.of(context).pop(),
-///     backgroundColor: Colors.white,
-///     foregroundColor: Colors.black87,
-///     mini: true,
-///     child: const Icon(Icons.check),
+///   customRightButton: Builder(
+///     builder: (context) {
+///       final overlay = DefaultCameralyOverlay.of(context);
+///       final isRecording = overlay?._isRecording ?? false;
+///
+///       return FloatingActionButton(
+///         onPressed: isRecording ? null : () => Navigator.of(context).pop(),
+///         backgroundColor: isRecording ? Colors.grey : Colors.white,
+///         foregroundColor: Colors.black87,
+///         mini: true,
+///         child: const Icon(Icons.check),
+///       );
+///     },
 ///   ),
 /// )
 class DefaultCameralyOverlay extends StatefulWidget {
@@ -68,10 +75,8 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.showSwitchCameraButton = true,
     this.showGalleryButton = true,
     this.showZoomControls = true,
-    this.showModeToggle = true,
     this.showFocusCircle = true,
     this.showMediaStack = true,
-    this.mediaManager,
     this.onGalleryTap,
     this.onPictureTaken,
     this.onMediaSelected,
@@ -87,10 +92,80 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.maxVideoDuration,
     this.onMaxDurationReached,
     super.key,
-  }) : assert(
-          !showMediaStack || mediaManager != null,
-          'mediaManager must be provided when showMediaStack is true',
-        );
+  });
+
+  /// The controller for the camera.
+  final CameralyController controller;
+
+  /// The theme for the overlay.
+  final CameralyOverlayTheme? theme;
+
+  /// Whether to show the capture button.
+  final bool showCaptureButton;
+
+  /// Whether to show the flash button.
+  final bool showFlashButton;
+
+  /// Whether to show the camera switch button.
+  final bool showSwitchCameraButton;
+
+  /// Whether to show the gallery button.
+  final bool showGalleryButton;
+
+  /// Whether to show the zoom controls.
+  final bool showZoomControls;
+
+  /// Whether to show the focus circle.
+  final bool showFocusCircle;
+
+  /// Whether to show the media stack.
+  final bool showMediaStack;
+
+  /// Callback when the gallery button is tapped.
+  final VoidCallback? onGalleryTap;
+
+  /// Callback when a picture is taken.
+  final Function(XFile)? onPictureTaken;
+
+  /// Callback when media is selected from the gallery.
+  final Function(List<XFile>)? onMediaSelected;
+
+  /// Whether to allow multiple selection in the gallery.
+  final bool allowMultipleSelection;
+
+  /// Widget to display in the top-left corner.
+  final Widget? topLeftWidget;
+
+  /// Widget to display in the center-left area.
+  final Widget? centerLeftWidget;
+
+  /// Widget to display in the bottom overlay area.
+  final Widget? bottomOverlayWidget;
+
+  /// Custom button to display on the right side.
+  final Widget? customRightButton;
+
+  /// Custom button to display on the left side.
+  final Widget? customLeftButton;
+
+  /// Custom back button to display.
+  final Widget? customBackButton;
+
+  /// Whether to show placeholders for customizable widgets.
+  final bool showPlaceholders;
+
+  /// Callback when the camera state changes.
+  final Function(CameralyOverlayState)? onCameraStateChanged;
+
+  /// Maximum duration for video recording.
+  final Duration? maxVideoDuration;
+
+  /// Callback when the maximum video duration is reached.
+  final VoidCallback? onMaxDurationReached;
+
+  /// Whether to show the media stack in the center-left position.
+  /// This will be automatically disabled if [centerLeftWidget] is provided.
+  bool get effectiveShowMediaStack => showMediaStack;
 
   /// Creates a DefaultCameralyOverlay with custom buttons on both sides.
   ///
@@ -112,24 +187,40 @@ class DefaultCameralyOverlay extends StatefulWidget {
         final overlay = DefaultCameralyOverlay.of(context);
         final isRecording = overlay?._isRecording ?? false;
 
-        return FloatingActionButton(
-          onPressed: isRecording ? null : onLeftButtonTap, // Disable during recording
-          backgroundColor: isRecording ? Colors.grey : Colors.white,
-          foregroundColor: Colors.black87,
-          mini: true,
-          child: const Icon(Icons.arrow_back),
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.4),
+            shape: BoxShape.circle,
+          ),
+          child: IconButton.filled(
+            onPressed: isRecording ? null : onLeftButtonTap,
+            icon: const Icon(Icons.arrow_back),
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              backgroundColor: isRecording ? Colors.grey.withOpacity(0.3) : Colors.white24,
+              foregroundColor: isRecording ? Colors.white60 : Colors.white,
+            ),
+          ),
         );
       }),
       customRightButton: Builder(builder: (context) {
         final overlay = DefaultCameralyOverlay.of(context);
         final isRecording = overlay?._isRecording ?? false;
 
-        return FloatingActionButton(
-          onPressed: isRecording ? null : onRightButtonTap, // Disable during recording
-          backgroundColor: isRecording ? Colors.grey : Colors.white,
-          foregroundColor: Colors.black87,
-          mini: true,
-          child: const Icon(Icons.check),
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.4),
+            shape: BoxShape.circle,
+          ),
+          child: IconButton.filled(
+            onPressed: isRecording ? null : onRightButtonTap,
+            icon: const Icon(Icons.check),
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              backgroundColor: isRecording ? Colors.grey.withOpacity(0.3) : Colors.white24,
+              foregroundColor: isRecording ? Colors.white60 : Colors.white,
+            ),
+          ),
         );
       }),
     );
@@ -146,25 +237,29 @@ class DefaultCameralyOverlay extends StatefulWidget {
     return DefaultCameralyOverlay(
       controller: controller,
       theme: theme,
-      // Use the custom buttons to swap positions
       showGalleryButton: false,
       showSwitchCameraButton: false,
       customLeftButton: Builder(builder: (context) {
+        final overlay = DefaultCameralyOverlay.of(context);
+        final isRecording = overlay?._isRecording ?? false;
+
         return Container(
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.4),
             shape: BoxShape.circle,
           ),
           child: IconButton.filled(
-            onPressed: () {
-              final overlay = DefaultCameralyOverlay.of(context);
-              overlay?._switchCamera();
-            },
+            onPressed: isRecording
+                ? null
+                : () {
+                    final overlay = DefaultCameralyOverlay.of(context);
+                    overlay?._switchCamera();
+                  },
             icon: const Icon(Icons.switch_camera),
             iconSize: 30,
             style: IconButton.styleFrom(
-              backgroundColor: Colors.white24,
-              foregroundColor: Colors.white,
+              backgroundColor: isRecording ? Colors.grey.withOpacity(0.3) : Colors.white24,
+              foregroundColor: isRecording ? Colors.white60 : Colors.white,
             ),
           ),
         );
@@ -213,12 +308,20 @@ class DefaultCameralyOverlay extends StatefulWidget {
         final overlay = DefaultCameralyOverlay.of(context);
         final isRecording = overlay?._isRecording ?? false;
 
-        return FloatingActionButton(
-          onPressed: isRecording ? null : onRightButtonTap, // Disable during recording
-          backgroundColor: isRecording ? Colors.grey : Colors.white,
-          foregroundColor: Colors.black87,
-          mini: true,
-          child: const Icon(Icons.check),
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.4),
+            shape: BoxShape.circle,
+          ),
+          child: IconButton.filled(
+            onPressed: isRecording ? null : onRightButtonTap,
+            icon: const Icon(Icons.check),
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              backgroundColor: isRecording ? Colors.grey.withOpacity(0.3) : Colors.white24,
+              foregroundColor: isRecording ? Colors.white60 : Colors.white,
+            ),
+          ),
         );
       }),
     );
@@ -377,8 +480,53 @@ class DefaultCameralyOverlay extends StatefulWidget {
       ),
       onCameraStateChanged: (state) {
         // Update the ValueNotifier with the full camera state
-        cameraStateNotifier.value = state;
+        cameraStateNotifier.value = CameralyOverlayState(
+          isRecording: state.isRecording,
+          isVideoMode: state.isVideoMode,
+          isFrontCamera: state.isFrontCamera,
+          flashMode: state.flashMode,
+          torchEnabled: state.torchEnabled,
+          recordingDuration: state.recordingDuration,
+        );
       },
+    );
+  }
+
+  /// Creates a DefaultCameralyOverlay configured for limited video recording.
+  ///
+  /// This factory constructor sets up the overlay specifically for video recording
+  /// with a maximum duration limit. It includes:
+  /// - Video-only mode (photo mode disabled)
+  /// - Maximum recording duration with visual indicator
+  /// - Progress bar that turns red when approaching the limit
+  /// - Torch control for low-light recording
+  /// - Optional gallery access for reviewing recordings
+  static DefaultCameralyOverlay withLimitedVideo({
+    required CameralyController controller,
+    required Duration maxDuration,
+    required VoidCallback onMaxDurationReached,
+    CameralyOverlayTheme? theme,
+    bool showGalleryButton = true,
+  }) {
+    return DefaultCameralyOverlay(
+      controller: controller,
+      theme: theme ??
+          const CameralyOverlayTheme(
+            primaryColor: Colors.orange,
+            secondaryColor: Colors.red,
+            backgroundColor: Colors.black87,
+            opacity: 0.8,
+            buttonSize: 72.0,
+            iconSize: 32.0,
+          ),
+      // Video-specific settings
+      showFlashButton: true, // For torch mode
+      showSwitchCameraButton: true,
+      showGalleryButton: showGalleryButton,
+      showZoomControls: true,
+      // Duration limit settings
+      maxVideoDuration: maxDuration,
+      onMaxDurationReached: onMaxDurationReached,
     );
   }
 
@@ -387,150 +535,6 @@ class DefaultCameralyOverlay extends StatefulWidget {
     final state = context.findAncestorStateOfType<_DefaultCameralyOverlayState>();
     return state;
   }
-
-  /// The controller for the camera.
-  final CameralyController controller;
-
-  /// The theme for the overlay.
-  final CameralyOverlayTheme? theme;
-
-  /// Whether to show the capture button.
-  final bool showCaptureButton;
-
-  /// Whether to show the flash button.
-  final bool showFlashButton;
-
-  /// Whether to show the switch camera button.
-  final bool showSwitchCameraButton;
-
-  /// Whether to show the gallery button.
-  final bool showGalleryButton;
-
-  /// Whether to show zoom controls.
-  final bool showZoomControls;
-
-  /// Whether to show the photo/video mode toggle.
-  final bool showModeToggle;
-
-  /// Whether to show the focus circle when focus point changes.
-  final bool showFocusCircle;
-
-  /// Whether to show the media stack in the center-left position.
-  /// If true, [mediaManager] must be provided.
-  /// If [centerLeftWidget] is provided, this will be ignored.
-  final bool showMediaStack;
-
-  /// The media manager for the media stack.
-  /// Required if [showMediaStack] is true.
-  final CameralyMediaManager? mediaManager;
-
-  /// Callback when the gallery button is tapped.
-  /// If this is provided, it will be called instead of showing the image picker.
-  final VoidCallback? onGalleryTap;
-
-  /// Callback when a picture is taken, returns the captured photo file.
-  final void Function(XFile photoFile)? onPictureTaken;
-
-  /// Callback when media is selected from the gallery.
-  /// Returns a list of selected files.
-  final void Function(List<XFile> mediaFiles)? onMediaSelected;
-
-  /// Whether to allow multiple selection in the gallery picker.
-  final bool allowMultipleSelection;
-
-  /// Optional widget to display in the top-left corner of the camera overlay.
-  final Widget? topLeftWidget;
-
-  /// Optional widget to display in the center-left area of the camera overlay.
-  /// If provided, this will override the media stack even if [showMediaStack] is true.
-  final Widget? centerLeftWidget;
-
-  /// Optional widget to display at the bottom of the overlay, above the capture button and mode toggle.
-  final Widget? bottomOverlayWidget;
-
-  /// Custom widget to replace the default right button (camera switch button) in the bottom controls.
-  /// When provided, this will be shown in the right position of the bottom controls,
-  /// and the default camera switch button will be moved to the top-right area under the zoom button.
-  final Widget? customRightButton;
-
-  /// Custom widget to replace the default left button (gallery button) in the bottom controls.
-  /// When provided, this will be shown in the left position of the bottom controls.
-  final Widget? customLeftButton;
-
-  /// Custom widget to replace the default back button.
-  /// When provided, this will be shown instead of the default back button.
-  final Widget? customBackButton;
-
-  /// Whether to show colored placeholder widgets when custom widgets are not provided.
-  /// Set to true for development and false for production.
-  final bool showPlaceholders;
-
-  /// Callback that provides the current camera state.
-  ///
-  /// This can be used to react to changes in the camera state, such as:
-  /// - Recording started/stopped
-  /// - Camera mode changed (photo/video)
-  /// - Flash/torch state changed
-  ///
-  /// Developers can use this to disable custom buttons during recording
-  /// or to update UI elements based on the current camera state.
-  ///
-  /// Example usage:
-  /// ```dart
-  /// class CameraScreen extends StatefulWidget {
-  ///   @override
-  ///   State<CameraScreen> createState() => _CameraScreenState();
-  /// }
-  ///
-  /// class _CameraScreenState extends State<CameraScreen> {
-  ///   late CameralyController _controller;
-  ///   bool _isRecording = false;
-  ///
-  ///   @override
-  ///   Widget build(BuildContext context) {
-  ///     return Scaffold(
-  ///       body: Stack(
-  ///         children: [
-  ///           CameralyPreview(controller: _controller),
-  ///           DefaultCameralyOverlay(
-  ///             controller: _controller,
-  ///             onCameraStateChanged: (state) {
-  ///               setState(() {
-  ///                 _isRecording = state.isRecording;
-  ///               });
-  ///             },
-  ///             customBackButton: Container(
-  ///               decoration: BoxDecoration(
-  ///                 color: Colors.black54,
-  ///                 shape: BoxShape.circle,
-  ///               ),
-  ///               child: IconButton(
-  ///                 icon: const Icon(Icons.close, color: Colors.white),
-  ///                 onPressed: () => Navigator.pop(context),
-  ///               ),
-  ///             ),
-  ///             customLeftButton: FloatingActionButton(
-  ///               onPressed: _isRecording ? null : () => Navigator.pop(context),
-  ///               backgroundColor: _isRecording ? Colors.grey : Colors.white,
-  ///               mini: true,
-  ///               child: Icon(Icons.arrow_back),
-  ///             ),
-  ///           ),
-  ///         ],
-  ///       ),
-  ///     );
-  ///   }
-  /// }
-  /// ```
-  final void Function(CameralyOverlayState state)? onCameraStateChanged;
-
-  /// The maximum duration for video recording.
-  /// If provided, the recording will automatically stop after this duration.
-  final Duration? maxVideoDuration;
-
-  /// Callback when the maximum video duration is reached.
-  /// This is called after the video recording is automatically stopped.
-  final void Function(XFile videoFile)? onMaxDurationReached;
 
   @override
   State<DefaultCameralyOverlay> createState() => _DefaultCameralyOverlayState();
@@ -607,6 +611,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Timer? _recordingLimitTimer;
   bool _hasVideoDurationLimit = false;
   Duration? _maxVideoDuration;
+
+  /// Whether to show the mode toggle button.
+  /// This is determined by the camera mode - only shown when mode is [CameraMode.both].
+  bool get effectiveShowModeToggle => widget.controller.settings.cameraMode == CameraMode.both;
 
   @override
   void initState() {
@@ -850,34 +858,41 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Future<void> _switchCamera() async {
     try {
-      // Get available cameras
-      final cameras = await CameralyController.getAvailableCameras();
-      if (cameras.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No cameras available')),
-          );
-        }
-        return;
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Switching camera...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
       }
-
-      // Find the next camera
-      final currentLensDirection = _controller.description.lensDirection;
-      final newCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection != currentLensDirection,
-        orElse: () => cameras.first,
-      );
 
       // Switch to the new camera
       final newController = await _controller.switchCamera();
-      if (newController != null) {
+      if (newController != null && mounted) {
         setState(() {
+          // Store previous state
+          final previousFlashMode = _flashMode;
+          final previousTorchEnabled = _torchEnabled;
+
+          // Update controller
           _controller = newController;
           _isFrontCamera = newController.description.lensDirection == CameraLensDirection.front;
 
-          // Turn off torch when switching to front camera
-          if (_isFrontCamera && _torchEnabled) {
+          // Reset flash and torch for front camera
+          if (_isFrontCamera) {
+            _flashMode = FlashMode.off;
             _torchEnabled = false;
+          } else {
+            // Restore previous flash settings for back camera
+            _flashMode = previousFlashMode;
+            _torchEnabled = previousTorchEnabled;
+          }
+
+          // Apply flash mode
+          if (!_isFrontCamera) {
+            _controller.setFlashMode(_flashMode);
           }
 
           // Notify camera switch
@@ -897,7 +912,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to switch camera: $e')),
+          SnackBar(
+            content: Text('Failed to switch camera: $e'),
+            duration: const Duration(seconds: 2),
+          ),
         );
       }
     }
@@ -922,7 +940,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
       // Call the callback if provided
       if (widget.onPictureTaken != null) {
-        widget.onPictureTaken!(file);
+        // Schedule the callback in a microtask to ensure proper state update
+        Future.microtask(() => widget.onPictureTaken!(file));
       } else {
         // Only show the snackbar if no callback is provided
         // This prevents duplicate notifications when the parent widget also shows a snackbar
@@ -992,20 +1011,19 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _openGallery() async {
-    // If onGalleryTap is provided, use that
     if (widget.onGalleryTap != null) {
       widget.onGalleryTap!();
       return;
     }
 
     // If media stack is enabled and has media, show our custom gallery view
-    if (widget.showMediaStack && widget.mediaManager != null && widget.mediaManager!.isNotEmpty) {
+    if (widget.effectiveShowMediaStack && widget.controller.mediaManager.isNotEmpty) {
       if (mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => CameralyGalleryView(
-              mediaManager: widget.mediaManager!,
-              onDelete: (file) => widget.mediaManager!.removeMedia(file),
+              mediaManager: widget.controller.mediaManager,
+              onDelete: (file) => widget.controller.mediaManager.removeMedia(file),
               backgroundColor: Colors.black,
               appBarColor: Colors.black,
               appBarTextColor: Colors.white,
@@ -1115,7 +1133,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (_isRecording) {
         _controller.stopVideoRecording().then((file) {
           if (widget.onMaxDurationReached != null) {
-            widget.onMaxDurationReached!(file);
+            widget.onMaxDurationReached!();
           }
         });
       }
@@ -1152,9 +1170,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       border: Border.all(color: Colors.white, width: 2),
                       shape: BoxShape.circle,
                       color: Colors.white.withAlpha((0.3 * 255).round()),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.center_focus_strong, color: Colors.white, size: 20),
                     ),
                   ),
                 ),
@@ -1335,7 +1350,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   width: 200,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: const Color.fromRGBO(33, 150, 243, 0.7), // Blue
+                    color: const Color.fromRGBO(33, 150, 243, 0.7),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Center(
@@ -1366,7 +1381,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     } else {
       // Calculate based on content
       double height = 90; // Base height for capture button
-      if (widget.showModeToggle && !_isRecording && _controller.settings.cameraMode == CameraMode.both) {
+      if (!_isRecording && _controller.settings.cameraMode == CameraMode.both) {
         height += 60; // Add height for mode toggle
       }
       return height + MediaQuery.of(context).padding.bottom + 40; // Add padding and extra space
@@ -1588,74 +1603,52 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Widget _buildCenterArea({required bool isLandscape, required CameralyOverlayTheme theme}) {
+    Widget buildMediaStack() {
+      return CameralyMediaStack(
+        mediaManager: widget.controller.mediaManager,
+        onTap: _openGallery,
+        itemSize: 60,
+        maxDisplayItems: 3,
+        borderColor: Colors.white,
+        borderWidth: 2,
+        borderRadius: 8,
+        showCountBadge: true,
+        countBadgeColor: theme.primaryColor,
+      );
+    }
+
+    Widget buildPlaceholder() {
+      return Container(
+        width: 100,
+        height: 80,
+        decoration: BoxDecoration(
+          color: const Color.fromRGBO(255, 255, 255, 0.7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: Text(
+            'Center Left',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
+      );
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Center left widget or media stack
-        if (widget.centerLeftWidget != null || (widget.showMediaStack && widget.mediaManager != null) || widget.showPlaceholders)
-          isLandscape
-              ? Positioned(
-                  left: 16,
-                  top: MediaQuery.of(context).size.height / 2 - 40,
-                  child: widget.centerLeftWidget ??
-                      (widget.showMediaStack && widget.mediaManager != null
-                          ? CameralyMediaStack(
-                              mediaManager: widget.mediaManager!,
-                              onTap: _openGallery,
-                              itemSize: 60,
-                              maxDisplayItems: 3,
-                              borderColor: Colors.white,
-                              borderWidth: 2,
-                              borderRadius: 8,
-                              showCountBadge: true,
-                              countBadgeColor: theme.primaryColor,
-                            )
-                          : Container(
-                              width: 100,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: const Color.fromRGBO(255, 255, 255, 0.7),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Center Left',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            )),
-                )
-              : Positioned(
-                  left: 16,
-                  top: MediaQuery.of(context).size.height / 2 - 40,
-                  child: widget.centerLeftWidget ??
-                      (widget.showMediaStack && widget.mediaManager != null
-                          ? CameralyMediaStack(
-                              mediaManager: widget.mediaManager!,
-                              onTap: _openGallery,
-                              itemSize: 60,
-                              maxDisplayItems: 3,
-                              borderColor: Colors.white,
-                              borderWidth: 2,
-                              borderRadius: 8,
-                              showCountBadge: true,
-                              countBadgeColor: theme.primaryColor,
-                            )
-                          : Container(
-                              width: 100,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: const Color.fromRGBO(255, 255, 255, 0.7),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Center Left',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            )),
-                ),
+        if (widget.centerLeftWidget != null || widget.effectiveShowMediaStack || widget.showPlaceholders)
+          Positioned(
+            left: 16,
+            top: MediaQuery.of(context).size.height / 2 - 40,
+            child: widget.centerLeftWidget ??
+                (widget.effectiveShowMediaStack
+                    ? AnimatedBuilder(
+                        animation: widget.controller.mediaManager,
+                        builder: (context, _) => buildMediaStack(),
+                      )
+                    : buildPlaceholder()),
+          ),
       ],
     );
   }
@@ -1697,7 +1690,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         mainAxisSize: MainAxisSize.min,
         children: [
           // Photo/Video toggle
-          if (widget.showModeToggle && !_isRecording && _controller.settings.cameraMode == CameraMode.both) ...[
+          if (!_isRecording && _controller.settings.cameraMode == CameraMode.both) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
@@ -1887,7 +1880,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Photo/Video toggle
-          if (widget.showModeToggle && !_isRecording && _controller.settings.cameraMode == CameraMode.both)
+          if (!_isRecording && _controller.settings.cameraMode == CameraMode.both)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(

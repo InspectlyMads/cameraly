@@ -1,3 +1,4 @@
+import 'package:camera/camera.dart' show XFile;
 import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
 
@@ -13,8 +14,16 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameralyController _controller;
-  late CameralyMediaManager _mediaManager;
+  final CameralyMediaManager _mediaManager = CameralyMediaManager(
+    maxItems: 30, // Keep only the last 30 items
+    onMediaAdded: _handleMediaAdded,
+  );
   bool _isInitialized = false;
+
+  static void _handleMediaAdded(XFile file) {
+    // Note: we can't show snackbar here since it's static
+    // The UI feedback will be handled by the overlay itself
+  }
 
   @override
   void initState() {
@@ -23,17 +32,6 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCamera() async {
-    // Create the media manager
-    _mediaManager = CameralyMediaManager(
-      maxItems: 30, // Keep only the last 30 items
-      onMediaAdded: (file) {
-        // Show a snackbar when media is captured
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Captured: ${file.path.split('/').last}'), duration: const Duration(seconds: 2)));
-        }
-      },
-    );
-
     // Get available cameras
     final cameras = await CameralyController.getAvailableCameras();
     if (cameras.isEmpty) {
@@ -44,7 +42,11 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     // Initialize the camera controller
-    _controller = CameralyController(description: cameras.first, settings: CaptureSettings(cameraMode: widget.cameraMode));
+    _controller = CameralyController(
+      description: cameras.first,
+      settings: CaptureSettings(cameraMode: widget.cameraMode),
+      mediaManager: _mediaManager, // Pass the already created media manager
+    );
 
     try {
       await _controller.initialize();
@@ -69,45 +71,35 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body:
+      body: Stack(
+        children: [
+          // Camera preview or loading indicator
           !_isInitialized
               ? Container(
                 color: Colors.black,
                 child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text('Initializing Camera...', style: TextStyle(color: Colors.white))])),
               )
-              : Stack(
-                children: [
-                  // Camera preview with default overlay
-                  CameralyPreview(
-                    controller: _controller,
-                    overlay: DefaultCameralyOverlay(
-                      controller: _controller,
-                      onPictureTaken: (file) => _mediaManager.addMedia(file),
-                      onMediaSelected: (files) {
-                        for (final file in files) {
-                          _mediaManager.addMedia(file);
-                        }
-                      },
-                      // Customize which buttons to show
-                      showFlashButton: true,
-                      showSwitchCameraButton: true,
-                      showGalleryButton: true,
-                      showZoomControls: true,
-                      showModeToggle: widget.cameraMode == CameraMode.both,
-                      showFocusCircle: true,
-                    ),
-                  ),
-
-                  // Media stack in the bottom-right corner
-                  SafeArea(
-                    child: Positioned(
-                      right: 16,
-                      bottom: 100,
-                      child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Theme.of(context).primaryColor),
-                    ),
-                  ),
-                ],
+              : CameralyPreview(
+                controller: _controller,
+                overlay: DefaultCameralyOverlay(
+                  controller: _controller,
+                  onPictureTaken: (file) => _mediaManager.addMedia(file),
+                  onMediaSelected: (files) {
+                    for (final file in files) {
+                      _mediaManager.addMedia(file);
+                    }
+                  },
+                  // Customize which buttons to show
+                  showFlashButton: true,
+                  showSwitchCameraButton: true,
+                  showGalleryButton: true,
+                  showZoomControls: true,
+                  showFocusCircle: true,
+                  showMediaStack: true, // Ensure media stack is enabled
+                ),
               ),
+        ],
+      ),
     );
   }
 }

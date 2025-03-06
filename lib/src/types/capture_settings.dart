@@ -5,56 +5,66 @@ import 'camera_mode.dart';
 
 /// Settings for camera capture.
 class CaptureSettings {
-  /// Creates a new [CaptureSettings] instance.
+  /// Creates settings for camera capture.
   const CaptureSettings({
+    this.cameraMode = CameraMode.both,
     this.enableAudio = true,
-    this.resolution = ResolutionPreset.max,
     this.flashMode = FlashMode.auto,
+    this.resolution = ResolutionPreset.max,
     this.exposureMode = ExposureMode.auto,
     this.focusMode = FocusMode.auto,
     this.deviceOrientation = DeviceOrientation.portraitUp,
-    this.cameraMode = CameraMode.both,
-  });
+    this.maxVideoDuration,
+  }) : assert(
+          maxVideoDuration == null || cameraMode != CameraMode.photoOnly,
+          'maxVideoDuration can only be used with CameraMode.videoOnly or CameraMode.both',
+        );
 
-  /// Whether to enable audio recording.
-  final bool enableAudio;
-
-  /// The resolution preset to use.
-  final ResolutionPreset resolution;
-
-  /// The flash mode to use.
-  final FlashMode flashMode;
-
-  /// The exposure mode to use.
-  final ExposureMode exposureMode;
-
-  /// The focus mode to use.
-  final FocusMode focusMode;
-
-  /// The device orientation to use.
-  final DeviceOrientation deviceOrientation;
-
-  /// The camera mode to use.
+  /// The camera mode (photo, video, or both).
   final CameraMode cameraMode;
 
-  /// Creates a copy of this settings with the given fields replaced.
+  /// Whether to enable audio recording for videos.
+  final bool enableAudio;
+
+  /// The initial flash mode.
+  final FlashMode flashMode;
+
+  /// The resolution preset for the camera.
+  final ResolutionPreset resolution;
+
+  /// The exposure mode for the camera.
+  final ExposureMode exposureMode;
+
+  /// The focus mode for the camera.
+  final FocusMode focusMode;
+
+  /// The device orientation for the camera.
+  final DeviceOrientation deviceOrientation;
+
+  /// Maximum duration for video recording.
+  /// Only applicable when [cameraMode] is [CameraMode.videoOnly] or [CameraMode.both].
+  final Duration? maxVideoDuration;
+
+  /// Creates a copy of this settings object with the given fields replaced.
   CaptureSettings copyWith({
+    CameraMode? cameraMode,
     bool? enableAudio,
-    ResolutionPreset? resolution,
     FlashMode? flashMode,
+    ResolutionPreset? resolution,
     ExposureMode? exposureMode,
     FocusMode? focusMode,
     DeviceOrientation? deviceOrientation,
-    CameraMode? cameraMode,
+    Duration? maxVideoDuration,
   }) {
     return CaptureSettings(
+      cameraMode: cameraMode ?? this.cameraMode,
       enableAudio: enableAudio ?? this.enableAudio,
-      resolution: resolution ?? this.resolution,
       flashMode: flashMode ?? this.flashMode,
+      resolution: resolution ?? this.resolution,
       exposureMode: exposureMode ?? this.exposureMode,
       focusMode: focusMode ?? this.focusMode,
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
-      cameraMode: cameraMode ?? this.cameraMode,
+      maxVideoDuration: maxVideoDuration ?? this.maxVideoDuration,
     );
   }
 
@@ -85,10 +95,11 @@ class CaptureSettings {
           exposureMode == other.exposureMode &&
           focusMode == other.focusMode &&
           deviceOrientation == other.deviceOrientation &&
-          cameraMode == other.cameraMode;
+          cameraMode == other.cameraMode &&
+          maxVideoDuration == other.maxVideoDuration;
 
   @override
-  int get hashCode => enableAudio.hashCode ^ resolution.hashCode ^ flashMode.hashCode ^ exposureMode.hashCode ^ focusMode.hashCode ^ deviceOrientation.hashCode ^ cameraMode.hashCode;
+  int get hashCode => enableAudio.hashCode ^ resolution.hashCode ^ flashMode.hashCode ^ exposureMode.hashCode ^ focusMode.hashCode ^ deviceOrientation.hashCode ^ cameraMode.hashCode ^ maxVideoDuration.hashCode;
 
   @override
   String toString() => 'CaptureSettings('
@@ -98,5 +109,6 @@ class CaptureSettings {
       'exposureMode: $exposureMode, '
       'focusMode: $focusMode, '
       'deviceOrientation: $deviceOrientation, '
-      'cameraMode: $cameraMode)';
+      'cameraMode: $cameraMode, '
+      'maxVideoDuration: $maxVideoDuration)';
 }
