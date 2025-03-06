@@ -1553,9 +1553,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     icon: const Icon(Icons.photo_library),
                     iconSize: 28,
                     style: IconButton.styleFrom(
-                      backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
+                      backgroundColor: _isRecording ? Colors.grey.withOpacity(0.3) : Colors.black54,
                       foregroundColor: _isRecording ? Colors.white60 : Colors.white,
-                      padding: const EdgeInsets.all(12),
                     ),
                   ),
                 ),
@@ -1568,17 +1567,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 child: Container(
                   margin: const EdgeInsets.only(top: 16),
                   decoration: const BoxDecoration(
-                    color: Color.fromRGBO(0, 0, 0, 0.4),
+                    color: Color.fromRGBO(0, 0, 0, 0.3),
                     shape: BoxShape.circle,
                   ),
                   child: IconButton.filled(
                     onPressed: _switchCamera,
                     icon: const Icon(Icons.switch_camera),
-                    iconSize: 30,
+                    iconSize: 28,
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.white24,
+                      backgroundColor: Colors.black54,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.all(12),
                     ),
                   ),
                 ),
