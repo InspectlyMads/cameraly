@@ -25,7 +25,7 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
     _mediaManager = CameralyMediaManager(
       maxItems: 30, // Keep last 30 photos
       onMediaAdded: (file) {
-        print('Media added to manager: ${file.path}'); // Debug print
+        debugPrint('Media added to manager: ${file.path}'); // Debug print
         // Optional: Show feedback when photo is captured
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Photo captured: ${file.path.split('/').last}'), duration: const Duration(seconds: 2)));
@@ -73,12 +73,12 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
           overlay: DefaultCameralyOverlay(
             controller: _controller,
             onPictureTaken: (file) {
-              print('Picture taken: ${file.path}'); // Debug print
+              debugPrint('Picture taken: ${file.path}'); // Debug print
               _mediaManager.addMedia(file);
             },
             customRightButton: FloatingActionButton(
               onPressed: () {
-                print('Done button pressed with ${_mediaManager.count} photos'); // Debug print
+                debugPrint('Done button pressed with ${_mediaManager.count} photos'); // Debug print
                 Navigator.of(context).pop(_mediaManager.media);
               },
               backgroundColor: Colors.white,

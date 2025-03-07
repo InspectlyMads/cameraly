@@ -77,7 +77,7 @@ library cameraly;
 ///
 /// These types are used throughout the Cameraly API and are re-exported
 /// for convenience so you don't need to import the camera package directly.
-export 'package:camera/camera.dart' show CameraException, CameraImage, FlashMode, ExposureMode, FocusMode, ResolutionPreset;
+export 'package:camera/camera.dart' show CameraException, CameraImage, FlashMode, ExposureMode, FocusMode, ResolutionPreset, XFile;
 
 /// The main controller class for camera operations
 ///

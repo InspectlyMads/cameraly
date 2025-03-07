@@ -208,7 +208,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: index == _currentIndex ? Colors.white : Colors.white.withOpacity(0.5),
+                      color: index == _currentIndex ? Colors.white : Colors.white.withAlpha(128),
                     ),
                   ),
                 ),

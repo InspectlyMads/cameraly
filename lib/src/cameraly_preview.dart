@@ -47,15 +47,55 @@ class CameralyPreview extends StatefulWidget {
   State<CameralyPreview> createState() => _CameralyPreviewState();
 }
 
-class _CameralyPreviewState extends State<CameralyPreview> {
+class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingObserver {
   Offset? _focusPoint;
   bool _showFocusCircle = false;
   Timer? _focusTimer;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // Force an orientation update when the widget is first built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.controller.value.isInitialized) {
+        // Print the current orientation for debugging
+        widget.controller.printCurrentOrientation(context);
+
+        // Force an orientation update
+        widget.controller.handleOrientationChange(context);
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Handle orientation changes
+    if (mounted) {
+      // Use a post-frame callback to ensure the context is valid
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Only call handleOrientationChange if the controller is initialized
+        if (widget.controller.value.isInitialized) {
+          // Print the current orientation for debugging
+          widget.controller.printCurrentOrientation(context);
+
+          // The controller now handles orientation changes directly in its didChangeMetrics
+          // We just need to force a rebuild to update the UI
+          if (mounted) {
+            setState(() {});
+          }
+        }
+      });
+    }
+    super.didChangeMetrics();
   }
 
   void _showFocusCircleAtPosition(Offset screenPosition) {
@@ -73,6 +113,111 @@ class _CameralyPreviewState extends State<CameralyPreview> {
         });
       }
     });
+  }
+
+  void _handleTap(TapDownDetails details) {
+    if (!widget.controller.value.isInitialized) return;
+
+    final size = MediaQuery.of(context).size;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    // Get the camera's natural aspect ratio
+    final cameraAspectRatio = widget.controller.cameraController?.value.aspectRatio ?? 1.0;
+
+    // In portrait mode, we need to invert the aspect ratio
+    // This is because the camera sensor is naturally in landscape orientation
+    final previewAspectRatio = isLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
+
+    // Calculate preview dimensions based on the correct aspect ratio
+    final previewWidth = isLandscape ? size.width : size.height * previewAspectRatio;
+    final previewHeight = isLandscape ? size.width / previewAspectRatio : size.height;
+
+    // Calculate the preview's position on screen
+    final previewLeft = (size.width - previewWidth) / 2;
+    final previewTop = (size.height - previewHeight) / 2;
+
+    // Check if tap is within the preview bounds
+    final tapPosition = details.globalPosition;
+
+    if (tapPosition.dx >= previewLeft && tapPosition.dx <= previewLeft + previewWidth && tapPosition.dy >= previewTop && tapPosition.dy <= previewTop + previewHeight) {
+      // Calculate normalized coordinates (0-1) for the camera controller
+      double normalizedX;
+      double normalizedY;
+
+      if (isLandscape) {
+        // In landscape, map directly to the preview
+        normalizedX = (tapPosition.dx - previewLeft) / previewWidth;
+        normalizedY = (tapPosition.dy - previewTop) / previewHeight;
+      } else {
+        // In portrait, we need to account for the rotated camera preview
+        // The camera is sideways, so we swap x and y
+        normalizedX = (tapPosition.dy - previewTop) / previewHeight;
+        normalizedY = 1.0 - ((tapPosition.dx - previewLeft) / previewWidth);
+      }
+
+      // Adjust for front camera mirroring
+      if (widget.controller.value.isFrontCamera) {
+        normalizedX = 1.0 - normalizedX;
+      }
+
+      // Create the normalized position
+      final normalizedPosition = Offset(normalizedX, normalizedY);
+
+      // Call the onTap callback if provided
+      if (widget.onTap != null) {
+        widget.onTap!(normalizedPosition);
+      }
+
+      // Always set focus and exposure point when tapping
+      widget.controller.setFocusAndExposurePoint(normalizedPosition);
+
+      // Always show focus circle at tap position
+      _showFocusCircleAtPosition(tapPosition);
+    }
+  }
+
+  void _handleScaleStart(ScaleStartDetails details) {
+    // Store the initial scale value to use as a reference point
+    widget.controller.value = widget.controller.value.copyWith(
+      initialZoomLevel: widget.controller.value.zoomLevel,
+    );
+  }
+
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (widget.onScale != null) {
+      // Call the user's onScale callback if provided
+      widget.onScale!(details.scale);
+
+      // Also handle the scale internally using the controller's method
+      // This allows the package to handle zoom internally while still
+      // notifying the app about scale changes via the callback
+      widget.controller.handleScale(details.scale);
+    } else {
+      // If no onScale callback is provided, still handle zoom internally
+      widget.controller.handleScale(details.scale);
+    }
+  }
+
+  Widget _buildCameraPreview(CameralyValue value, BoxConstraints constraints) {
+    // Get the current orientation
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    // Get the camera's natural aspect ratio
+    final cameraAspectRatio = widget.controller.cameraController?.value.aspectRatio ?? 1.0;
+
+    // In portrait mode, we need to invert the aspect ratio
+    // This is because the camera sensor is naturally in landscape orientation
+    final previewRatio = isLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
+
+    // Use the standard preview with the correct aspect ratio for the current orientation
+    return AspectRatio(
+      aspectRatio: previewRatio,
+      child: Transform.scale(
+        scaleX: value.isFrontCamera ? -1.0 : 1.0, // Only flip for front camera
+        scaleY: 1.0,
+        child: CameraPreview(widget.controller.cameraController!),
+      ),
+    );
   }
 
   @override
@@ -133,175 +278,59 @@ class _CameralyPreviewState extends State<CameralyPreview> {
           );
         }
 
-        final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-        final previewRatio = widget.controller.cameraController!.value.aspectRatio;
+        // If camera is initialized, show the preview
+        return GestureDetector(
+          onTapDown: _handleTap,
+          onScaleStart: _handleScaleStart,
+          onScaleUpdate: _handleScaleUpdate,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Camera preview with orientation handling
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return Container(
+                    color: Colors.black,
+                    child: Center(
+                      child: _buildCameraPreview(value, constraints),
+                    ),
+                  );
+                },
+              ),
 
-        return Container(
-          color: Colors.black,
-          child: GestureDetector(
-            onTapUp: (TapUpDetails details) {
-              if (!value.isInitialized) return;
+              // Show the legacy child for backward compatibility
+              if (child != null) child,
 
-              final size = MediaQuery.of(context).size;
+              // Show the overlay
+              if (widget.overlay != null) widget.overlay!,
 
-              // Get the preview widget size and position
-              final previewAspectRatio = isLandscape ? previewRatio : 1.0 / previewRatio;
-              final previewWidth = isLandscape ? size.width : size.height * previewAspectRatio;
-              final previewHeight = isLandscape ? size.width / previewAspectRatio : size.height;
-
-              // Calculate the preview's position on screen
-              final previewLeft = (size.width - previewWidth) / 2;
-              final previewTop = (size.height - previewHeight) / 2;
-
-              // Check if tap is within the preview bounds
-              final tapPosition = details.globalPosition;
-
-              if (tapPosition.dx >= previewLeft && tapPosition.dx <= previewLeft + previewWidth && tapPosition.dy >= previewTop && tapPosition.dy <= previewTop + previewHeight) {
-                // Calculate normalized coordinates (0-1) for the camera controller
-                double normalizedX;
-                double normalizedY;
-
-                if (isLandscape) {
-                  // In landscape, map directly to the preview
-                  normalizedX = (tapPosition.dx - previewLeft) / previewWidth;
-                  normalizedY = (tapPosition.dy - previewTop) / previewHeight;
-                } else {
-                  // In portrait, we need to account for the rotated camera preview
-                  // The camera is sideways, so we swap x and y
-                  normalizedX = (tapPosition.dy - previewTop) / previewHeight;
-                  normalizedY = (tapPosition.dx - previewLeft) / previewWidth;
-
-                  // Adjust based on camera orientation
-                  final sensorOrientation = widget.controller.description.sensorOrientation;
-                  if (sensorOrientation == 90) {
-                    // Most Android devices
-                    normalizedY = 1.0 - normalizedY;
-                  } else if (sensorOrientation == 270) {
-                    // Some devices
-                    normalizedX = 1.0 - normalizedX;
-                  }
-                }
-
-                // Adjust for front camera mirroring
-                if (value.isFrontCamera) {
-                  normalizedX = 1.0 - normalizedX;
-                }
-
-                // Create the normalized position
-                final normalizedPosition = Offset(normalizedX, normalizedY);
-
-                // Call the onTap callback if provided
-                if (widget.onTap != null) {
-                  widget.onTap!(normalizedPosition);
-                }
-
-                // Always set focus and exposure point when tapping
-                widget.controller.setFocusAndExposurePoint(normalizedPosition);
-
-                // Always show focus circle at tap position
-                _showFocusCircleAtPosition(tapPosition);
-              }
-            },
-            onScaleStart: (details) {
-              // Store the initial scale value to use as a reference point
-              widget.controller.value = widget.controller.value.copyWith(
-                initialZoomLevel: widget.controller.value.zoomLevel,
-              );
-            },
-            onScaleUpdate: widget.onScale != null
-                ? (details) {
-                    // Call the user's onScale callback if provided
-                    widget.onScale!(details.scale);
-
-                    // Also handle the scale internally using the controller's method
-                    // This allows the package to handle zoom internally while still
-                    // notifying the app about scale changes via the callback
-                    widget.controller.handleScale(details.scale);
-                  }
-                : (details) {
-                    // If no onScale callback is provided, still handle zoom internally
-                    widget.controller.handleScale(details.scale);
-                  },
-            onScaleEnd: (_) {
-              // Reset any scale-related temporary state if needed
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Camera preview with proper aspect ratio handling
-                Center(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return ClipRect(
-                        child: SizedBox.expand(
-                          key: ValueKey<bool>(isLandscape),
-                          child: isLandscape
-                              ? FittedBox(
-                                  fit: BoxFit.contain,
-                                  child: SizedBox(
-                                    width: constraints.maxWidth,
-                                    height: constraints.maxWidth / previewRatio,
-                                    child: Transform.scale(
-                                      scaleX: value.isFrontCamera ? -1.0 : 1.0,
-                                      scaleY: 1.0,
-                                      child: CameraPreview(widget.controller.cameraController!),
-                                    ),
-                                  ),
-                                )
-                              : FittedBox(
-                                  fit: BoxFit.contain,
-                                  child: SizedBox(
-                                    // In portrait mode, we need to use the inverse ratio
-                                    // because the camera is sideways
-                                    width: constraints.maxHeight * (1 / previewRatio),
-                                    height: constraints.maxHeight,
-                                    child: Transform.scale(
-                                      scaleX: value.isFrontCamera ? -1.0 : 1.0,
-                                      scaleY: 1.0,
-                                      child: CameraPreview(widget.controller.cameraController!),
-                                    ),
-                                  ),
-                                ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                // Show the legacy child for backward compatibility
-                if (child != null) child,
-
-                // Show the overlay
-                if (widget.overlay != null) widget.overlay!,
-
-                // Show focus circle when tapping - enhanced visibility
-                if (_showFocusCircle && _focusPoint != null)
-                  Positioned(
-                    left: _focusPoint!.dx - 30, // Larger offset for bigger circle
-                    top: _focusPoint!.dy - 30, // Larger offset for bigger circle
-                    child: TweenAnimationBuilder<double>(
-                      duration: const Duration(milliseconds: 300), // Slower animation
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      builder: (context, value, child) => Transform.scale(
-                        scale: 2.5 - value * 1.5, // More dramatic scale effect
-                        child: Opacity(
-                          opacity: value,
-                          child: Container(
-                            height: 60, // Larger circle
-                            width: 60, // Larger circle
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white, width: 3), // Thick white border
-                              shape: BoxShape.circle,
-                              color: Colors.transparent, // Transparent center to see through
-                            ),
-                            child: Center(
-                              child: Container(
-                                height: 10, // Inner dot
-                                width: 10,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white, // Bright center dot
-                                  shape: BoxShape.circle,
-                                ),
+              // Show focus circle when tapping - enhanced visibility
+              if (_showFocusCircle && _focusPoint != null)
+                Positioned(
+                  left: _focusPoint!.dx - 30, // Larger offset for bigger circle
+                  top: _focusPoint!.dy - 30, // Larger offset for bigger circle
+                  child: TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 300), // Slower animation
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    builder: (context, value, child) => Transform.scale(
+                      scale: 2.5 - value * 1.5, // More dramatic scale effect
+                      child: Opacity(
+                        opacity: value,
+                        child: Container(
+                          height: 60, // Larger circle
+                          width: 60, // Larger circle
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.white, width: 3), // Thick white border
+                            shape: BoxShape.circle,
+                            color: Colors.transparent, // Transparent center to see through
+                          ),
+                          child: Center(
+                            child: Container(
+                              height: 10, // Inner dot
+                              width: 10,
+                              decoration: const BoxDecoration(
+                                color: Colors.white, // Bright center dot
+                                shape: BoxShape.circle,
                               ),
                             ),
                           ),
@@ -309,25 +338,25 @@ class _CameralyPreviewState extends State<CameralyPreview> {
                       ),
                     ),
                   ),
+                ),
 
-                // Error display
-                if (value.error != null)
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      color: Colors.black54,
-                      padding: const EdgeInsets.all(8),
-                      child: Text(
-                        value.error!,
-                        style: const TextStyle(color: Colors.white),
-                        textAlign: TextAlign.center,
-                      ),
+              // Error display
+              if (value.error != null)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    color: Colors.black54,
+                    padding: const EdgeInsets.all(8),
+                    child: Text(
+                      value.error!,
+                      style: const TextStyle(color: Colors.white),
+                      textAlign: TextAlign.center,
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         );
       },

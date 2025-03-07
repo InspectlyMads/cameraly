@@ -12,9 +12,7 @@ class CustomOverlayExample extends StatefulWidget {
 class _CustomOverlayExampleState extends State<CustomOverlayExample> {
   late CameralyController _controller;
   bool _isInitialized = false;
-  double _currentZoom = 1.0;
   bool _isRecording = false;
-  bool _isVideoMode = false;
   bool _torchEnabled = false;
 
   @override
@@ -142,7 +140,6 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
                         _controller.dispose();
                         setState(() {
                           _controller = newController;
-                          _isVideoMode = !isPhotoMode;
                         });
                       },
                       child: Text(isPhotoMode ? 'PHOTO' : 'VIDEO', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -241,7 +238,7 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
         controller: _controller,
         overlay: _buildCustomOverlay(),
         onScale: (scale) {
-          setState(() => _currentZoom = _controller.value.zoomLevel);
+          setState(() {});
         },
       ),
     );

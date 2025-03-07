@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'cameraly_value.dart';
 import 'types/camera_mode.dart';
@@ -13,7 +14,7 @@ import 'utils/media_manager.dart';
 import 'utils/permission_handler.dart';
 
 /// Controller for the Cameraly camera interface.
-class CameralyController extends ValueNotifier<CameralyValue> {
+class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindingObserver {
   /// Creates a new controller instance.
   CameralyController({
     required CameraDescription description,
@@ -23,13 +24,18 @@ class CameralyController extends ValueNotifier<CameralyValue> {
         _settings = settings ?? const CaptureSettings(),
         _permissionHandler = const CameralyPermissionHandler(),
         _mediaManager = mediaManager ?? CameralyMediaManager(),
-        super(const CameralyValue.uninitialized());
+        _isProcessingOrientation = false,
+        super(const CameralyValue.uninitialized()) {
+    // Register as an observer for app lifecycle changes
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   final CameraDescription _description;
   final CaptureSettings _settings;
   final CameralyPermissionHandler _permissionHandler;
   final CameralyMediaManager _mediaManager;
   CameraController? _controller;
+  bool _isProcessingOrientation;
 
   /// The camera description this controller is using
   CameraDescription get description => _description;
@@ -239,15 +245,24 @@ class CameralyController extends ValueNotifier<CameralyValue> {
       // Listen for camera value changes to update our value
       _controller!.addListener(_updateValueFromController);
 
+      // Set initial orientation for Android
+      if (Platform.isAndroid) {
+        await _handleInitialOrientation();
+      }
+
       // Default to assuming flash is available, we'll update this if we detect otherwise
       bool hasFlashCapability = true;
+
+      // Get the current device orientation - we'll update this after initialization
+      // but we need a default value for now
+      final deviceOrientation = _settings.deviceOrientation;
 
       value = CameralyValue(
         isInitialized: true,
         flashMode: _settings.flashMode,
         exposureMode: _settings.exposureMode,
         focusMode: _settings.focusMode,
-        deviceOrientation: _settings.deviceOrientation,
+        deviceOrientation: deviceOrientation,
         permissionState: CameraPermissionState.granted,
         isFrontCamera: _description.lensDirection == CameraLensDirection.front,
         zoomLevel: 1.0,
@@ -288,172 +303,168 @@ class CameralyController extends ValueNotifier<CameralyValue> {
     }
   }
 
-  /// Initializes the camera with fallback options if the initial initialization fails.
-  ///
-  /// This method attempts to initialize the camera with the current settings.
-  /// If that fails, it tries alternative settings in the following order:
-  /// 1. Disable flash if it's enabled
-  /// 2. Lower resolution if it's high
-  /// 3. Try video-only mode if photo mode fails
-  ///
-  /// Returns true if initialization succeeds with any settings, false otherwise.
-  Future<bool> initializeWithFallback() async {
+  /// Handles the initial orientation setup for Android devices
+  Future<void> _handleInitialOrientation() async {
     try {
-      // First try with current settings
-      debugPrint('Attempting to initialize camera with current settings');
-      await initialize();
-      debugPrint('Camera initialized successfully with current settings');
-      return true;
+      // Get the current device orientation from the platform
+      final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
+      final view = platformDispatcher.views.first;
+      final size = view.physicalSize;
+
+      // Determine if we're in landscape mode
+      final isLandscape = size.width > size.height;
+
+      // Get the view padding to determine if it's landscape left or right
+      final viewPadding = view.padding;
+
+      // Determine the orientation
+      DeviceOrientation orientation;
+
+      if (isLandscape) {
+        // In landscape, check if it's left or right based on padding
+        final isLandscapeLeft = viewPadding.left > viewPadding.right;
+        orientation = isLandscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
+        debugPrint('📱 Initial orientation: Landscape ${isLandscapeLeft ? "LEFT" : "RIGHT"}');
+      } else {
+        orientation = DeviceOrientation.portraitUp;
+        debugPrint('📱 Initial orientation: Portrait Up');
+      }
+
+      debugPrint('📱 Initial view padding: $viewPadding');
+      debugPrint('📱 Initial physical size: $size');
+      debugPrint('🧭 Setting initial orientation to: $orientation');
+
+      // Set the device orientation in the value
+      value = value.copyWith(deviceOrientation: orientation);
+
+      // For Android, we need to set the capture orientation but not rotate the preview
+      if (Platform.isAndroid) {
+        // Only set the sensor orientation for capture, don't rotate the preview
+        await _controller?.lockCaptureOrientation(orientation);
+      }
     } catch (e) {
-      debugPrint('Error initializing camera with current settings: $e');
-
-      // Try with flash disabled if the error is related to flash
-      if (e.toString().contains('flash') || e.toString().contains('Flash')) {
-        debugPrint('Flash capability error detected, retrying with flash disabled');
-        try {
-          // Create new settings with flash disabled
-          CaptureSettings newSettings;
-          if (_settings is PhotoSettings) {
-            newSettings = (_settings).copyWith(flashMode: FlashMode.off);
-          } else {
-            newSettings = _settings;
-          }
-
-          // Create a new controller with the new settings
-          final newController = CameralyController(
-            description: _description,
-            settings: newSettings,
-          );
-
-          // Initialize the new controller
-          await newController.initialize();
-
-          // Update this controller with the new controller's values
-          _controller = newController._controller;
-          value = newController.value.copyWith(
-            hasFlashCapability: false,
-          );
-
-          debugPrint('Camera initialized successfully with flash disabled');
-          return true;
-        } catch (retryError) {
-          debugPrint('Retry with flash disabled also failed: $retryError');
-        }
-      }
-
-      // Try with lower resolution if current resolution is high
-      if (_settings.resolution == ResolutionPreset.high || _settings.resolution == ResolutionPreset.veryHigh || _settings.resolution == ResolutionPreset.ultraHigh || _settings.resolution == ResolutionPreset.max) {
-        debugPrint('Trying with lower resolution');
-        try {
-          // Create new settings with lower resolution
-          CaptureSettings newSettings;
-          if (_settings is PhotoSettings) {
-            newSettings = (_settings).copyWith(
-              resolution: ResolutionPreset.medium,
-              flashMode: FlashMode.off,
-            );
-          } else if (_settings is VideoSettings) {
-            newSettings = (_settings).copyWith(
-              resolution: ResolutionPreset.medium,
-            );
-          } else {
-            newSettings = const CaptureSettings(resolution: ResolutionPreset.medium);
-          }
-
-          // Create a new controller with the new settings
-          final newController = CameralyController(
-            description: _description,
-            settings: newSettings,
-          );
-
-          // Initialize the new controller
-          await newController.initialize();
-
-          // Update this controller with the new controller's values
-          _controller = newController._controller;
-          value = newController.value.copyWith(
-            hasFlashCapability: false,
-          );
-
-          debugPrint('Camera initialized successfully with lower resolution');
-          return true;
-        } catch (resolutionError) {
-          debugPrint('Retry with lower resolution also failed: $resolutionError');
-        }
-      }
-
-      // As a last resort, try video-only mode with audio disabled
-      debugPrint('Attempting video-only initialization as last resort');
-      try {
-        // Create new settings for video-only mode
-        const videoSettings = VideoSettings(
-          resolution: ResolutionPreset.medium,
-          enableAudio: false,
-        );
-
-        // Create a new controller with video settings
-        final newController = CameralyController(
-          description: _description,
-          settings: videoSettings,
-        );
-
-        // Initialize the new controller
-        await newController.initialize();
-
-        // Update this controller with the new controller's values
-        _controller = newController._controller;
-        value = newController.value.copyWith(
-          hasFlashCapability: false,
-        );
-
-        debugPrint('Video-only initialization successful');
-        return true;
-      } catch (videoError) {
-        debugPrint('Video-only initialization also failed: $videoError');
-      }
-
-      // If all attempts fail, update the value with an error
-      value = value.copyWith(
-        error: 'Failed to initialize camera after multiple attempts',
-      );
-
-      return false;
+      debugPrint('Error setting initial orientation: $e');
     }
   }
 
-  /// Initializes the camera with platform-specific optimizations.
-  ///
-  /// This method handles platform-specific camera initialization:
-  /// - On Android, it ensures proper orientation handling with CameraX
-  /// - On iOS, it handles specific iOS camera quirks
-  ///
-  /// Returns true if initialization succeeds, false otherwise.
-  Future<bool> initializeWithPlatformOptimizations() async {
-    try {
-      // First, initialize the camera
-      await initialize();
+  /// Handles orientation changes
+  Future<void> handleOrientationChange(BuildContext context) async {
+    if (_isProcessingOrientation || _controller == null || !_controller!.value.isInitialized) {
+      return;
+    }
 
-      // Then apply platform-specific optimizations
-      if (Platform.isAndroid) {
-        // For Android with CameraX, we need to set the target rotation
-        if (_controller != null) {
-          try {
-            // This is a dummy call to ensure controller is initialized
-            await _controller!.setExposureOffset(0.0);
-            debugPrint('Using CameraX on Android with explicit orientation handling');
-          } catch (e) {
-            debugPrint('Error setting camera orientation: $e');
-          }
-        }
-      } else if (Platform.isIOS) {
-        // iOS-specific optimizations if needed
-        debugPrint('Applying iOS-specific camera optimizations');
+    _isProcessingOrientation = true;
+
+    try {
+      // Get current orientation
+      final orientation = MediaQuery.of(context).orientation;
+      DeviceOrientation targetOrientation;
+
+      if (orientation == Orientation.landscape) {
+        // We need a better way to detect landscape left vs right
+        // Use the device's rotation to determine the orientation
+        final rotationValue = MediaQuery.of(context).devicePixelRatio;
+        final windowPadding = MediaQuery.of(context).viewPadding;
+
+        // If the left padding is greater than the right padding, it's likely landscape left
+        final isLandscapeLeft = windowPadding.left > windowPadding.right;
+
+        targetOrientation = isLandscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
+
+        // Print orientation information
+        debugPrint('🔄 ORIENTATION CHANGED: Landscape ${isLandscapeLeft ? "LEFT" : "RIGHT"}');
+        debugPrint('📱 Window Padding: $windowPadding');
+        debugPrint('📱 Device Pixel Ratio: $rotationValue');
+        debugPrint('🧭 Target Orientation: $targetOrientation');
+      } else {
+        targetOrientation = DeviceOrientation.portraitUp;
+
+        // Print orientation information
+        debugPrint('🔄 ORIENTATION CHANGED: Portrait Up');
+        debugPrint('📱 Device Size: ${WidgetsBinding.instance.platformDispatcher.views.first.physicalSize}');
+        debugPrint('🧭 Target Orientation: $targetOrientation');
       }
 
-      return true;
-    } catch (e) {
-      debugPrint('Error in platform-optimized initialization: $e');
-      return false;
+      // Only Android needs special handling for orientation
+      if (Platform.isAndroid) {
+        try {
+          // Just set the capture orientation without rotating the preview
+          await _controller!.lockCaptureOrientation(targetOrientation);
+
+          // Force a value update to trigger UI rebuild
+          value = value.copyWith(
+            deviceOrientation: targetOrientation,
+            // Just update with current value to trigger notification
+            isInitialized: value.isInitialized,
+          );
+        } catch (e) {
+          debugPrint('Error updating camera orientation: $e');
+        }
+      }
+    } finally {
+      _isProcessingOrientation = false;
+    }
+  }
+
+  /// Returns the appropriate transform for the camera preview based on orientation
+  Transform getPreviewTransform(BuildContext context, Widget child) {
+    // We don't need to transform the preview anymore since it was correct before
+    return Transform.rotate(
+      angle: 0,
+      child: child,
+    );
+  }
+
+  /// Builds a camera preview widget with proper orientation handling
+  Widget buildOrientationAwarePreview(BuildContext context) {
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return Container(color: Colors.black);
+    }
+
+    // Get the current orientation from MediaQuery
+    final mediaQueryOrientation = MediaQuery.of(context).orientation;
+
+    // Get the device orientation from our controller value
+    // This is more reliable, especially for the initial orientation
+    final deviceOrientation = value.deviceOrientation;
+
+    // Determine if we're in landscape mode
+    final isLandscape = mediaQueryOrientation == Orientation.landscape || deviceOrientation == DeviceOrientation.landscapeLeft || deviceOrientation == DeviceOrientation.landscapeRight;
+
+    // Get the camera's natural aspect ratio
+    final cameraAspectRatio = _controller!.value.aspectRatio;
+
+    // In portrait mode, we need to invert the aspect ratio
+    // This is because the camera sensor is naturally in landscape orientation
+    final previewRatio = isLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
+
+    // For Android, we need to check if we need to rotate the preview
+    if (Platform.isAndroid) {
+      // Check if we need to apply rotation for landscape left
+      if (deviceOrientation == DeviceOrientation.landscapeLeft) {
+        debugPrint('📱 Applying rotation for Landscape LEFT in preview');
+        // For landscape left, we need to rotate 180 degrees to fix upside-down preview
+        return AspectRatio(
+          aspectRatio: previewRatio,
+          child: Transform.rotate(
+            angle: 3.14159, // 180 degrees (π) rotation for landscape left
+            child: CameraPreview(_controller!),
+          ),
+        );
+      } else {
+        debugPrint('📱 No rotation needed for ${deviceOrientation.toString()} in preview');
+        // For landscape right or portrait, no rotation needed
+        return AspectRatio(
+          aspectRatio: previewRatio,
+          child: CameraPreview(_controller!),
+        );
+      }
+    } else {
+      // Normal preview for portrait or iOS
+      return AspectRatio(
+        aspectRatio: previewRatio,
+        child: CameraPreview(_controller!),
+      );
     }
   }
 
@@ -486,12 +497,27 @@ class CameralyController extends ValueNotifier<CameralyValue> {
 
     try {
       value = value.copyWith(isTakingPicture: true);
+
+      // Ensure the orientation is set correctly before taking the picture
+      if (Platform.isAndroid) {
+        // Use the current device orientation from our value
+        // This is more reliable than trying to detect it here
+        final deviceOrientation = value.deviceOrientation;
+
+        debugPrint('📸 Taking picture with orientation: $deviceOrientation');
+
+        // Lock the capture orientation to ensure the image is captured correctly
+        await _controller!.lockCaptureOrientation(deviceOrientation);
+      }
+
+      // Take the picture
       final file = await _controller!.takePicture();
+
       value = value.copyWith(
         isTakingPicture: false,
         lastCapturedPhoto: file,
       );
-      // Remove automatic media addition since it's handled by the callback
+
       return file;
     } catch (e) {
       value = value.copyWith(
@@ -572,6 +598,18 @@ class CameralyController extends ValueNotifier<CameralyValue> {
     }
 
     try {
+      // Ensure the orientation is set correctly before starting recording
+      if (Platform.isAndroid) {
+        // Use the current device orientation from our value
+        // This is more reliable than trying to detect it here
+        final deviceOrientation = value.deviceOrientation;
+
+        debugPrint('🎥 Starting video recording with orientation: $deviceOrientation');
+
+        // Lock the capture orientation to ensure the video is recorded correctly
+        await _controller!.lockCaptureOrientation(deviceOrientation);
+      }
+
       await _controller!.startVideoRecording();
       value = value.copyWith(isRecordingVideo: true);
     } on CameraException catch (e) {
@@ -881,10 +919,291 @@ class CameralyController extends ValueNotifier<CameralyValue> {
     }
   }
 
-  /// Disposes of the controller.
+  /// Initializes the camera with fallback options if the initial initialization fails.
+  ///
+  /// This method attempts to initialize the camera with the current settings.
+  /// If that fails, it tries alternative settings in the following order:
+  /// 1. Disable flash if it's enabled
+  /// 2. Lower resolution if it's high
+  /// 3. Try video-only mode if photo mode fails
+  ///
+  /// Returns true if initialization succeeds with any settings, false otherwise.
+  Future<bool> initializeWithFallback() async {
+    try {
+      // First try with current settings
+      debugPrint('Attempting to initialize camera with current settings');
+      await initialize();
+      debugPrint('Camera initialized successfully with current settings');
+      return true;
+    } catch (e) {
+      debugPrint('Error initializing camera with current settings: $e');
+
+      // Try with flash disabled if the error is related to flash
+      if (e.toString().contains('flash') || e.toString().contains('Flash')) {
+        debugPrint('Flash capability error detected, retrying with flash disabled');
+        try {
+          // Create new settings with flash disabled
+          CaptureSettings newSettings;
+          if (_settings is PhotoSettings) {
+            newSettings = (_settings).copyWith(flashMode: FlashMode.off);
+          } else {
+            newSettings = _settings;
+          }
+
+          // Create a new controller with the new settings
+          final newController = CameralyController(
+            description: _description,
+            settings: newSettings,
+          );
+
+          // Initialize the new controller
+          await newController.initialize();
+
+          // Update this controller with the new controller's values
+          _controller = newController._controller;
+          value = newController.value.copyWith(
+            hasFlashCapability: false,
+          );
+
+          debugPrint('Camera initialized successfully with flash disabled');
+          return true;
+        } catch (retryError) {
+          debugPrint('Retry with flash disabled also failed: $retryError');
+        }
+      }
+
+      // Try with lower resolution if current resolution is high
+      if (_settings.resolution == ResolutionPreset.high || _settings.resolution == ResolutionPreset.veryHigh || _settings.resolution == ResolutionPreset.ultraHigh || _settings.resolution == ResolutionPreset.max) {
+        debugPrint('Trying with lower resolution');
+        try {
+          // Create new settings with lower resolution
+          CaptureSettings newSettings;
+          if (_settings is PhotoSettings) {
+            newSettings = (_settings).copyWith(
+              resolution: ResolutionPreset.medium,
+              flashMode: FlashMode.off,
+            );
+          } else if (_settings is VideoSettings) {
+            newSettings = (_settings).copyWith(
+              resolution: ResolutionPreset.medium,
+            );
+          } else {
+            newSettings = const CaptureSettings(resolution: ResolutionPreset.medium);
+          }
+
+          // Create a new controller with the new settings
+          final newController = CameralyController(
+            description: _description,
+            settings: newSettings,
+          );
+
+          // Initialize the new controller
+          await newController.initialize();
+
+          // Update this controller with the new controller's values
+          _controller = newController._controller;
+          value = newController.value.copyWith(
+            hasFlashCapability: false,
+          );
+
+          debugPrint('Camera initialized successfully with lower resolution');
+          return true;
+        } catch (resolutionError) {
+          debugPrint('Retry with lower resolution also failed: $resolutionError');
+        }
+      }
+
+      // As a last resort, try video-only mode with audio disabled
+      debugPrint('Attempting video-only initialization as last resort');
+      try {
+        // Create new settings for video-only mode
+        const videoSettings = VideoSettings(
+          resolution: ResolutionPreset.medium,
+          enableAudio: false,
+        );
+
+        // Create a new controller with video settings
+        final newController = CameralyController(
+          description: _description,
+          settings: videoSettings,
+        );
+
+        // Initialize the new controller
+        await newController.initialize();
+
+        // Update this controller with the new controller's values
+        _controller = newController._controller;
+        value = newController.value.copyWith(
+          hasFlashCapability: false,
+        );
+
+        debugPrint('Video-only initialization successful');
+        return true;
+      } catch (videoError) {
+        debugPrint('Video-only initialization also failed: $videoError');
+      }
+
+      // If all attempts fail, update the value with an error
+      value = value.copyWith(
+        error: 'Failed to initialize camera after multiple attempts',
+      );
+
+      return false;
+    }
+  }
+
+  /// Initializes the camera with platform-specific optimizations.
+  ///
+  /// This method handles platform-specific camera initialization:
+  /// - On Android, it ensures proper orientation handling with CameraX
+  /// - On iOS, it handles specific iOS camera quirks
+  ///
+  /// Returns true if initialization succeeds, false otherwise.
+  Future<bool> initializeWithPlatformOptimizations() async {
+    try {
+      // First, initialize the camera
+      await initialize();
+
+      // Then apply platform-specific optimizations
+      if (Platform.isAndroid) {
+        // For Android with CameraX, we need to set the target rotation
+        if (_controller != null) {
+          try {
+            // This is a dummy call to ensure controller is initialized
+            await _controller!.setExposureOffset(0.0);
+            debugPrint('Using CameraX on Android with explicit orientation handling');
+          } catch (e) {
+            debugPrint('Error setting camera orientation: $e');
+          }
+        }
+      } else if (Platform.isIOS) {
+        // iOS-specific optimizations if needed
+        debugPrint('Applying iOS-specific camera optimizations');
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error in platform-optimized initialization: $e');
+      return false;
+    }
+  }
+
+  /// Sets the device orientation for the camera.
+  ///
+  /// This method sets the device orientation for the camera without pausing/resuming
+  /// the preview, which can cause locking issues.
+  Future<void> setDeviceOrientation(DeviceOrientation orientation) async {
+    if (!value.isInitialized || _controller == null) return;
+
+    try {
+      // Update the value first to trigger UI updates
+      value = value.copyWith(deviceOrientation: orientation);
+
+      // Then set the orientation on the camera controller
+      await _controller!.lockCaptureOrientation(orientation);
+    } catch (e) {
+      debugPrint('Error setting device orientation: $e');
+    }
+  }
+
+  /// Handles orientation changes based on device sensor data rather than UI orientation.
+  /// This can provide smoother transitions when rotating the device.
+  void handleDeviceOrientationChange() {
+    if (!value.isInitialized || _controller == null) return;
+
+    // Get the current device orientation from the platform
+    final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
+    final size = platformDispatcher.views.first.physicalSize;
+    final view = platformDispatcher.views.first;
+
+    // Determine orientation based on physical dimensions
+    final isLandscape = size.width > size.height;
+
+    // Print orientation information
+    debugPrint('📱 DEVICE ORIENTATION CHANGED:');
+    debugPrint('📐 Physical Size: $size');
+    debugPrint('📱 Is Landscape: $isLandscape');
+    debugPrint('🧭 Previous Orientation: ${value.deviceOrientation}');
+    debugPrint('📷 Camera Sensor Orientation: ${_description.sensorOrientation}°');
+
+    // Set the appropriate orientation
+    DeviceOrientation newOrientation;
+    if (isLandscape) {
+      // Try to determine if it's landscape left or right
+      // We need to check the view padding to determine if it's left or right
+      // This is more reliable than using physical dimensions
+
+      // Get the view padding - on most devices, the side with the notch or buttons
+      // will have larger padding
+      final viewPadding = view.padding;
+      final isLandscapeLeft = viewPadding.left > viewPadding.right;
+
+      if (isLandscapeLeft) {
+        newOrientation = DeviceOrientation.landscapeLeft;
+        debugPrint('🧭 Detected Landscape LEFT orientation (by padding)');
+      } else {
+        newOrientation = DeviceOrientation.landscapeRight;
+        debugPrint('🧭 Detected Landscape RIGHT orientation (by padding)');
+      }
+
+      debugPrint('📱 View Padding: $viewPadding');
+      debugPrint('🧭 New Orientation: $newOrientation');
+    } else {
+      newOrientation = DeviceOrientation.portraitUp;
+      debugPrint('🧭 New Orientation: $newOrientation');
+    }
+
+    setDeviceOrientation(newOrientation);
+  }
+
   @override
-  Future<void> dispose() async {
-    await _controller?.dispose();
+  void didChangeMetrics() {
+    // This method is called whenever the device orientation changes
+    super.didChangeMetrics();
+
+    debugPrint('📊 METRICS CHANGED - Device orientation might have changed');
+
+    // Handle orientation changes directly in the controller
+    if (value.isInitialized) {
+      handleDeviceOrientationChange();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller?.dispose();
     super.dispose();
+  }
+
+  /// Manually detects and prints the current device orientation.
+  /// This method can be called from outside to debug orientation issues.
+  void printCurrentOrientation(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
+    final size = platformDispatcher.views.first.physicalSize;
+    final isLandscape = size.width > size.height;
+    final orientation = mediaQuery.orientation;
+    final windowPadding = mediaQuery.viewPadding;
+    final devicePixelRatio = mediaQuery.devicePixelRatio;
+
+    debugPrint('📊 ORIENTATION DEBUG INFO:');
+    debugPrint('📱 Device Physical Size: $size');
+    debugPrint('📱 MediaQuery Orientation: $orientation');
+    debugPrint('📱 Is Landscape (by size): $isLandscape');
+    debugPrint('📱 Window Padding: $windowPadding');
+    debugPrint('📱 Device Pixel Ratio: $devicePixelRatio');
+    debugPrint('🧭 Current Controller Orientation: ${value.deviceOrientation}');
+    debugPrint('📷 Camera Description: ${_description.name}');
+    debugPrint('📷 Camera Lens Direction: ${_description.lensDirection}');
+    debugPrint('📷 Camera Sensor Orientation: ${_description.sensorOrientation}°');
+
+    // Try to determine if we're in landscape left or right
+    if (orientation == Orientation.landscape) {
+      // If the left padding is greater than the right padding, it's likely landscape left
+      final isLandscapeLeft = windowPadding.left > windowPadding.right;
+      debugPrint('📱 Is Landscape Left (by padding): $isLandscapeLeft');
+      debugPrint('📱 Detected Orientation: ${isLandscapeLeft ? "Landscape LEFT" : "Landscape RIGHT"}');
+    }
   }
 }

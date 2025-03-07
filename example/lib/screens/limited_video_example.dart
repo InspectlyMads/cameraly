@@ -113,7 +113,7 @@ class _LimitedVideoExampleState extends State<LimitedVideoExample> {
                 valueListenable: _controller,
                 builder: (context, value, child) {
                   return Container(
-                    decoration: BoxDecoration(color: value.isRecordingVideo ? Colors.grey.withOpacity(0.3) : Colors.black54, shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: value.isRecordingVideo ? Colors.grey.withAlpha(77) : Colors.black54, shape: BoxShape.circle),
                     child: IconButton(
                       onPressed:
                           value.isRecordingVideo

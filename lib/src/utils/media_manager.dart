@@ -209,7 +209,7 @@ class CameralyMediaStack extends StatelessWidget {
             borderRadius: BorderRadius.circular(borderRadius),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withAlpha(76),
                 blurRadius: 10,
                 spreadRadius: 2,
               ),
@@ -231,7 +231,7 @@ class CameralyMediaStack extends StatelessWidget {
                       border: Border.all(color: borderColor, width: borderWidth),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withAlpha(51),
                           blurRadius: 4,
                           spreadRadius: 1,
                           offset: const Offset(0, 2),
@@ -258,7 +258,7 @@ class CameralyMediaStack extends StatelessWidget {
                       border: Border.all(color: borderColor, width: 1.5),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withAlpha(76),
                           blurRadius: 4,
                           spreadRadius: 0,
                         ),
@@ -289,7 +289,7 @@ class CameralyMediaStack extends StatelessWidget {
                         borderRadius: BorderRadius.circular(10),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
+                            color: Colors.black.withAlpha(76),
                             blurRadius: 4,
                             spreadRadius: 0,
                           ),
@@ -335,7 +335,7 @@ class CameralyMediaStack extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withAlpha(153),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: const Icon(
@@ -405,7 +405,13 @@ class CameralyGalleryView extends StatelessWidget {
         backgroundColor: appBarColor,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: appBarTextColor),
-          onPressed: onClose,
+          onPressed: () {
+            if (onClose != null) {
+              onClose!();
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
         ),
         actions: [
           if (mediaManager.isNotEmpty)
@@ -429,13 +435,13 @@ class CameralyGalleryView extends StatelessWidget {
                       Icon(
                         Icons.photo_library,
                         size: 64,
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withAlpha(128),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'No media captured yet',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withAlpha(179),
                           fontSize: 16,
                         ),
                       ),
@@ -488,7 +494,7 @@ class CameralyGalleryView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withAlpha(153),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: const Icon(

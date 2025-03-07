@@ -1,4 +1,3 @@
-import 'package:camera/camera.dart' show XFile;
 import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
 
