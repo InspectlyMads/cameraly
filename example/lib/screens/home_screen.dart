@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import 'camera_screen.dart';
 import 'custom_display_screen.dart';
 import 'custom_overlay_example.dart';
-import 'limited_video_example.dart';
-import 'persistent_storage_example.dart';
 import 'inspectly_version.dart';
+import 'limited_video_example.dart';
 
 /// Home screen with examples list
 class HomeScreen extends StatelessWidget {
@@ -76,14 +75,6 @@ class HomeScreen extends StatelessWidget {
             color: Colors.indigo,
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CustomOverlayExample())),
           ),
-          _buildExampleTile(
-            context,
-            title: 'Persistent Storage Example',
-            subtitle: 'Save photos and videos to custom locations',
-            icon: Icons.save,
-            color: Colors.amber,
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PersistentStorageExample())),
-          ),
         ],
       ),
     );
@@ -94,6 +85,7 @@ class HomeScreen extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 3,
       shadowColor: color.withAlpha((0.3 * 255).round()),
+      
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(backgroundColor: color.withAlpha((0.2 * 255).round()), child: Icon(icon, color: color)),
