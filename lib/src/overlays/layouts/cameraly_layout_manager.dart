@@ -58,7 +58,7 @@ class CameralyLayoutManager extends StatelessWidget {
         ),
 
         // Main layout
-        isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
+        isLandscape ? _buildLandscapeLayout(context) : _buildPortraitLayout(),
 
         // Video duration limit UI
         if (isRecording && hasVideoDurationLimit && maxVideoDuration != null)
@@ -119,10 +119,10 @@ class CameralyLayoutManager extends StatelessWidget {
     );
   }
 
-  Widget _buildLandscapeLayout() {
+  Widget _buildLandscapeLayout(BuildContext context) {
     const leftAreaWidth = 80.0;
     const rightAreaWidth = 140.0;
-    const topAreaHeight = 80.0;
+    var topAreaHeight = MediaQuery.of(context).size.height;
 
     return Stack(
       children: [
