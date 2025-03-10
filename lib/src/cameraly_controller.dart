@@ -877,9 +877,6 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     if (!value.isInitialized) return;
 
     try {
-      // Debug print
-      debugPrint('Setting focus and exposure at: $point');
-
       // The point is already normalized (0.0 to 1.0) from the CameralyPreview
       // Make sure it's within valid bounds
       final normalizedPoint = Offset(
@@ -887,29 +884,30 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         point.dy.clamp(0.0, 1.0),
       );
 
-      // Update the value with the new focus and exposure points immediately
-      // This will trigger the UI update for the focus circle right away
-      value = value.copyWith(
-        focusPoint: normalizedPoint,
-        exposurePoint: normalizedPoint,
-        focusMode: FocusMode.auto,
-        exposureMode: ExposureMode.auto,
-        error: null, // Clear any previous errors
-      );
-
-      // Set focus mode to auto to enable tap-to-focus
+      // Set focus and exposure modes to auto first
       await _controller!.setFocusMode(FocusMode.auto);
-
-      // Set exposure mode to auto to enable tap-to-expose
       await _controller!.setExposureMode(ExposureMode.auto);
 
-      // Set the focus point
-      await _controller!.setFocusPoint(normalizedPoint);
+      // Create a temporary value with the new focus point
+      // This ensures we don't update the UI state until all operations succeed
+      CameralyValue newValue = value.copyWith(
+        focusMode: FocusMode.auto,
+        exposureMode: ExposureMode.auto,
+      );
 
-      // Set the exposure point
+      // Set focus point first and wait for it to complete
+      await _controller!.setFocusPoint(normalizedPoint);
+      newValue = newValue.copyWith(focusPoint: normalizedPoint);
+
+      // Then set exposure point and wait for it to complete
       await _controller!.setExposurePoint(normalizedPoint);
+      newValue = newValue.copyWith(exposurePoint: normalizedPoint);
+
+      // Only update the value once all operations have succeeded
+      value = newValue;
     } catch (e) {
       debugPrint('Error setting focus and exposure: $e');
+      // Don't update the focus point if there was an error
       value = value.copyWith(
         error: 'Failed to set focus and exposure point: $e',
       );
