@@ -28,6 +28,7 @@ class ZoomSlider extends StatelessWidget {
       ),
       child: isLandscape
           ? Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 SizedBox(
                   height: 36,
@@ -43,7 +44,7 @@ class ZoomSlider extends StatelessWidget {
                 ),
                 Expanded(
                   child: RotatedBox(
-                    quarterTurns: -1,
+                    quarterTurns: 1,
                     child: SliderTheme(
                       data: SliderThemeData(
                         trackHeight: 2,
