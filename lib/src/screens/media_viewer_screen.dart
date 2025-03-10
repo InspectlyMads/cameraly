@@ -90,20 +90,27 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
 
   void _deleteCurrentMedia() {
     final file = widget.mediaFiles[_currentIndex];
-    widget.onDelete?.call(file);
-    if (widget.mediaFiles.length == 1) {
-      Navigator.of(context).pop();
-    } else {
-      setState(() {
-        if (_currentIndex == widget.mediaFiles.length - 1) {
-          _currentIndex--;
-          _pageController.previousPage(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-          );
-        }
-      });
-    }
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Media'),
+        content: const Text('Are you sure you want to delete this item?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close dialog
+              widget.onDelete?.call(file);
+              Navigator.of(context).pop(); // Close viewer
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _shareCurrentMedia() {
@@ -183,9 +190,12 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                 return InteractiveViewer(
                   minScale: 0.5,
                   maxScale: 4.0,
-                  child: Image.file(
-                    File(file.path),
-                    fit: BoxFit.contain,
+                  child: Hero(
+                    tag: file.path,
+                    child: Image.file(
+                      File(file.path),
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 );
               }

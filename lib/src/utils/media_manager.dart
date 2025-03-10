@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../screens/image_view_screen.dart';
 import '../screens/media_viewer_screen.dart';
 
 /// A class that manages captured media (photos and videos).
@@ -176,29 +175,17 @@ class CameralyMediaStack extends StatelessWidget {
         } else {
           // Open the media viewer
           final mediaFiles = mediaManager.media;
-          final path = mediaFiles.last.path.toLowerCase();
-          final isVideo = path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi');
 
-          if (isVideo || mediaFiles.length > 1) {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => MediaViewerScreen(
-                  mediaFiles: mediaFiles,
-                  initialIndex: mediaFiles.length - 1,
-                  onDelete: (file) => mediaManager.removeMedia(file),
-                ),
+          // Use MediaViewerScreen for consistent swiping experience
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => MediaViewerScreen(
+                mediaFiles: mediaFiles,
+                initialIndex: 0,
+                onDelete: (file) => mediaManager.removeMedia(file),
               ),
-            );
-          } else {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => ImageViewScreen(
-                  imageFile: mediaFiles.last,
-                  onDelete: (file) => mediaManager.removeMedia(file),
-                ),
-              ),
-            );
-          }
+            ),
+          );
         }
       },
       child: SizedBox(
@@ -218,32 +205,33 @@ class CameralyMediaStack extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // Build the stack of images from back to front (reversed order)
-              for (int i = recentMedia.length - 1; i >= 0; i--)
-                Positioned(
-                  left: -(recentMedia.length - 1 - i) * stackOffset,
-                  top: -(recentMedia.length - 1 - i) * stackOffset,
-                  child: Container(
-                    height: itemSize,
-                    width: itemSize,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(borderRadius),
-                      border: Border.all(color: borderColor, width: borderWidth),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(51),
-                          blurRadius: 4,
-                          spreadRadius: 1,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(borderRadius - borderWidth),
-                      child: _buildMediaThumbnail(recentMedia[i]),
+              // Build the stack of images from back to front
+              for (int i = 0; i < recentMedia.length; i++)
+                if (i < maxDisplayItems) // Only render the visible images
+                  Positioned(
+                    left: i * stackOffset,
+                    top: i * stackOffset,
+                    child: Container(
+                      height: itemSize,
+                      width: itemSize,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(borderRadius),
+                        border: Border.all(color: borderColor, width: borderWidth),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(51),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(borderRadius - borderWidth),
+                        child: _buildMediaThumbnail(recentMedia[i]),
+                      ),
                     ),
                   ),
-                ),
 
               // Counter badge if there are more items than we're showing
               if (showCountBadge && mediaManager.count > maxDisplayItems)
@@ -321,10 +309,13 @@ class CameralyMediaStack extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Image thumbnail
-        Image.file(
-          File(path),
-          fit: BoxFit.cover,
+        // Image thumbnail with Hero animation
+        Hero(
+          tag: path,
+          child: Image.file(
+            File(path),
+            fit: BoxFit.cover,
+          ),
         ),
 
         // Video indicator
@@ -351,9 +342,9 @@ class CameralyMediaStack extends StatelessWidget {
 }
 
 /// A widget that displays a gallery of captured media.
-class CameralyGalleryView extends StatelessWidget {
-  /// Creates a new [CameralyGalleryView] widget.
-  const CameralyGalleryView({
+class CameralyCustomGalleryView extends StatelessWidget {
+  /// Creates a new [CameralyCustomGalleryView] widget.
+  const CameralyCustomGalleryView({
     required this.mediaManager,
     this.onClose,
     this.onDelete,
@@ -413,15 +404,6 @@ class CameralyGalleryView extends StatelessWidget {
             }
           },
         ),
-        actions: [
-          if (mediaManager.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.delete, color: appBarTextColor),
-              onPressed: () {
-                _showDeleteAllDialog(context);
-              },
-            ),
-        ],
       ),
       body: AnimatedBuilder(
         animation: mediaManager,
@@ -480,10 +462,13 @@ class CameralyGalleryView extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Image thumbnail
-        Image.file(
-          File(path),
-          fit: BoxFit.cover,
+        // Image thumbnail with Hero animation
+        Hero(
+          tag: path,
+          child: Image.file(
+            File(path),
+            fit: BoxFit.cover,
+          ),
         ),
 
         // Video indicator
@@ -509,50 +494,15 @@ class CameralyGalleryView extends StatelessWidget {
   }
 
   void _showMediaPreview(BuildContext context, XFile file, int index) {
-    final path = file.path;
-    final isVideo = path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi');
-
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.delete, color: Colors.white),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _showDeleteDialog(context, file);
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.share, color: Colors.white),
-                onPressed: () {
-                  // Implement share functionality
-                },
-              ),
-            ],
-          ),
-          body: Center(
-            child: isVideo
-                ? const Center(
-                    child: Icon(
-                      Icons.play_circle_outline,
-                      size: 80,
-                      color: Colors.white,
-                    ),
-                  )
-                : Image.file(
-                    File(path),
-                    fit: BoxFit.contain,
-                  ),
-          ),
+        builder: (context) => MediaViewerScreen(
+          mediaFiles: mediaManager.media,
+          initialIndex: index,
+          onDelete: (file) {
+            mediaManager.removeMedia(file);
+            onDelete?.call(file);
+          },
         ),
       ),
     );
