@@ -18,25 +18,56 @@ class ZoomSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AbsorbPointer(
-      absorbing: false, // Don't block events for the slider itself
-      child: Container(
-        // Add padding around the slider to increase the blocking area
-        padding: const EdgeInsets.all(12),
-        child: Container(
-          width: isLandscape ? 40 : 200,
-          height: isLandscape ? 200 : 40,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.4),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: RotatedBox(
-            quarterTurns: isLandscape ? 3 : 0,
-            child: Row(
+    final sliderWidget = Container(
+      width: isLandscape ? 40 : 200,
+      height: isLandscape ? 200 : 40,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: isLandscape
+          ? Column(
+              children: [
+                SizedBox(
+                  height: 36,
+                  child: Text(
+                    '${currentZoom.toStringAsFixed(1)}x',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Expanded(
+                  child: RotatedBox(
+                    quarterTurns: -1,
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        trackHeight: 2,
+                        activeTrackColor: Colors.white,
+                        inactiveTrackColor: Colors.white.withOpacity(0.3),
+                        thumbColor: Colors.white,
+                        overlayColor: Colors.white.withOpacity(0.1),
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                      ),
+                      child: Slider(
+                        value: currentZoom,
+                        min: minZoom,
+                        max: maxZoom,
+                        onChanged: onZoomChanged,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Zoom level indicator
                 SizedBox(
                   width: 36,
                   child: Text(
@@ -49,39 +80,29 @@ class ZoomSlider extends StatelessWidget {
                     textAlign: TextAlign.center,
                   ),
                 ),
-                // Slider
                 Expanded(
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: SliderTheme(
-                      data: SliderThemeData(
-                        trackHeight: 2,
-                        activeTrackColor: Colors.white,
-                        inactiveTrackColor: Colors.white.withOpacity(0.3),
-                        thumbColor: Colors.white,
-                        overlayColor: Colors.white.withOpacity(0.1),
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                      ),
-                      child: Listener(
-                        onPointerDown: (_) {},
-                        onPointerMove: (_) {},
-                        onPointerUp: (_) {},
-                        child: Slider(
-                          value: currentZoom,
-                          min: minZoom,
-                          max: maxZoom,
-                          onChanged: onZoomChanged,
-                        ),
-                      ),
+                  child: SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 2,
+                      activeTrackColor: Colors.white,
+                      inactiveTrackColor: Colors.white.withOpacity(0.3),
+                      thumbColor: Colors.white,
+                      overlayColor: Colors.white.withOpacity(0.1),
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                    ),
+                    child: Slider(
+                      value: currentZoom,
+                      min: minZoom,
+                      max: maxZoom,
+                      onChanged: onZoomChanged,
                     ),
                   ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
     );
+
+    return sliderWidget;
   }
 }

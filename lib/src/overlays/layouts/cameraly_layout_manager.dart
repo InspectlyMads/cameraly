@@ -80,16 +80,31 @@ class CameralyLayoutManager extends StatelessWidget {
   Widget _buildPortraitLayout() {
     return Stack(
       children: [
-        // Top area
-        topArea,
-
-        // Center area
+        // Center area - full screen with margins
         Positioned(
           top: 0,
           left: 0,
           right: 0,
-          bottom: bottomOverlayWidget != null ? 100 : 0,
+          bottom: 0,
           child: centerArea,
+        ),
+
+        // Top controls area
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: topArea,
+          ),
+        ),
+
+        // Bottom area with controls
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: bottomArea,
         ),
 
         // Bottom overlay widget
@@ -97,43 +112,38 @@ class CameralyLayoutManager extends StatelessWidget {
           Positioned(
             left: 20,
             right: 20,
-            bottom: getBottomAreaHeight(false) + 20,
+            bottom: 20,
             child: bottomOverlayWidget ?? const PlaceholderWidget(type: PlaceholderType.bottomOverlay),
           ),
-
-        // Bottom area with gradient
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: bottomArea,
-        ),
       ],
     );
   }
 
   Widget _buildLandscapeLayout() {
     const leftAreaWidth = 80.0;
-    const rightAreaWidth = 120.0;
+    const rightAreaWidth = 140.0;
+    const topAreaHeight = 80.0;
 
     return Stack(
       children: [
-        // Left area (top area in portrait)
+        // Center area - full screen with margins
         Positioned(
           top: 0,
           left: 0,
-          bottom: 0,
-          width: leftAreaWidth,
-          child: topArea,
-        ),
-
-        // Center area
-        Positioned(
-          top: 0,
-          left: leftAreaWidth,
           right: rightAreaWidth,
           bottom: 0,
           child: centerArea,
+        ),
+
+        // Top controls area - next to back button
+        Positioned(
+          top: 0,
+          left: leftAreaWidth, // After back button
+          right: rightAreaWidth + 16,
+          height: topAreaHeight,
+          child: SafeArea(
+            child: topArea,
+          ),
         ),
 
         // Right area with controls
@@ -142,7 +152,10 @@ class CameralyLayoutManager extends StatelessWidget {
           right: 0,
           bottom: 0,
           width: rightAreaWidth,
-          child: bottomArea,
+          child: Container(
+            alignment: Alignment.centerRight,
+            child: bottomArea,
+          ),
         ),
 
         // Bottom overlay widget

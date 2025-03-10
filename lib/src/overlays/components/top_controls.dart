@@ -73,20 +73,25 @@ class TopControls extends StatelessWidget {
   }) {
     return Container(
       margin: EdgeInsets.only(top: isLandscape ? 20 : 12),
-      decoration: const BoxDecoration(
-        color: Color.fromRGBO(0, 0, 0, 0.3),
-        shape: BoxShape.circle,
-      ),
-      child: IconButton.filled(
-        onPressed: disabled ? null : onPressed,
-        icon: Icon(icon, size: 28),
-        iconSize: 28,
-        style: IconButton.styleFrom(
-          backgroundColor: disabled ? Colors.grey.withAlpha(77) : (backgroundColor ?? Colors.black54),
-          foregroundColor: disabled ? Colors.white60 : (foregroundColor ?? Colors.white),
-          minimumSize: const Size(56, 56),
-          fixedSize: const Size(56, 56),
-          padding: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: IconButton.filled(
+            onPressed: disabled ? null : onPressed,
+            icon: Icon(icon, size: 28),
+            iconSize: 28,
+            style: IconButton.styleFrom(
+              backgroundColor: disabled ? Colors.grey.withAlpha(77) : (backgroundColor ?? Colors.black54),
+              foregroundColor: disabled ? Colors.white60 : (foregroundColor ?? Colors.white),
+              minimumSize: const Size(56, 56),
+              fixedSize: const Size(56, 56),
+              padding: EdgeInsets.zero,
+            ),
+          ),
         ),
       ),
     );
@@ -94,99 +99,203 @@ class TopControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: isLandscape ? 80 : double.infinity,
+    if (isLandscape) {
+      return _buildLandscapeLayout(context);
+    }
+    return _buildPortraitLayout(context);
+  }
+
+  Widget _buildLandscapeLayout(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: MediaQuery.of(context).padding.top + 8,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Flash/Torch controls
+          if (showFlashButton && !isFrontCamera && hasFlashCapability)
+            !isVideoMode
+                ? AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: isRecording ? 0.0 : 1.0,
+                    child: _buildControlButton(
+                      icon: _getFlashIcon(),
+                      onPressed: () {
+                        final modes = [FlashMode.auto, FlashMode.always, FlashMode.off];
+                        final nextIndex = (modes.indexOf(flashMode) + 1) % modes.length;
+                        onFlashModeChanged(modes[nextIndex]);
+                      },
+                      backgroundColor: flashMode == FlashMode.always ? const Color.fromRGBO(255, 193, 7, 0.3) : Colors.black54,
+                      foregroundColor: flashMode == FlashMode.off ? Colors.white60 : Colors.white,
+                    ),
+                  )
+                : _buildControlButton(
+                    icon: torchEnabled ? Icons.flashlight_on : Icons.flashlight_off,
+                    onPressed: onTorchToggled,
+                    backgroundColor: torchEnabled ? const Color.fromRGBO(255, 193, 7, 0.3) : Colors.black54,
+                    foregroundColor: torchEnabled ? Colors.white : Colors.white60,
+                  ),
+
+          // Zoom controls
+          if (showZoomControls) ...[
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showZoomSlider)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      child: ZoomSlider(
+                        currentZoom: currentZoom,
+                        minZoom: minZoom,
+                        maxZoom: maxZoom,
+                        onZoomChanged: onZoomChanged,
+                        isLandscape: isLandscape,
+                      ),
+                    ),
+                  IconButton.filled(
+                    onPressed: onZoomToggled,
+                    icon: const Icon(Icons.zoom_in, size: 28),
+                    iconSize: 28,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      foregroundColor: showZoomSlider ? Colors.white : Colors.white60,
+                      minimumSize: const Size(56, 56),
+                      fixedSize: const Size(56, 56),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Switch camera button - always show in landscape
+          if (onSwitchCamera != null)
+            _buildControlButton(
+              icon: Icons.switch_camera,
+              onPressed: onSwitchCamera,
+            ),
+
+          // Gallery button - always show in landscape when customLeftButton is provided
+          if (onGalleryTap != null && showRelocatedGalleryButton)
+            _buildControlButton(
+              icon: Icons.photo_library,
+              onPressed: onGalleryTap,
+              disabled: isRecording,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPortraitLayout(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
       child: Padding(
         padding: EdgeInsets.only(
-          top: isLandscape ? 0 : MediaQuery.of(context).padding.top,
+          top: MediaQuery.of(context).padding.top,
           left: 16,
           right: 16,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: isLandscape ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            SizedBox(height: isLandscape ? 16 : MediaQuery.of(context).padding.top + 16),
+            SizedBox(height: MediaQuery.of(context).padding.top + 16),
 
             // Flash button (for photo mode)
             if (showFlashButton && !isVideoMode && !isFrontCamera && hasFlashCapability)
-              Align(
-                alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: isRecording ? 0.0 : 1.0,
-                  child: _buildControlButton(
-                    icon: _getFlashIcon(),
-                    onPressed: () {
-                      final modes = [FlashMode.auto, FlashMode.always, FlashMode.off];
-                      final nextIndex = (modes.indexOf(flashMode) + 1) % modes.length;
-                      onFlashModeChanged(modes[nextIndex]);
-                    },
-                    backgroundColor: flashMode == FlashMode.always ? const Color.fromRGBO(255, 193, 7, 0.3) : Colors.black54,
-                    foregroundColor: flashMode == FlashMode.off ? Colors.white60 : Colors.white,
-                  ),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isRecording ? 0.0 : 1.0,
+                child: _buildControlButton(
+                  icon: _getFlashIcon(),
+                  onPressed: () {
+                    final modes = [FlashMode.auto, FlashMode.always, FlashMode.off];
+                    final nextIndex = (modes.indexOf(flashMode) + 1) % modes.length;
+                    onFlashModeChanged(modes[nextIndex]);
+                  },
+                  backgroundColor: flashMode == FlashMode.always ? const Color.fromRGBO(255, 193, 7, 0.3) : Colors.black54,
+                  foregroundColor: flashMode == FlashMode.off ? Colors.white60 : Colors.white,
                 ),
               ),
 
             // Torch button (for video mode)
             if (showFlashButton && isVideoMode && !isFrontCamera && hasFlashCapability)
-              Align(
-                alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: _buildControlButton(
-                  icon: torchEnabled ? Icons.flashlight_on : Icons.flashlight_off,
-                  onPressed: onTorchToggled,
-                  backgroundColor: torchEnabled ? const Color.fromRGBO(255, 193, 7, 0.3) : Colors.black54,
-                  foregroundColor: torchEnabled ? Colors.white : Colors.white60,
-                ),
-              ),
-
-            // Relocated gallery button
-            if (showRelocatedGalleryButton && onGalleryTap != null)
-              Align(
-                alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: _buildControlButton(
-                  icon: Icons.photo_library,
-                  onPressed: onGalleryTap,
-                  disabled: isRecording,
-                ),
-              ),
-
-            // Relocated camera switch button
-            if (showRelocatedSwitchButton && onSwitchCamera != null)
-              Align(
-                alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: _buildControlButton(
-                  icon: Icons.switch_camera,
-                  onPressed: onSwitchCamera,
-                ),
+              _buildControlButton(
+                icon: torchEnabled ? Icons.flashlight_on : Icons.flashlight_off,
+                onPressed: onTorchToggled,
+                backgroundColor: torchEnabled ? const Color.fromRGBO(255, 193, 7, 0.3) : Colors.black54,
+                foregroundColor: torchEnabled ? Colors.white : Colors.white60,
               ),
 
             // Zoom controls
             if (showZoomControls) ...[
-              Align(
-                alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: _buildControlButton(
-                  icon: Icons.zoom_in,
-                  onPressed: onZoomToggled,
-                  backgroundColor: Colors.black54,
-                  foregroundColor: showZoomSlider ? Colors.white : Colors.white60,
+              Container(
+                margin: EdgeInsets.only(top: isLandscape ? 20 : 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showZoomSlider)
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        child: ZoomSlider(
+                          currentZoom: currentZoom,
+                          minZoom: minZoom,
+                          maxZoom: maxZoom,
+                          onZoomChanged: onZoomChanged,
+                          isLandscape: isLandscape,
+                        ),
+                      ),
+                    IconButton.filled(
+                      onPressed: onZoomToggled,
+                      icon: const Icon(Icons.zoom_in, size: 28),
+                      iconSize: 28,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        foregroundColor: showZoomSlider ? Colors.white : Colors.white60,
+                        minimumSize: const Size(56, 56),
+                        fixedSize: const Size(56, 56),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (showZoomSlider)
-                Align(
-                  alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 16),
-                    child: ZoomSlider(
-                      currentZoom: currentZoom,
-                      minZoom: minZoom,
-                      maxZoom: maxZoom,
-                      onZoomChanged: onZoomChanged,
-                      isLandscape: isLandscape,
-                    ),
-                  ),
-                ),
             ],
+
+            // Gallery and camera switch buttons - show either relocated or custom buttons
+            if (showRelocatedGalleryButton && onGalleryTap != null)
+              _buildControlButton(
+                icon: Icons.photo_library,
+                onPressed: onGalleryTap,
+                disabled: isRecording,
+              ),
+
+            if (showRelocatedSwitchButton && onSwitchCamera != null)
+              _buildControlButton(
+                icon: Icons.switch_camera,
+                onPressed: onSwitchCamera,
+              ),
+
+            if (!showRelocatedGalleryButton && onGalleryTap != null)
+              _buildControlButton(
+                icon: Icons.photo_library,
+                onPressed: onGalleryTap,
+                disabled: isRecording,
+              ),
+
+            if (!showRelocatedSwitchButton && onSwitchCamera != null)
+              _buildControlButton(
+                icon: Icons.switch_camera,
+                onPressed: onSwitchCamera,
+              ),
           ],
         ),
       ),

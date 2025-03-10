@@ -66,27 +66,27 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
 
   Widget _buildCameraPreview() {
     return Stack(
-      fit: StackFit.expand, // Make sure stack fills the screen
+      fit: StackFit.expand,
       children: [
         CameralyPreview(
           controller: _controller,
           overlay: DefaultCameralyOverlay(
             controller: _controller,
             onPictureTaken: (file) {
-              debugPrint('Picture taken: ${file.path}'); // Debug print
+              debugPrint('Picture taken: ${file.path}');
               _mediaManager.addMedia(file);
             },
             customRightButton: FloatingActionButton(
               onPressed: () {
-                debugPrint('Done button pressed with ${_mediaManager.count} photos'); // Debug print
+                debugPrint('Done button pressed with ${_mediaManager.count} photos');
                 Navigator.of(context).pop(_mediaManager.media);
               },
               backgroundColor: Colors.white,
               foregroundColor: Colors.black87,
               child: const Icon(Icons.check),
             ),
-            // Configure the media stack
             showMediaStack: true,
+            showSwitchCameraButton: false,
           ),
         ),
       ],

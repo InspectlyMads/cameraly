@@ -1,58 +1,40 @@
 import 'package:flutter/material.dart';
 
+/// Types of placeholders available in the camera overlay
 enum PlaceholderType {
-  bottomOverlay,
-  topLeft,
+  /// Placeholder for the center-left area
   centerLeft,
+
+  /// Placeholder for the bottom overlay
+  bottomOverlay,
 }
 
+/// A widget that displays a placeholder for customizable areas in the camera overlay
 class PlaceholderWidget extends StatelessWidget {
+  /// Creates a placeholder widget
   const PlaceholderWidget({
     super.key,
     required this.type,
   });
 
+  /// The type of placeholder to display
   final PlaceholderType type;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: type == PlaceholderType.bottomOverlay ? 200 : 100,
-      height: type == PlaceholderType.bottomOverlay ? 60 : 80,
+      width: type == PlaceholderType.centerLeft ? 100 : double.infinity,
+      height: type == PlaceholderType.centerLeft ? 80 : 60,
       decoration: BoxDecoration(
-        color: _getColor(),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Center(
         child: Text(
-          _getText(),
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          type == PlaceholderType.centerLeft ? 'Center Left' : 'Bottom Overlay',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
     );
-  }
-
-  Color _getColor() {
-    switch (type) {
-      case PlaceholderType.bottomOverlay:
-        return const Color.fromRGBO(156, 39, 176, 0.7);
-      case PlaceholderType.topLeft:
-      case PlaceholderType.centerLeft:
-        return const Color.fromRGBO(255, 255, 255, 0.7);
-    }
-  }
-
-  String _getText() {
-    switch (type) {
-      case PlaceholderType.bottomOverlay:
-        return 'Bottom Overlay';
-      case PlaceholderType.topLeft:
-        return 'Top Left';
-      case PlaceholderType.centerLeft:
-        return 'Center Left';
-    }
   }
 }

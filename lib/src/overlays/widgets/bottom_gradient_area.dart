@@ -13,12 +13,12 @@ class BottomGradientArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: isLandscape ? 120 : double.infinity,
+      width: isLandscape ? 140 : double.infinity,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [
+        gradient: LinearGradient(
+          begin: isLandscape ? Alignment.centerRight : Alignment.bottomCenter,
+          end: isLandscape ? Alignment.centerLeft : Alignment.topCenter,
+          colors: const [
             Color.fromRGBO(0, 0, 0, 0.95),
             Color.fromRGBO(0, 0, 0, 0.8),
             Color.fromRGBO(0, 0, 0, 0.5),

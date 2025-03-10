@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
+import 'package:cameraly/src/overlays/widgets/placeholder_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -332,20 +333,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> {
                                 countBadgeColor: theme.primaryColor,
                               ),
                             )
-                          : Container(
-                              width: 100,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: const Color.fromRGBO(255, 255, 255, 0.7),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Center Left',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            )),
+                          : const PlaceholderWidget(type: PlaceholderType.centerLeft)),
                 ),
             ],
           ),
@@ -353,59 +341,59 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> {
             isLandscape: isLandscape,
             child: Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom + 20,
+                bottom: isLandscape ? 0 : MediaQuery.of(context).padding.bottom + 20,
                 left: 20,
                 right: 20,
-                top: 20,
+                top: isLandscape ? 0 : 20,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: isLandscape ? MainAxisAlignment.center : MainAxisAlignment.end,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: isLandscape ? MainAxisAlignment.end : MainAxisAlignment.spaceEvenly,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // Left position
-                      if (widget.customLeftButton != null)
-                        widget.customLeftButton!
-                      else if (widget.showGalleryButton && widget.customLeftButton == null)
-                        IconButton.filled(
-                          onPressed: _overlayController.isRecording
-                              ? null
-                              : () async {
-                                  if (widget.onGalleryTap != null) {
-                                    widget.onGalleryTap!();
-                                  } else {
-                                    try {
-                                      final media = await _overlayController.pickMedia(
-                                        allowMultiple: widget.allowMultipleSelection,
-                                      );
-                                      if (media.isNotEmpty) {
-                                        await _handleMediaSelected(media);
-                                      }
-                                    } catch (e) {
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Error picking media: $e')),
+                      if (!isLandscape) ...[
+                        if (widget.customLeftButton != null)
+                          widget.customLeftButton!
+                        else if (widget.showGalleryButton)
+                          IconButton.filled(
+                            onPressed: _overlayController.isRecording
+                                ? null
+                                : () async {
+                                    if (widget.onGalleryTap != null) {
+                                      widget.onGalleryTap!();
+                                    } else {
+                                      try {
+                                        final media = await _overlayController.pickMedia(
+                                          allowMultiple: widget.allowMultipleSelection,
                                         );
+                                        if (media.isNotEmpty) {
+                                          await _handleMediaSelected(media);
+                                        }
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Error picking media: $e')),
+                                          );
+                                        }
                                       }
                                     }
-                                  }
-                                },
-                          icon: const Icon(Icons.photo_library, size: 30),
-                          style: IconButton.styleFrom(
-                            backgroundColor: _overlayController.isRecording ? Colors.grey.withAlpha(77) : Colors.white24,
-                            foregroundColor: _overlayController.isRecording ? Colors.white60 : Colors.white,
-                            minimumSize: const Size(64, 64),
-                            fixedSize: const Size(64, 64),
-                            padding: EdgeInsets.zero,
+                                  },
+                            icon: const Icon(Icons.photo_library, size: 30),
+                            style: IconButton.styleFrom(
+                              backgroundColor: _overlayController.isRecording ? Colors.grey.withAlpha(77) : Colors.white24,
+                              foregroundColor: _overlayController.isRecording ? Colors.white60 : Colors.white,
+                              minimumSize: const Size(64, 64),
+                              fixedSize: const Size(64, 64),
+                              padding: EdgeInsets.zero,
+                            ),
                           ),
-                        )
-                      else
-                        const SizedBox(width: 84),
+                      ],
 
-                      const SizedBox(width: 16),
-
-                      // Center position (Capture button)
+                      // Center position - Capture button
                       if (widget.showCaptureButton)
                         CameraControls(
                           isVideoMode: _overlayController.isVideoMode,
@@ -432,41 +420,101 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> {
                           },
                           showModeToggle: widget.controller.settings.cameraMode == CameraMode.both,
                           theme: theme,
-                        )
-                      else
-                        const SizedBox.shrink(),
-
-                      const SizedBox(width: 16),
+                        ),
 
                       // Right position
-                      if (widget.customRightButton != null)
-                        widget.customRightButton!
-                      else if (widget.showSwitchCameraButton && widget.customRightButton == null)
-                        IconButton.filled(
-                          onPressed: () async {
-                            try {
-                              await _overlayController.switchCamera();
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error switching camera: $e')),
-                                );
+                      if (!isLandscape) ...[
+                        if (widget.customRightButton != null)
+                          widget.customRightButton!
+                        else if (widget.showSwitchCameraButton)
+                          IconButton.filled(
+                            onPressed: () async {
+                              try {
+                                await _overlayController.switchCamera();
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Error switching camera: $e')),
+                                  );
+                                }
                               }
-                            }
-                          },
-                          icon: const Icon(Icons.switch_camera, size: 30),
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.white24,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(64, 64),
-                            fixedSize: const Size(64, 64),
-                            padding: EdgeInsets.zero,
+                            },
+                            icon: const Icon(Icons.switch_camera, size: 30),
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.white24,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(64, 64),
+                              fixedSize: const Size(64, 64),
+                              padding: EdgeInsets.zero,
+                            ),
                           ),
-                        )
-                      else
-                        const SizedBox(width: 84),
+                      ],
                     ],
                   ),
+                  if (isLandscape) ...[
+                    const SizedBox(height: 16),
+                    // Custom buttons or default buttons for landscape mode
+                    if (widget.customRightButton != null)
+                      widget.customRightButton!
+                    else if (widget.showSwitchCameraButton)
+                      IconButton.filled(
+                        onPressed: () async {
+                          try {
+                            await _overlayController.switchCamera();
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error switching camera: $e')),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.switch_camera, size: 30),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white24,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(64, 64),
+                          fixedSize: const Size(64, 64),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    if (widget.customLeftButton != null)
+                      widget.customLeftButton!
+                    else if (widget.showGalleryButton)
+                      IconButton.filled(
+                        onPressed: _overlayController.isRecording
+                            ? null
+                            : () async {
+                                if (widget.onGalleryTap != null) {
+                                  widget.onGalleryTap!();
+                                } else {
+                                  try {
+                                    final media = await _overlayController.pickMedia(
+                                      allowMultiple: widget.allowMultipleSelection,
+                                    );
+                                    if (media.isNotEmpty) {
+                                      await _handleMediaSelected(media);
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Error picking media: $e')),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                        icon: const Icon(Icons.photo_library, size: 30),
+                        style: IconButton.styleFrom(
+                          backgroundColor: _overlayController.isRecording ? Colors.grey.withAlpha(77) : Colors.white24,
+                          foregroundColor: _overlayController.isRecording ? Colors.white60 : Colors.white,
+                          minimumSize: const Size(64, 64),
+                          fixedSize: const Size(64, 64),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),
