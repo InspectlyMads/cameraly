@@ -81,6 +81,28 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   }
 
   @override
+  void didUpdateWidget(CameralyPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // If the controller has changed, update our reference and listeners
+    if (widget.controller != oldWidget.controller) {
+      debugPrint('CameralyPreview: Controller changed, updating references');
+
+      // Remove listener from old controller
+      oldWidget.controller.removeListener(_handleControllerUpdate);
+
+      // Update controller reference
+      _controller = widget.controller;
+
+      // Add listener to new controller
+      _controller.addListener(_handleControllerUpdate);
+
+      // Force a rebuild with the new controller
+      setState(() {});
+    }
+  }
+
+  @override
   void didChangeMetrics() {
     // Handle orientation changes
     if (mounted) {

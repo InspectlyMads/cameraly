@@ -137,6 +137,7 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.onFlashTap,
     this.onGalleryTap,
     this.onSwitchCamera,
+    this.onControllerChanged,
     this.onZoomChanged,
     this.showCaptureAnimation = true,
     this.showFlashButton = true,
@@ -193,6 +194,10 @@ class DefaultCameralyOverlay extends StatefulWidget {
 
   /// Callback when the switch camera button is tapped.
   final VoidCallback? onSwitchCamera;
+
+  /// Callback when the controller is changed (e.g., after switching cameras).
+  /// This allows the parent widget to update its reference to the controller.
+  final Function(CameralyController)? onControllerChanged;
 
   /// Callback when the zoom level changes.
   final Function(double)? onZoomChanged;
@@ -606,7 +611,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _switchCamera() async {
+    if (!_controller.value.isInitialized) {
+      debugPrint('Camera is not initialized, cannot switch');
+      return;
+    }
+
     try {
+      // Log current controller state
+      debugPrint('🎥 Current controller hashcode: ${_controller.hashCode}');
+      debugPrint('🎥 Current native controller: ${_controller.cameraController?.hashCode}');
+      debugPrint('🎥 Current camera direction: ${_controller.description.lensDirection}');
+
       // Show loading indicator
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -618,16 +633,49 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       }
 
       // Switch to the new camera
+      debugPrint('🎥 Attempting to switch camera from ${_isFrontCamera ? 'front' : 'back'} to ${_isFrontCamera ? 'back' : 'front'}');
       final newController = await _controller.switchCamera();
-      if (newController != null && mounted) {
+
+      if (newController == null) {
+        debugPrint('🎥 No alternative camera found');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not find another camera'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Log new controller state
+      debugPrint('🎥 New controller received: ${newController.hashCode}');
+      debugPrint('🎥 New native controller: ${newController.cameraController?.hashCode}');
+      debugPrint('🎥 New camera direction: ${newController.description.lensDirection}');
+      debugPrint('🎥 New controller initialized: ${newController.value.isInitialized}');
+
+      if (mounted) {
+        // Log before notifying parent
+        debugPrint('🎥 Parent notification callback exists: ${widget.onControllerChanged != null}');
+
+        // Notify the parent widget about the controller change BEFORE updating our state
+        // This ensures the parent can rebuild the preview with the new controller
+        if (widget.onControllerChanged != null) {
+          debugPrint('🎥 Notifying parent about controller change');
+          widget.onControllerChanged!(newController);
+        }
+
         setState(() {
           // Store previous state
           final previousFlashMode = _flashMode;
           final previousTorchEnabled = _torchEnabled;
 
           // Update controller
+          debugPrint('🎥 Updating controller reference in overlay state');
           _controller = newController;
           _isFrontCamera = newController.description.lensDirection == CameraLensDirection.front;
+          debugPrint('🎥 Camera switched to ${_isFrontCamera ? 'front' : 'back'}');
 
           // Reset flash and torch for front camera
           if (_isFrontCamera) {
@@ -644,9 +692,27 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             _controller.setFlashMode(_flashMode);
           }
 
+          // Set current zoom to default 1.0 upon switching
+          _currentZoom = 1.0;
+
           // Notify camera switch
           _notifyCameraStateChanged();
         });
+
+        // Initialize zoom levels for the new camera
+        debugPrint('🎥 Initializing zoom levels');
+        await _initializeZoomLevels();
+        await _initializeValues();
+
+        // Reset current zoom to 1.0 for consistent behavior
+        debugPrint('🎥 Setting zoom level to 1.0');
+        _setZoomLevel(1.0);
+
+        // Call the onSwitchCamera callback if provided
+        if (widget.onSwitchCamera != null) {
+          debugPrint('🎥 Calling onSwitchCamera callback');
+          widget.onSwitchCamera!();
+        }
 
         // Show success message
         if (mounted) {
@@ -659,6 +725,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         }
       }
     } catch (e) {
+      debugPrint('🎥 Error switching camera: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1447,7 +1514,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                               decoration: const BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.all(Radius.circular(4)),
-                              ))
+                              ),
+                            )
                           : Container(
                               width: 70,
                               height: 70,
@@ -1568,7 +1636,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                             color: Colors.white,
                             borderRadius: const BorderRadius.all(Radius.circular(4)),
                             border: Border.all(color: Colors.white, width: 2),
-                          ))
+                          ),
+                        )
                       : Container(
                           width: isWideScreen ? 80 : 64,
                           height: isWideScreen ? 80 : 64,

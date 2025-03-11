@@ -89,6 +89,12 @@ class _CameraScreenState extends State<CameraScreen> {
                   showGalleryButton: true,
                   showZoomControls: true,
                   showMediaStack: true, // Ensure media stack is enabled
+                  showZoomSlider: true,
+                  onControllerChanged: (CameralyController newController) {
+                    setState(() {
+                      _controller = newController;
+                    });
+                  },
                 ),
               ),
         ],

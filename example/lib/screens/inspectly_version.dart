@@ -66,6 +66,9 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
           controller: _controller,
           overlay: DefaultCameralyOverlay(
             controller: _controller,
+            // Add camera switch button at the top
+            showSwitchCameraButton: true,
+            // Add custom done button
             customRightButton: FloatingActionButton(
               onPressed: () {
                 debugPrint('Done button pressed with ${_mediaManager.count} photos'); // Debug print
@@ -77,6 +80,14 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
             ),
             // Configure the media stack
             showMediaStack: true,
+            // Add the onControllerChanged callback to properly handle camera switching
+            onControllerChanged: (CameralyController newController) {
+              debugPrint('Camera controller changed in InspectlyVersionScreen');
+              // Update the controller reference in the state
+              setState(() {
+                _controller = newController;
+              });
+            },
           ),
         ),
       ],

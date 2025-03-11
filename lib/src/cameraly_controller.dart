@@ -20,10 +20,11 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     required CameraDescription description,
     CaptureSettings? settings,
     CameralyMediaManager? mediaManager,
+    CameralyMediaManager? existingMediaManager,
   })  : _description = description,
         _settings = settings ?? const CaptureSettings(),
         _permissionHandler = const CameralyPermissionHandler(),
-        _mediaManager = mediaManager ?? CameralyMediaManager(),
+        _mediaManager = existingMediaManager ?? mediaManager ?? CameralyMediaManager(),
         _isProcessingOrientation = false,
         super(const CameralyValue.uninitialized()) {
     // Register as an observer for app lifecycle changes
@@ -775,15 +776,24 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
   /// Switches between front and back cameras.
   Future<CameralyController?> switchCamera() async {
-    if (!value.isInitialized) return null;
+    if (!value.isInitialized) {
+      debugPrint('📸 Cannot switch camera: Camera not initialized');
+      return null;
+    }
 
     try {
       // Get available cameras
       final cameras = await getAvailableCameras();
+      debugPrint('📸 Available cameras: ${cameras.length}');
+
+      for (final camera in cameras) {
+        debugPrint('📸 Camera: ${camera.name}, direction: ${camera.lensDirection}');
+      }
 
       // Find a camera facing the opposite direction
       final lensDirection = _description.lensDirection;
       final newDirection = lensDirection == CameraLensDirection.front ? CameraLensDirection.back : CameraLensDirection.front;
+      debugPrint('📸 Looking for camera with direction: $newDirection');
 
       final newCamera = cameras.firstWhere(
         (camera) => camera.lensDirection == newDirection,
@@ -792,40 +802,72 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
       // If we found a different camera, dispose the current one and initialize the new one
       if (newCamera.name != _description.name) {
+        debugPrint('📸 Switching from ${_description.name} to ${newCamera.name}');
         final previousSettings = _settings;
         final wasRecording = value.isRecordingVideo;
 
+        // Create a reference to the current controller
+        final currentController = this;
+        debugPrint('📸 Current controller hashcode: ${currentController.hashCode}');
+
+        // Store the current media manager to reuse in the new controller
+        final currentMediaManager = mediaManager;
+
         // Stop recording if needed
         if (wasRecording) {
+          debugPrint('📸 Stopping current recording before switching');
           await stopVideoRecording();
         }
 
-        // Dispose current controller
+        // Ensure the native controller is properly disposed
+        debugPrint('📸 Disposing current controller: ${_controller?.hashCode}');
         await _controller?.dispose();
         _controller = null;
 
-        // Create a new controller with the new camera
+        // Create a new controller with the new camera and existing media manager
         final newController = CameralyController(
           description: newCamera,
           settings: previousSettings,
+          existingMediaManager: currentMediaManager, // Use existing media manager
         );
+        debugPrint('📸 Created new controller with hashcode: ${newController.hashCode}');
 
-        // Initialize the new controller with fallback options
-        await newController.initializeWithFallback();
+        try {
+          // Initialize the new controller
+          debugPrint('📸 Initializing new controller');
+          await newController.initializeWithFallback();
+
+          // Double-check if native controller is initialized
+          if (newController._controller != null && newController._controller!.value.isInitialized) {
+            debugPrint('📸 Native camera controller is initialized');
+          } else {
+            debugPrint('⚠️ Native camera controller is NOT initialized');
+          }
+
+          debugPrint('📸 New controller initialized successfully');
+        } catch (e) {
+          debugPrint('📸 Failed to initialize new controller: $e');
+          rethrow;
+        }
 
         // Restore previous state
         if (wasRecording) {
+          debugPrint('📸 Restoring recording state');
           await newController.startVideoRecording();
         }
 
         // Return the new controller
+        debugPrint('📸 Returning new controller to caller');
         return newController;
+      } else {
+        debugPrint('📸 No camera with opposite direction found');
+        return null;
       }
-
-      return null;
     } catch (e) {
+      debugPrint('📸 Error switching camera: $e');
       value = value.copyWith(
         error: 'Failed to switch camera: $e',
+        isInitialized: false,
       );
       rethrow;
     }
