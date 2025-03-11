@@ -90,12 +90,7 @@ class _LimitedVideoExampleState extends State<LimitedVideoExample> {
               // Custom theme for video recording
               theme: const CameralyOverlayTheme(primaryColor: Colors.orange, secondaryColor: Colors.red, backgroundColor: Colors.black87, opacity: 0.8, buttonSize: 72.0, iconSize: 32.0),
               // Callbacks for media handling
-              onPictureTaken: _handleVideoRecorded,
-              onMediaSelected: (files) {
-                for (final file in files) {
-                  _mediaManager.addMedia(file);
-                }
-              },
+
               // Set maximum video duration to 15 seconds
               maxVideoDuration: const Duration(seconds: 15),
               onMaxDurationReached: () => _handleMaxDurationReached(XFile('')),

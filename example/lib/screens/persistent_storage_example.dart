@@ -83,18 +83,7 @@ class _PersistentStorageExampleState extends State<PersistentStorageExample> {
       body: Stack(
         children: [
           // Camera preview with default overlay
-          CameralyPreview(
-            controller: _controller,
-            overlay: DefaultCameralyOverlay(
-              controller: _controller,
-              onPictureTaken: (file) => _mediaManager.addMedia(file),
-              onMediaSelected: (files) {
-                for (final file in files) {
-                  _mediaManager.addMedia(file);
-                }
-              },
-            ),
-          ),
+          CameralyPreview(controller: _controller, overlay: DefaultCameralyOverlay(controller: _controller)),
 
           // Media stack in the bottom-right corner
           Positioned(

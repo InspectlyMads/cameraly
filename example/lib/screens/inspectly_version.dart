@@ -23,14 +23,8 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
   Future<void> _initializeCamera() async {
     // Initialize the media manager first
     _mediaManager = CameralyMediaManager(
-      maxItems: 30, // Keep last 30 photos
-      onMediaAdded: (file) {
-        debugPrint('Media added to manager: ${file.path}'); // Debug print
-        // Optional: Show feedback when photo is captured
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Photo captured: ${file.path.split('/').last}'), duration: const Duration(seconds: 2)));
-        }
-      },
+      maxItems: 9999, // Keep all photos
+      onMediaAdded: (file) {},
     );
 
     final cameras = await CameralyController.getAvailableCameras();
@@ -72,10 +66,6 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
           controller: _controller,
           overlay: DefaultCameralyOverlay(
             controller: _controller,
-            onPictureTaken: (file) {
-              debugPrint('Picture taken: ${file.path}'); // Debug print
-              _mediaManager.addMedia(file);
-            },
             customRightButton: FloatingActionButton(
               onPressed: () {
                 debugPrint('Done button pressed with ${_mediaManager.count} photos'); // Debug print
