@@ -622,16 +622,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       debugPrint('🎥 Current native controller: ${_controller.cameraController?.hashCode}');
       debugPrint('🎥 Current camera direction: ${_controller.description.lensDirection}');
 
-      // Show loading indicator
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Switching camera...'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-
       // Switch to the new camera
       debugPrint('🎥 Attempting to switch camera from ${_isFrontCamera ? 'front' : 'back'} to ${_isFrontCamera ? 'back' : 'front'}');
       final newController = await _controller.switchCamera();
@@ -712,16 +702,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         if (widget.onSwitchCamera != null) {
           debugPrint('🎥 Calling onSwitchCamera callback');
           widget.onSwitchCamera!();
-        }
-
-        // Show success message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Switched to ${_isFrontCamera ? 'front' : 'back'} camera'),
-              duration: const Duration(seconds: 1),
-            ),
-          );
         }
       }
     } catch (e) {
