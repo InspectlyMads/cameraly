@@ -1,9 +1,0 @@
-# Add this to your ~/.zshrc or ~/.bash_profile to create an alias for launching the Cameraly example app on your Pixel 8
-
-# Alias for launching Cameraly example on Pixel 8
-alias cameraly-pixel8='cd /Users/stoltenborg/Documents/Cursor/cameraly/example && flutter run -d 43260DLJH000DX'
-
-# After adding this line to your profile, run:
-# source ~/.zshrc  # or source ~/.bash_profile
-
-# Then you can simply type 'cameraly-pixel8' in any terminal to launch the app on your Pixel 8 

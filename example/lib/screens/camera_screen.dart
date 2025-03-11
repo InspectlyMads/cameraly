@@ -82,19 +82,19 @@ class _CameraScreenState extends State<CameraScreen> {
                 controller: _controller,
                 overlay: DefaultCameralyOverlay(
                   controller: _controller,
-                  onPictureTaken: (file) => _mediaManager.addMedia(file),
-                  onMediaSelected: (files) {
-                    for (final file in files) {
-                      _mediaManager.addMedia(file);
-                    }
-                  },
+
                   // Customize which buttons to show
                   showFlashButton: true,
                   showSwitchCameraButton: true,
                   showGalleryButton: true,
                   showZoomControls: true,
-                  showFocusCircle: true,
                   showMediaStack: true, // Ensure media stack is enabled
+                  showZoomSlider: true,
+                  onControllerChanged: (CameralyController newController) {
+                    setState(() {
+                      _controller = newController;
+                    });
+                  },
                 ),
               ),
         ],

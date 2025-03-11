@@ -150,10 +150,7 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
                 GestureDetector(
                   onTapDown: (_) async {
                     if (_controller.settings.cameraMode == CameraMode.photoOnly) {
-                      final photo = await _controller.takePicture();
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Photo captured: ${photo.path}')));
-                      }
+                      await _controller.takePicture();
                     } else {
                       if (_isRecording) {
                         final video = await _controller.stopVideoRecording();

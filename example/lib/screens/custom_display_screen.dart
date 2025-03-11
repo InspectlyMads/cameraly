@@ -72,12 +72,7 @@ class _CustomDisplayScreenState extends State<CustomDisplayScreen> {
                     controller: _controller,
                     overlay: DefaultCameralyOverlay(
                       controller: _controller,
-                      onPictureTaken: (file) => _mediaManager.addMedia(file),
-                      onMediaSelected: (files) {
-                        for (final file in files) {
-                          _mediaManager.addMedia(file);
-                        }
-                      },
+
                       // Show colored boxes for customizable widgets
                       showPlaceholders: true,
                       // Show flash and zoom controls
