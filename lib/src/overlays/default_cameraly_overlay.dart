@@ -337,8 +337,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   FlashMode _flashMode = FlashMode.auto;
   bool _torchEnabled = false;
   double _currentZoom = 1.0;
-  bool _showZoomSlider = false;
-  Timer? _zoomSliderTimer;
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  List<double> _availableZoomLevels = [1.0];
   Timer? _recordingTimer;
   Duration _recordingDuration = Duration.zero;
   final ImagePicker _imagePicker = ImagePicker();
@@ -359,6 +360,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     _torchEnabled = false;
     _hasVideoDurationLimit = widget.maxVideoDuration != null;
     _maxVideoDuration = widget.maxVideoDuration;
+
+    // Initialize zoom levels
+    _initializeZoomLevels();
 
     // Set initial video mode based on camera mode setting
     switch (_controller.settings.cameraMode) {
@@ -396,7 +400,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   void dispose() {
     _controller.removeListener(_handleControllerUpdate);
     WidgetsBinding.instance.removeObserver(this);
-    _zoomSliderTimer?.cancel();
     _recordingTimer?.cancel();
     _recordingLimitTimer?.cancel();
     super.dispose();
@@ -418,6 +421,95 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     // Initialize zoom levels
     _currentZoom = value.zoomLevel;
+  }
+
+  Future<void> _initializeZoomLevels() async {
+    try {
+      _minZoom = await _controller.getMinZoomLevel();
+      _maxZoom = await _controller.getMaxZoomLevel();
+
+      // Create a list of available zoom levels based on device capabilities
+      final zoomLevels = <double>[];
+
+      // Add ultra-wide if available (usually 0.5x or 0.6x)
+      if (_minZoom <= 0.5) {
+        zoomLevels.add(0.5);
+      } else if (_minZoom <= 0.6) {
+        zoomLevels.add(0.6);
+      }
+
+      // Always add 1x
+      zoomLevels.add(1.0);
+
+      // Add 2x if available
+      if (_maxZoom >= 2.0) {
+        zoomLevels.add(2.0);
+      }
+
+      // Add 5x if available
+      if (_maxZoom >= 5.0) {
+        zoomLevels.add(5.0);
+      }
+
+      setState(() {
+        _availableZoomLevels = zoomLevels;
+      });
+
+      debugPrint('📸 Available zoom levels: $_availableZoomLevels (min: $_minZoom, max: $_maxZoom)');
+    } catch (e) {
+      debugPrint('Error initializing zoom levels: $e');
+    }
+  }
+
+  Future<void> _setZoomLevel(double zoom) async {
+    try {
+      await _controller.setZoomLevel(zoom);
+      setState(() {
+        _currentZoom = zoom;
+      });
+    } catch (e) {
+      debugPrint('Error setting zoom level: $e');
+    }
+  }
+
+  Widget _buildZoomLevelButtons() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: _availableZoomLevels.map((zoom) {
+          final isSelected = (_currentZoom - zoom).abs() < 0.1;
+          final zoomText = zoom == 1.0 ? '1x' : '${zoom}x';
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: GestureDetector(
+              onTap: () => _setZoomLevel(zoom),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  zoomText,
+                  style: TextStyle(
+                    color: isSelected ? Colors.black : Colors.white,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   void _handleControllerUpdate() {
@@ -447,21 +539,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     if (value.zoomLevel != _currentZoom) {
       setState(() {
         _currentZoom = value.zoomLevel;
-
-        // Show zoom slider when zoom changes (e.g., from pinch gesture)
-        if (!_showZoomSlider) {
-          _showZoomSlider = true;
-        }
-
-        // Reset the auto-hide timer whenever zoom changes
-        _zoomSliderTimer?.cancel();
-        _zoomSliderTimer = Timer(const Duration(seconds: 3), () {
-          if (mounted) {
-            setState(() {
-              _showZoomSlider = false;
-            });
-          }
-        });
       });
     }
   }
@@ -959,6 +1036,20 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           child: _buildBottomArea(isLandscape: true, theme: theme),
         ),
 
+        // Zoom level buttons - Positioned at the top with proper padding and hit testing area
+        if (widget.showZoomControls && _availableZoomLevels.length > 1)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 16,
+            left: leftAreaWidth + 80,
+            right: rightAreaWidth,
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: _buildZoomLevelButtons(),
+              ),
+            ),
+          ),
+
         // Bottom overlay widget - positioned at the bottom of center area in landscape
         if (widget.bottomOverlayWidget != null || widget.showPlaceholders)
           Positioned(
@@ -1000,7 +1091,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Widget _buildTopArea({required bool isLandscape}) {
-    // In landscape, this becomes the left area
     return SizedBox(
       width: isLandscape ? 80 : double.infinity,
       child: Padding(
@@ -1035,7 +1125,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       ),
                     ),
               ),
-            // Recording timer - only show if not using video duration limit
+
+            // Recording timer
             if (_isRecording && !_hasVideoDurationLimit)
               Align(
                 alignment: Alignment.topCenter,
@@ -1092,35 +1183,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   child: Icon(
                     _torchEnabled ? Icons.flashlight_on : Icons.flashlight_off,
                     color: _torchEnabled ? Colors.white : Colors.white60,
-                  ),
-                ),
-              ),
-
-            // Zoom button
-            if (widget.showZoomControls)
-              Align(
-                alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: CameralyOverlayButton(
-                  onTap: () {
-                    setState(() {
-                      _showZoomSlider = !_showZoomSlider;
-                    });
-                    // Hide zoom slider after 3 seconds
-                    if (_showZoomSlider) {
-                      _zoomSliderTimer?.cancel();
-                      _zoomSliderTimer = Timer(const Duration(seconds: 3), () {
-                        if (mounted) {
-                          setState(() {
-                            _showZoomSlider = false;
-                          });
-                        }
-                      });
-                    }
-                  },
-                  child: Icon(
-                    Icons.zoom_in,
-                    color: _showZoomSlider ? Colors.white : Colors.white60,
-                    size: 28,
                   ),
                 ),
               ),
@@ -1240,11 +1302,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         bottom: MediaQuery.of(context).padding.bottom + 20,
         left: 20,
         right: 20,
-        top: 20, // Add top padding since bottom overlay is now outside
+        top: 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Zoom level buttons - Added here above the capture controls
+          if (widget.showZoomControls && _availableZoomLevels.length > 1) _buildZoomLevelButtons(),
+
+          const SizedBox(height: 16),
+
           // Photo/Video toggle
           if (!_isRecording && _controller.settings.cameraMode == CameraMode.both) ...[
             Container(
