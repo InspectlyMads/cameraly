@@ -126,31 +126,44 @@ class CameralyOverlayButton extends StatelessWidget {
 ///   ),
 /// )
 class DefaultCameralyOverlay extends StatefulWidget {
-  /// Creates a default camera overlay.
+  /// Creates a new [DefaultCameralyOverlay] widget.
   const DefaultCameralyOverlay({
     required this.controller,
     this.theme,
-    this.showCaptureButton = true,
-    this.showFlashButton = true,
-    this.showSwitchCameraButton = true,
-    this.showGalleryButton = true,
-    this.showZoomControls = true,
-    this.showFocusCircle = true,
-    this.showMediaStack = true,
+    this.onCapture,
+    this.onCaptureError,
+    this.onCaptureMode,
+    this.onClose,
+    this.onFlashTap,
     this.onGalleryTap,
-    this.onPictureTaken,
-    this.onMediaSelected,
-    this.allowMultipleSelection = true,
-    this.topLeftWidget,
-    this.centerLeftWidget,
-    this.bottomOverlayWidget,
-    this.customRightButton,
-    this.customLeftButton,
-    this.customBackButton,
-    this.showPlaceholders = false,
-    this.onCameraStateChanged,
+    this.onSwitchCamera,
+    this.onZoomChanged,
+    this.showCaptureAnimation = true,
+    this.showFlashButton = true,
+    this.showGalleryButton = true,
+    this.showSwitchCameraButton = true,
+    this.showZoomSlider = true,
+    this.showZoomControls = true,
     this.maxVideoDuration,
+    this.captureButtonBuilder,
+    this.flashButtonBuilder,
+    this.galleryButtonBuilder,
+    this.switchCameraButtonBuilder,
+    this.zoomSliderBuilder,
+    this.mediaManager,
+    this.allowMultipleSelection = true,
+    this.onMediaSelected,
+    this.onCameraStateChanged,
     this.onMaxDurationReached,
+    this.customBackButton,
+    this.bottomOverlayWidget,
+    this.showPlaceholders = false,
+    this.topLeftWidget,
+    this.showMediaStack = true,
+    this.customLeftButton,
+    this.customRightButton,
+    this.centerLeftWidget,
+    this.showCaptureButton = true,
     super.key,
   });
 
@@ -160,79 +173,107 @@ class DefaultCameralyOverlay extends StatefulWidget {
   /// The theme for the overlay.
   final CameralyOverlayTheme? theme;
 
-  /// Whether to show the capture button.
-  final bool showCaptureButton;
+  /// Callback when a photo is captured or video recording is stopped.
+  final Function(XFile)? onCapture;
 
-  /// Whether to show the flash button.
-  final bool showFlashButton;
+  /// Callback when an error occurs during capture.
+  final Function(String)? onCaptureError;
 
-  /// Whether to show the camera switch button.
-  final bool showSwitchCameraButton;
+  /// Callback when the capture mode is changed (photo/video).
+  final Function(bool)? onCaptureMode;
 
-  /// Whether to show the gallery button.
-  final bool showGalleryButton;
+  /// Callback when the overlay is closed.
+  final VoidCallback? onClose;
 
-  /// Whether to show the zoom controls.
-  final bool showZoomControls;
-
-  /// Whether to show the focus circle.
-  final bool showFocusCircle;
-
-  /// Whether to show the media stack.
-  final bool showMediaStack;
+  /// Callback when the flash button is tapped.
+  final VoidCallback? onFlashTap;
 
   /// Callback when the gallery button is tapped.
   final VoidCallback? onGalleryTap;
 
-  /// Callback when a picture is taken. The image is added to the media manager. Access the media manager via [controller.mediaManager].
-  final Function()? onPictureTaken;
+  /// Callback when the switch camera button is tapped.
+  final VoidCallback? onSwitchCamera;
 
-  /// Callback when media is selected from the gallery. The images are added to the media manager. Access the media manager via [controller.mediaManager].
-  final Function()? onMediaSelected;
+  /// Callback when the zoom level changes.
+  final Function(double)? onZoomChanged;
+
+  /// Whether to show the capture animation.
+  final bool showCaptureAnimation;
+
+  /// Whether to show the flash button.
+  final bool showFlashButton;
+
+  /// Whether to show the gallery button.
+  final bool showGalleryButton;
+
+  /// Whether to show the switch camera button.
+  final bool showSwitchCameraButton;
+
+  /// Whether to show the zoom slider.
+  final bool showZoomSlider;
+
+  /// Whether to show zoom controls.
+  final bool showZoomControls;
+
+  /// The maximum duration for video recording.
+  final Duration? maxVideoDuration;
+
+  /// Builder for the capture button.
+  final Widget Function(BuildContext, bool)? captureButtonBuilder;
+
+  /// Builder for the flash button.
+  final Widget Function(BuildContext, FlashMode)? flashButtonBuilder;
+
+  /// Builder for the gallery button.
+  final Widget Function(BuildContext)? galleryButtonBuilder;
+
+  /// Builder for the switch camera button.
+  final Widget Function(BuildContext)? switchCameraButtonBuilder;
+
+  /// Builder for the zoom slider.
+  final Widget Function(BuildContext, double)? zoomSliderBuilder;
+
+  /// The media manager for handling captured photos and videos.
+  final CameralyMediaManager? mediaManager;
 
   /// Whether to allow multiple selection in the gallery.
   final bool allowMultipleSelection;
 
-  /// Widget to display in the top-left corner.
-  final Widget? topLeftWidget;
-
-  /// Widget to display in the center-left area.
-  final Widget? centerLeftWidget;
-
-  /// Widget to display in the bottom overlay area.
-  final Widget? bottomOverlayWidget;
-
-  /// Custom button to display on the right side.
-  final Widget? customRightButton;
-
-  /// Custom button to display on the left side.
-  final Widget? customLeftButton;
-
-  /// Custom back button to display.
-  final Widget? customBackButton;
-
-  /// Whether to show placeholders for customizable widgets.
-  final bool showPlaceholders;
+  /// Callback when media is selected from the gallery.
+  final VoidCallback? onMediaSelected;
 
   /// Callback when the camera state changes.
   final Function(CameralyOverlayState)? onCameraStateChanged;
 
-  /// Maximum duration for video recording.
-  final Duration? maxVideoDuration;
-
   /// Callback when the maximum video duration is reached.
   final VoidCallback? onMaxDurationReached;
 
-  /// Whether to show the media stack in the center-left position.
-  /// This will be automatically disabled if [centerLeftWidget] is provided.
-  bool get effectiveShowMediaStack => showMediaStack;
+  /// Custom back button to display.
+  final Widget? customBackButton;
 
-  /// Returns the DefaultCameralyOverlay instance from the given context.
-  // ignore: library_private_types_in_public_api
-  static _DefaultCameralyOverlayState? of(BuildContext context) {
-    final state = context.findAncestorStateOfType<_DefaultCameralyOverlayState>();
-    return state;
-  }
+  /// Widget to display in the bottom overlay area.
+  final Widget? bottomOverlayWidget;
+
+  /// Whether to show placeholders for customizable widgets.
+  final bool showPlaceholders;
+
+  /// Widget to display in the top-left corner.
+  final Widget? topLeftWidget;
+
+  /// Whether to show the media stack.
+  final bool showMediaStack;
+
+  /// Custom button to display on the left side.
+  final Widget? customLeftButton;
+
+  /// Custom button to display on the right side.
+  final Widget? customRightButton;
+
+  /// Widget to display in the center-left area.
+  final Widget? centerLeftWidget;
+
+  /// Whether to show the capture button.
+  final bool showCaptureButton;
 
   @override
   State<DefaultCameralyOverlay> createState() => _DefaultCameralyOverlayState();
@@ -295,11 +336,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   bool _isRecording = false;
   FlashMode _flashMode = FlashMode.auto;
   bool _torchEnabled = false;
-  Offset? _focusPoint;
-  bool _showFocusCircle = false;
   double _currentZoom = 1.0;
   bool _showZoomSlider = false;
-  Timer? _focusTimer;
   Timer? _zoomSliderTimer;
   Timer? _recordingTimer;
   Duration _recordingDuration = Duration.zero;
@@ -358,7 +396,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   void dispose() {
     _controller.removeListener(_handleControllerUpdate);
     WidgetsBinding.instance.removeObserver(this);
-    _focusTimer?.cancel();
     _zoomSliderTimer?.cancel();
     _recordingTimer?.cancel();
     _recordingLimitTimer?.cancel();
@@ -425,58 +462,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             });
           }
         });
-      });
-    }
-
-    // Update focus point - process immediately when it changes
-    if (value.focusPoint != null && (value.focusPoint != _focusPoint || !_showFocusCircle)) {
-      // Use microtask to ensure UI updates quickly
-      Future.microtask(() {
-        if (mounted) {
-          setState(() {
-            // Convert normalized focus point to screen coordinates
-            final size = MediaQuery.of(context).size;
-            final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-
-            // Get the camera preview's aspect ratio
-            final previewRatio = _controller.cameraController!.value.aspectRatio;
-
-            // Calculate preview dimensions
-            final previewAspectRatio = isLandscape ? previewRatio : 1.0 / previewRatio;
-            final previewWidth = isLandscape ? size.width : size.height * previewAspectRatio;
-            final previewHeight = isLandscape ? size.width / previewAspectRatio : size.height;
-
-            // Calculate preview position
-            final previewLeft = (size.width - previewWidth) / 2;
-            final previewTop = (size.height - previewHeight) / 2;
-
-            // Convert normalized position to screen coordinates
-            final normalizedPoint = value.focusPoint!;
-            double screenX, screenY;
-
-            if (isLandscape) {
-              screenX = previewLeft + (normalizedPoint.dx * previewWidth);
-              screenY = previewTop + (normalizedPoint.dy * previewHeight);
-            } else {
-              // In portrait, we need to convert from the camera's coordinate system
-              screenX = previewLeft + ((1.0 - normalizedPoint.dy) * previewWidth);
-              screenY = previewTop + (normalizedPoint.dx * previewHeight);
-            }
-
-            _focusPoint = Offset(screenX, screenY);
-            _showFocusCircle = true;
-
-            // Hide focus circle after 2 seconds
-            _focusTimer?.cancel();
-            _focusTimer = Timer(const Duration(seconds: 2), () {
-              if (mounted) {
-                setState(() {
-                  _showFocusCircle = false;
-                });
-              }
-            });
-          });
-        }
       });
     }
   }
@@ -627,9 +612,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       _controller.mediaManager.addMedia(file);
 
       // Call the callback if provided
-      if (widget.onPictureTaken != null) {
+      if (widget.onCapture != null) {
         // Schedule the callback in a microtask to ensure proper state update
-        widget.onPictureTaken!();
+        widget.onCapture!(file);
       }
     } catch (e) {
       if (mounted) {
@@ -803,32 +788,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       fit: StackFit.expand,
       key: ValueKey<Orientation>(MediaQuery.of(context).orientation),
       children: [
-        // Focus circle
-        if (_showFocusCircle && _focusPoint != null && widget.showFocusCircle)
-          Positioned(
-            left: _focusPoint!.dx - 20,
-            top: _focusPoint!.dy - 20,
-            child: TweenAnimationBuilder<double>(
-              duration: const Duration(milliseconds: 200),
-              tween: Tween(begin: 0.0, end: 1.0),
-              builder: (context, value, child) => Transform.scale(
-                scale: 2 - value,
-                child: Opacity(
-                  opacity: value,
-                  child: Container(
-                    height: 40,
-                    width: 40,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white, width: 2),
-                      shape: BoxShape.circle,
-                      color: Colors.white.withAlpha((0.3 * 255).round()),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
         // Back button
         SafeArea(
           child: Padding(
@@ -1076,7 +1035,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       ),
                     ),
               ),
-
             // Recording timer - only show if not using video duration limit
             if (_isRecording && !_hasVideoDurationLimit)
               Align(
@@ -1235,12 +1193,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (widget.centerLeftWidget != null || widget.effectiveShowMediaStack || widget.showPlaceholders)
+        if (widget.centerLeftWidget != null || widget.showMediaStack || widget.showPlaceholders)
           Positioned(
             left: 16,
             top: MediaQuery.of(context).size.height / 2 - 40,
             child: widget.centerLeftWidget ??
-                (widget.effectiveShowMediaStack
+                (widget.showMediaStack
                     ? AnimatedBuilder(
                         animation: widget.controller.mediaManager,
                         builder: (context, _) => buildMediaStack(),
@@ -1422,8 +1380,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                               decoration: const BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.all(Radius.circular(4)),
-                              ),
-                            )
+                              ))
                           : Container(
                               width: 70,
                               height: 70,
@@ -1544,8 +1501,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                             color: Colors.white,
                             borderRadius: const BorderRadius.all(Radius.circular(4)),
                             border: Border.all(color: Colors.white, width: 2),
-                          ),
-                        )
+                          ))
                       : Container(
                           width: isWideScreen ? 80 : 64,
                           height: isWideScreen ? 80 : 64,

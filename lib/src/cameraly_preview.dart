@@ -48,6 +48,7 @@ class CameralyPreview extends StatefulWidget {
 }
 
 class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingObserver {
+  late CameralyController _controller;
   Offset? _focusPoint;
   bool _showFocusCircle = false;
   Timer? _focusTimer;
@@ -55,22 +56,25 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   @override
   void initState() {
     super.initState();
+    _controller = widget.controller;
+    _controller.addListener(_handleControllerUpdate);
     WidgetsBinding.instance.addObserver(this);
 
     // Force an orientation update when the widget is first built
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.controller.value.isInitialized) {
+      if (mounted && _controller.value.isInitialized) {
         // Print the current orientation for debugging
-        widget.controller.printCurrentOrientation(context);
+        _controller.printCurrentOrientation(context);
 
         // Force an orientation update
-        widget.controller.handleOrientationChange(context);
+        _controller.handleOrientationChange(context);
       }
     });
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_handleControllerUpdate);
     WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
     super.dispose();
@@ -83,9 +87,9 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       // Use a post-frame callback to ensure the context is valid
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Only call handleOrientationChange if the controller is initialized
-        if (widget.controller.value.isInitialized) {
+        if (_controller.value.isInitialized) {
           // Print the current orientation for debugging
-          widget.controller.printCurrentOrientation(context);
+          _controller.printCurrentOrientation(context);
 
           // The controller now handles orientation changes directly in its didChangeMetrics
           // We just need to force a rebuild to update the UI
@@ -98,88 +102,113 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     super.didChangeMetrics();
   }
 
-  void _showFocusCircleAtPosition(Offset screenPosition) {
-    setState(() {
-      _focusPoint = screenPosition;
-      _showFocusCircle = true;
-    });
+  void _handleControllerUpdate() {
+    final value = _controller.value;
 
-    // Hide focus circle after 2 seconds
-    _focusTimer?.cancel();
-    _focusTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _showFocusCircle = false;
+    // Update focus point - process immediately when it changes
+    if (value.focusPoint != null && mounted) {
+      setState(() {
+        final RenderBox box = context.findRenderObject() as RenderBox;
+        final size = box.size;
+        final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+        // Get the camera preview's aspect ratio
+        final previewRatio = _controller.cameraController!.value.aspectRatio;
+
+        // Calculate preview dimensions based on the container size and aspect ratio
+        final previewAspectRatio = isLandscape ? previewRatio : 1.0 / previewRatio;
+        final previewWidth = isLandscape ? size.width : size.height * previewAspectRatio;
+        final previewHeight = isLandscape ? size.width / previewAspectRatio : size.height;
+
+        // Calculate preview position within the container
+        final previewLeft = (size.width - previewWidth) / 2;
+        final previewTop = (size.height - previewHeight) / 2;
+
+        // Convert normalized position to screen coordinates
+        final normalizedPoint = value.focusPoint!;
+        double screenX, screenY;
+
+        if (isLandscape) {
+          screenX = previewLeft + (normalizedPoint.dx * previewWidth);
+          screenY = previewTop + (normalizedPoint.dy * previewHeight);
+        } else {
+          // In portrait, we need to convert from the camera's coordinate system
+          screenX = previewLeft + ((1.0 - normalizedPoint.dy) * previewWidth);
+          screenY = previewTop + (normalizedPoint.dx * previewHeight);
+        }
+
+        _focusPoint = Offset(screenX, screenY);
+        _showFocusCircle = true;
+
+        // Hide focus circle after 2 seconds
+        _focusTimer?.cancel();
+        _focusTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _showFocusCircle = false;
+            });
+          }
         });
-      }
-    });
+      });
+    }
   }
 
   void _handleTap(TapDownDetails details) {
-    if (!widget.controller.value.isInitialized) return;
+    if (!_controller.value.isInitialized) return;
 
-    final size = MediaQuery.of(context).size;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final RenderBox box = context.findRenderObject() as RenderBox;
+    final Offset localPosition = box.globalToLocal(details.globalPosition);
+    final size = box.size;
 
-    // Get the camera's natural aspect ratio
-    final cameraAspectRatio = widget.controller.cameraController?.value.aspectRatio ?? 1.0;
+    // Convert tap position to normalized coordinates (0,0 to 1,1)
+    final normalizedX = localPosition.dx / size.width;
+    final normalizedY = localPosition.dy / size.height;
 
-    // In portrait mode, we need to invert the aspect ratio
-    // This is because the camera sensor is naturally in landscape orientation
-    final previewAspectRatio = isLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
+    // Clamp coordinates to ensure they're within bounds
+    final clampedX = normalizedX.clamp(0.0, 1.0);
+    final clampedY = normalizedY.clamp(0.0, 1.0);
 
-    // Calculate preview dimensions based on the correct aspect ratio
-    final previewWidth = isLandscape ? size.width : size.height * previewAspectRatio;
-    final previewHeight = isLandscape ? size.width / previewAspectRatio : size.height;
-
-    // Calculate the preview's position on screen
-    final previewLeft = (size.width - previewWidth) / 2;
-    final previewTop = (size.height - previewHeight) / 2;
-
-    // Check if tap is within the preview bounds
-    final tapPosition = details.globalPosition;
-
-    if (tapPosition.dx >= previewLeft && tapPosition.dx <= previewLeft + previewWidth && tapPosition.dy >= previewTop && tapPosition.dy <= previewTop + previewHeight) {
-      // Calculate normalized coordinates (0-1) for the camera controller
-      double normalizedX;
-      double normalizedY;
-
-      if (isLandscape) {
-        // In landscape, map directly to the preview
-        normalizedX = (tapPosition.dx - previewLeft) / previewWidth;
-        normalizedY = (tapPosition.dy - previewTop) / previewHeight;
-      } else {
-        // In portrait, we need to account for the rotated camera preview
-        // The camera is sideways, so we swap x and y
-        normalizedX = (tapPosition.dy - previewTop) / previewHeight;
-        normalizedY = 1.0 - ((tapPosition.dx - previewLeft) / previewWidth);
-      }
-
-      // Adjust for front camera mirroring
-      if (widget.controller.value.isFrontCamera) {
-        normalizedX = 1.0 - normalizedX;
-      }
-
-      // Create the normalized position
-      final normalizedPosition = Offset(normalizedX, normalizedY);
-
-      // Call the onTap callback if provided
-      if (widget.onTap != null) {
-        widget.onTap!(normalizedPosition);
-      }
-
-      // Always set focus and exposure point when tapping
-      widget.controller.setFocusAndExposurePoint(normalizedPosition);
-
-      // Always show focus circle at tap position
-      _showFocusCircleAtPosition(tapPosition);
+    // Create normalized point
+    Offset normalizedPoint;
+    if (MediaQuery.of(context).orientation == Orientation.portrait) {
+      // In portrait mode, swap x and y coordinates for the camera
+      normalizedPoint = Offset(clampedY, 1.0 - clampedX);
+    } else {
+      normalizedPoint = Offset(clampedX, clampedY);
     }
+
+    // Mirror coordinates for front camera
+    if (_controller.description.lensDirection == CameraLensDirection.front) {
+      normalizedPoint = Offset(1.0 - normalizedPoint.dx, normalizedPoint.dy);
+    }
+
+    // Call onTap callback if provided
+    widget.onTap?.call(normalizedPoint);
+
+    // Set focus and exposure point
+    _controller.setFocusAndExposurePoint(normalizedPoint);
+
+    // Update focus circle position
+    setState(() {
+      _focusPoint = localPosition;
+      _showFocusCircle = true;
+
+      // Hide focus circle after 2 seconds
+      _focusTimer?.cancel();
+      _focusTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _showFocusCircle = false;
+          });
+        }
+      });
+    });
   }
 
   void _handleScaleStart(ScaleStartDetails details) {
     // Store the initial scale value to use as a reference point
-    widget.controller.value = widget.controller.value.copyWith(
-      initialZoomLevel: widget.controller.value.zoomLevel,
+    _controller.value = _controller.value.copyWith(
+      initialZoomLevel: _controller.value.zoomLevel,
     );
   }
 
@@ -191,10 +220,10 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       // Also handle the scale internally using the controller's method
       // This allows the package to handle zoom internally while still
       // notifying the app about scale changes via the callback
-      widget.controller.handleScale(details.scale);
+      _controller.handleScale(details.scale);
     } else {
       // If no onScale callback is provided, still handle zoom internally
-      widget.controller.handleScale(details.scale);
+      _controller.handleScale(details.scale);
     }
   }
 
@@ -203,7 +232,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     // Get the camera's natural aspect ratio
-    final cameraAspectRatio = widget.controller.cameraController?.value.aspectRatio ?? 1.0;
+    final cameraAspectRatio = _controller.cameraController?.value.aspectRatio ?? 1.0;
 
     // In portrait mode, we need to invert the aspect ratio
     // This is because the camera sensor is naturally in landscape orientation
@@ -215,151 +244,157 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       child: Transform.scale(
         scaleX: value.isFrontCamera ? -1.0 : 1.0, // Only flip for front camera
         scaleY: 1.0,
-        child: CameraPreview(widget.controller.cameraController!),
+        child: CameraPreview(_controller.cameraController!),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: widget.controller,
-      builder: (context, value, child) {
-        if (!value.isInitialized) {
-          return Container(
-            color: Colors.black,
-            child: const Center(
-              child: CircularProgressIndicator(),
+    if (!_controller.value.isInitialized) {
+      return Container(
+        color: Colors.black,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.camera_alt,
+              color: Colors.white.withOpacity(0.3),
+              size: 64,
             ),
-          );
-        }
-
-        if (value.permissionState == CameraPermissionState.denied) {
-          return CameralyPermissionLandingPage(
-            controller: widget.controller,
-            backgroundColor: Colors.black,
-            textColor: Colors.white,
-            buttonColor: Theme.of(context).primaryColor,
-          );
-        }
-
-        // If permissions are denied but user chose to continue, show a placeholder
-        if (value.permissionState == CameraPermissionState.deniedButContinued) {
-          return Container(
-            color: Colors.black,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.no_photography,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Camera access not available',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Reset permission state and try again
-                      widget.controller.value = widget.controller.value.copyWith(
-                        permissionState: CameraPermissionState.unknown,
-                      );
-                      widget.controller.initialize();
-                    },
-                    child: const Text('Enable Camera'),
-                  ),
-                ],
+            const SizedBox(height: 16),
+            Text(
+              'Camera not available',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.3),
+                fontSize: 16,
               ),
             ),
-          );
-        }
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => _controller.initialize(),
+              child: const Text('Enable Camera'),
+            ),
+          ],
+        ),
+      );
+    }
 
-        // If camera is initialized, show the preview
-        return GestureDetector(
-          onTapDown: _handleTap,
-          onScaleStart: _handleScaleStart,
-          onScaleUpdate: _handleScaleUpdate,
-          child: Stack(
-            fit: StackFit.expand,
+    if (_controller.value.permissionState == CameraPermissionState.denied) {
+      return CameralyPermissionLandingPage(
+        controller: _controller,
+        backgroundColor: Colors.black,
+        textColor: Colors.white,
+        buttonColor: Theme.of(context).primaryColor,
+      );
+    }
+
+    // If permissions are denied but user chose to continue, show a placeholder
+    if (_controller.value.permissionState == CameraPermissionState.deniedButContinued) {
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Camera preview with orientation handling
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  return Container(
-                    color: Colors.black,
-                    child: Center(
-                      child: _buildCameraPreview(value, constraints),
-                    ),
-                  );
-                },
+              const Icon(
+                Icons.no_photography,
+                color: Colors.white54,
+                size: 64,
               ),
-
-              // Show the legacy child for backward compatibility
-              if (child != null) child,
-
-              // Show the overlay
-              if (widget.overlay != null) widget.overlay!,
-
-              // Show focus circle when tapping - enhanced visibility
-              if (_showFocusCircle && _focusPoint != null)
-                Positioned(
-                  left: _focusPoint!.dx - 30, // Larger offset for bigger circle
-                  top: _focusPoint!.dy - 30, // Larger offset for bigger circle
-                  child: TweenAnimationBuilder<double>(
-                    duration: const Duration(milliseconds: 300), // Slower animation
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    builder: (context, value, child) => Transform.scale(
-                      scale: 2.5 - value * 1.5, // More dramatic scale effect
-                      child: Opacity(
-                        opacity: value,
-                        child: Container(
-                          height: 60, // Larger circle
-                          width: 60, // Larger circle
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white, width: 3), // Thick white border
-                            shape: BoxShape.circle,
-                            color: Colors.transparent, // Transparent center to see through
-                          ),
-                          child: Center(
-                            child: Container(
-                              height: 10, // Inner dot
-                              width: 10,
-                              decoration: const BoxDecoration(
-                                color: Colors.white, // Bright center dot
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Error display
-              if (value.error != null)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    color: Colors.black54,
-                    padding: const EdgeInsets.all(8),
-                    child: Text(
-                      value.error!,
-                      style: const TextStyle(color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
+              const SizedBox(height: 16),
+              const Text(
+                'Camera access not available',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () {
+                  // Reset permission state and try again
+                  _controller.value = _controller.value.copyWith(
+                    permissionState: CameraPermissionState.unknown,
+                  );
+                  _controller.initialize();
+                },
+                child: const Text('Enable Camera'),
+              ),
             ],
           ),
-        );
-      },
+        ),
+      );
+    }
+
+    // If camera is initialized, show the preview
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Black background
+        Container(color: Colors.black),
+
+        // Camera preview with orientation handling and gesture detection
+        Center(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Build the preview widget
+              final previewWidget = _buildCameraPreview(_controller.value, constraints);
+
+              // Wrap only the preview in GestureDetector
+              return GestureDetector(
+                onTapDown: _handleTap,
+                onScaleStart: _handleScaleStart,
+                onScaleUpdate: _handleScaleUpdate,
+                child: previewWidget,
+              );
+            },
+          ),
+        ),
+
+        // Show the overlay
+        if (widget.overlay != null) widget.overlay!,
+
+        // Show focus circle when tapping - enhanced visibility
+        if (_showFocusCircle && _focusPoint != null)
+          Positioned(
+            left: _focusPoint!.dx - 25,
+            top: _focusPoint!.dy - 25,
+            child: TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 300),
+              tween: Tween(begin: 0.0, end: 1.0),
+              builder: (context, value, child) => Transform.scale(
+                scale: 2.5 - (1.5 * value),
+                child: Opacity(
+                  opacity: value,
+                  child: Container(
+                    height: 50,
+                    width: 50,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white, width: 2),
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // Error display
+        if (_controller.value.error != null)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              color: Colors.black54,
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                _controller.value.error!,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

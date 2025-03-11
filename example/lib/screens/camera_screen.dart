@@ -88,7 +88,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   showSwitchCameraButton: true,
                   showGalleryButton: true,
                   showZoomControls: true,
-                  showFocusCircle: true,
                   showMediaStack: true, // Ensure media stack is enabled
                 ),
               ),
