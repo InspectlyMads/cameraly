@@ -163,6 +163,11 @@ export 'src/utils/cameraly_utils.dart';
 /// Provides classes for managing captured media files and displaying them in the UI.
 export 'src/utils/media_manager.dart';
 
+/// Platform orientation detection utilities
+///
+/// [OrientationChannel] provides reliable device orientation detection via platform channels.
+export 'src/utils/orientation_channel.dart';
+
 /// Permission handling utilities
 ///
 /// Provides methods for requesting and checking camera and microphone permissions.

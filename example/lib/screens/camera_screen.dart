@@ -1,5 +1,6 @@
 import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// A basic camera screen example.
 class CameraScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class _CameraScreenState extends State<CameraScreen> {
     onMediaAdded: _handleMediaAdded,
   );
   bool _isInitialized = false;
+  String _orientationInfo = "Tap to check orientation";
 
   static void _handleMediaAdded(XFile file) {
     // Note: we can't show snackbar here since it's static
@@ -67,6 +69,59 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
+  /// Tests the orientation detection from both methods: view padding and method channel
+  Future<void> _testOrientationDetection() async {
+    if (!_isInitialized) return;
+
+    setState(() {
+      _orientationInfo = "Checking orientation...";
+    });
+
+    try {
+      // Get raw rotation value first for debugging
+      final int rawRotation = await OrientationChannel.getRawRotationValue();
+
+      // Get orientation from platform channel
+      final DeviceOrientation channelOrientation = await OrientationChannel.getPlatformOrientation();
+
+      // Get device dimensions for comparison
+      final size = MediaQuery.of(context).size;
+      final isLandscape = size.width > size.height;
+
+      // Get padding for the old method
+      final padding = MediaQuery.of(context).viewPadding;
+      final insets = MediaQuery.of(context).viewInsets;
+
+      // Check if it's landscape left using the old method
+      final isLandscapeLeftOldMethod = padding.right > padding.left || insets.right > insets.left;
+
+      // Determine orientation using old method
+      DeviceOrientation oldMethodOrientation;
+      if (isLandscape) {
+        oldMethodOrientation = isLandscapeLeftOldMethod ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
+      } else {
+        oldMethodOrientation = DeviceOrientation.portraitUp;
+      }
+
+      // Update state with both results
+      setState(() {
+        _orientationInfo = '''
+Orientation Info:
+• Raw Rotation: $rawRotation
+• Method Channel: ${channelOrientation.toString().split('.').last}
+• Padding Method: ${oldMethodOrientation.toString().split('.').last}
+• Is Landscape: $isLandscape
+• Device Size: ${size.width.toInt()}x${size.height.toInt()}
+• Padding (L:${padding.left.toInt()}, R:${padding.right.toInt()})
+''';
+      });
+    } catch (e) {
+      setState(() {
+        _orientationInfo = "Error checking orientation: $e";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,6 +152,23 @@ class _CameraScreenState extends State<CameraScreen> {
                   },
                 ),
               ),
+
+          // Orientation testing button and info
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 80,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: _testOrientationDetection,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(10)),
+                  child: Text(_orientationInfo, style: const TextStyle(color: Colors.white, fontSize: 12), textAlign: TextAlign.center),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

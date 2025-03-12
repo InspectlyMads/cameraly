@@ -26,6 +26,12 @@ A powerful and flexible camera package for Flutter that simplifies camera integr
   - Automatic permission handling
   - Built-in error handling
 
+- 🧭 **Accurate Orientation Detection**
+  - Platform-specific method channel for precise device rotation
+  - Correctly handles landscape left vs landscape right orientation
+  - Ensures photos and videos are captured with proper orientation
+  - Works reliably on both Android and iOS
+
 - 🎨 **Flexible Overlay System**
   - Beautiful default camera UI
   - Customizable control positions
@@ -61,6 +67,22 @@ A powerful and flexible camera package for Flutter that simplifies camera integr
 | Android | iOS |
 |:-------:|:---:|
 |    ✅    |  ✅  |
+
+## Technical Implementation Details
+
+### Orientation Detection
+
+Cameraly uses a platform-specific method channel approach to accurately detect device orientation:
+
+- On Android, the native `WindowManager.getDefaultDisplay().getRotation()` API is used to get the exact device rotation
+- Rotation values are mapped to Flutter's `DeviceOrientation` enum values
+- This provides reliable detection of landscape left vs. landscape right orientation
+- Fallback mechanisms are in place to ensure compatibility with all devices
+
+This approach is more reliable than using MediaQuery orientation or screen padding to infer orientation, particularly for:
+- Devices with symmetrical designs
+- Devices with unusual notch placements
+- Newer Android devices (e.g., Pixel 8)
 
 ## Getting Started
 
@@ -313,6 +335,34 @@ final currentZoom = _controller.value.zoomLevel;
 final minZoom = await _controller.getMinZoomLevel();
 final maxZoom = await _controller.getMaxZoomLevel();
 ```
+
+## Orientation Detection
+
+Cameraly includes an advanced orientation detection system that ensures your camera captures photos and videos with the correct orientation, even in landscape mode.
+
+### OrientationChannel
+
+The `OrientationChannel` class provides device rotation information using platform-specific implementation:
+
+```dart
+// Get current device orientation
+final deviceOrientation = await OrientationChannel.getPlatformOrientation();
+
+// Check if device is in landscape left orientation
+final isLandscapeLeft = await OrientationChannel.isLandscapeLeft();
+
+// For debugging, get the raw rotation value (0, 1, 2, or 3)
+final rawRotation = await OrientationChannel.getRawRotationValue();
+```
+
+The orientation detection works by using a method channel to communicate with native platform code:
+
+- **Android**: Uses `WindowManager.getDefaultDisplay().getRotation()` to get the exact device rotation
+- **iOS**: Uses `UIDevice.current.orientation` to get the device orientation
+
+This approach is more reliable than using Flutter's MediaQuery or view padding, especially for distinguishing between landscape left and landscape right orientations on Android devices.
+
+The `CameralyController` automatically uses this system to ensure photos and videos are captured with the correct orientation, but you can also use it directly in your app if needed.
 
 ## Initialization
 

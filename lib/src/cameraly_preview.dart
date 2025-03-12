@@ -67,7 +67,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         _controller.printCurrentOrientation(context);
 
         // Force an orientation update
-        _controller.handleOrientationChange(context);
+        _controller.handleDeviceOrientationChange();
       }
     });
   }

@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:camera/camera.dart';
+import 'package:camera/camera.dart' hide CameraLensDirection;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'cameraly_value.dart';
+import 'types/camera_device.dart';
 import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
 import 'types/photo_settings.dart';
 import 'types/video_settings.dart';
 import 'utils/media_manager.dart';
+import 'utils/orientation_channel.dart';
 import 'utils/permission_handler.dart';
 
 /// Controller for the Cameraly camera interface.
@@ -36,7 +38,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   final CameralyPermissionHandler _permissionHandler;
   final CameralyMediaManager _mediaManager;
   CameraController? _controller;
-  bool _isProcessingOrientation;
+  final bool _isProcessingOrientation;
 
   /// The camera description this controller is using
   CameraDescription get description => _description;
@@ -248,7 +250,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
       // Set initial orientation for Android
       if (Platform.isAndroid) {
-        await _handleInitialOrientation();
+        await handleDeviceOrientationChange();
       }
 
       // Default to assuming flash is available, we'll update this if we detect otherwise
@@ -304,164 +306,90 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
   }
 
-  /// Handles the initial orientation setup for Android devices
-  Future<void> _handleInitialOrientation() async {
+  /// Handles device orientation changes.
+  ///
+  /// This method is called when the device orientation changes.
+  Future<void> handleDeviceOrientationChange() async {
+    if (!value.isInitialized || _controller == null) {
+      debugPrint('⚠️ Cannot handle orientation change: camera not initialized');
+      return;
+    }
+
+    // Get the current device orientation from the platform
+    final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
+    final size = platformDispatcher.views.first.physicalSize;
+
+    // Determine orientation based on physical dimensions
+    final isLandscape = size.width > size.height;
+
+    // Print orientation information
+    debugPrint('📱 DEVICE ORIENTATION CHANGED (Android):');
+    debugPrint('📐 Physical Size: $size');
+    debugPrint('📱 Is Landscape: $isLandscape');
+    debugPrint('🧭 Previous Orientation: ${value.deviceOrientation}');
+    debugPrint('📷 Camera Sensor Orientation: ${_description.sensorOrientation}°');
+
+    // Set the appropriate orientation
+    DeviceOrientation newOrientation;
+
     try {
-      // Get the current device orientation from the platform
-      final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
-      final view = platformDispatcher.views.first;
-      final size = view.physicalSize;
+      // First try to get the raw rotation value
+      final int rawRotation = await OrientationChannel.getRawRotationValue();
+      debugPrint('🧭 Raw rotation value: $rawRotation');
 
-      // Determine if we're in landscape mode
-      final isLandscape = size.width > size.height;
-
-      // Get the view padding to determine if it's landscape left or right
-      final viewPadding = view.padding;
-
-      // Determine the orientation
-      DeviceOrientation orientation;
+      // Map rotation value directly to orientation
+      switch (rawRotation) {
+        case 0: // Surface.ROTATION_0
+          newOrientation = DeviceOrientation.portraitUp;
+          debugPrint('🧭 Mapped rotation 0 to portraitUp');
+          break;
+        case 1: // Surface.ROTATION_90
+          newOrientation = DeviceOrientation.landscapeLeft;
+          debugPrint('🧭 Mapped rotation 1 to landscapeRight');
+          break;
+        case 2: // Surface.ROTATION_180
+          newOrientation = DeviceOrientation.portraitDown;
+          debugPrint('🧭 Mapped rotation 2 to portraitDown');
+          break;
+        case 3: // Surface.ROTATION_270
+          newOrientation = DeviceOrientation.landscapeRight;
+          debugPrint('🧭 Mapped rotation 3 to landscapeLeft');
+          break;
+        default:
+          // Fallback to OrientationChannel.getPlatformOrientation() if we get an unexpected value
+          newOrientation = await OrientationChannel.getPlatformOrientation();
+          debugPrint('🧭 Unexpected rotation value, using getPlatformOrientation: $newOrientation');
+      }
+    } catch (e) {
+      // If method channel fails, fall back to the old method
+      debugPrint('⚠️ Error getting raw rotation or platform orientation: $e');
+      debugPrint('⚠️ Falling back to padding-based detection');
 
       if (isLandscape) {
-        // In landscape, check if it's left or right based on padding
-        final isLandscapeLeft = viewPadding.left > viewPadding.right;
-        orientation = isLandscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
-        debugPrint('📱 Initial orientation: Landscape ${isLandscapeLeft ? "LEFT" : "RIGHT"} (Android)');
+        // Get the view padding
+        final view = platformDispatcher.views.first;
+        final viewPadding = view.padding;
+        final viewInsets = view.viewInsets;
+
+        // When device is in landscapeLeft:
+        // - The screen rotates 90° counterclockwise
+        // - This makes the right edge become the top edge
+        // - So viewPadding.right will be greater (containing status bar height)
+        // Therefore we need to check if right padding is greater to detect landscapeLeft
+        final isLandscapeLeft = viewPadding.right > viewPadding.left || viewInsets.right > viewInsets.left;
+
+        newOrientation = isLandscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
+        debugPrint('🧭 Detected Landscape ${isLandscapeLeft ? "LEFT" : "RIGHT"} orientation (by padding - fallback)');
       } else {
-        orientation = DeviceOrientation.portraitUp;
-        debugPrint('📱 Initial orientation: Portrait Up (Android)');
+        newOrientation = DeviceOrientation.portraitUp;
+        debugPrint('🧭 Detected Portrait orientation (by padding - fallback)');
       }
-
-      debugPrint('📱 Initial view padding: $viewPadding');
-      debugPrint('📱 Initial physical size: $size');
-      debugPrint('🧭 Setting initial orientation to: $orientation');
-
-      // Set the device orientation in the value
-      value = value.copyWith(deviceOrientation: orientation);
-
-      // Set the capture orientation for Android
-      await _controller?.lockCaptureOrientation(orientation);
-    } catch (e) {
-      debugPrint('Error setting initial orientation: $e');
-    }
-  }
-
-  /// Handles orientation changes
-  Future<void> handleOrientationChange(BuildContext context) async {
-    if (_isProcessingOrientation || _controller == null || !_controller!.value.isInitialized) {
-      return;
     }
 
-    // Skip orientation handling for iOS - it handles orientation correctly by itself
-    if (!Platform.isAndroid) {
-      debugPrint('📱 Skipping orientation handling on iOS - handled natively');
-      return;
-    }
+    debugPrint('🧭 Setting new orientation: $newOrientation');
 
-    _isProcessingOrientation = true;
-
-    try {
-      // Get current orientation
-      final orientation = MediaQuery.of(context).orientation;
-      DeviceOrientation targetOrientation;
-
-      if (orientation == Orientation.landscape) {
-        // Use the window padding to determine if it's landscape left or right
-        // This works on Android
-        final windowPadding = MediaQuery.of(context).viewPadding;
-        final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-
-        // If the left padding is greater than the right padding, it's likely landscape left
-        final isLandscapeLeft = windowPadding.left > windowPadding.right;
-
-        targetOrientation = isLandscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
-
-        // Print orientation information
-        debugPrint('🔄 ORIENTATION CHANGED: Landscape ${isLandscapeLeft ? "LEFT" : "RIGHT"} (Android)');
-        debugPrint('📱 Window Padding: $windowPadding');
-        debugPrint('📱 Device Pixel Ratio: $devicePixelRatio');
-        debugPrint('🧭 Target Orientation: $targetOrientation');
-      } else {
-        targetOrientation = DeviceOrientation.portraitUp;
-
-        // Print orientation information
-        debugPrint('🔄 ORIENTATION CHANGED: Portrait Up (Android)');
-        debugPrint('📱 Device Size: ${WidgetsBinding.instance.platformDispatcher.views.first.physicalSize}');
-        debugPrint('🧭 Target Orientation: $targetOrientation');
-      }
-
-      // Set the orientation for Android
-      try {
-        // Set the capture orientation
-        await _controller!.lockCaptureOrientation(targetOrientation);
-
-        // Force a value update to trigger UI rebuild
-        value = value.copyWith(
-          deviceOrientation: targetOrientation,
-          // Just update with current value to trigger notification
-          isInitialized: value.isInitialized,
-        );
-      } catch (e) {
-        debugPrint('Error updating camera orientation: $e');
-      }
-    } finally {
-      _isProcessingOrientation = false;
-    }
-  }
-
-  /// Returns the appropriate transform for the camera preview based on orientation
-  Transform getPreviewTransform(BuildContext context, Widget child) {
-    // We don't need to transform the preview anymore since it was correct before
-    return Transform.rotate(
-      angle: 0,
-      child: child,
-    );
-  }
-
-  /// Builds a camera preview widget with proper orientation handling
-  Widget buildOrientationAwarePreview(BuildContext context) {
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return Container(color: Colors.black);
-    }
-
-    // Get the current orientation from MediaQuery
-    final mediaQueryOrientation = MediaQuery.of(context).orientation;
-
-    // Get the device orientation from our controller value
-    // This is more reliable, especially for the initial orientation
-    final deviceOrientation = value.deviceOrientation;
-
-    // Determine if we're in landscape mode
-    final isLandscape = mediaQueryOrientation == Orientation.landscape || deviceOrientation == DeviceOrientation.landscapeLeft || deviceOrientation == DeviceOrientation.landscapeRight;
-
-    // Get the camera's natural aspect ratio
-    final cameraAspectRatio = _controller!.value.aspectRatio;
-
-    // In portrait mode, we need to invert the aspect ratio
-    // This is because the camera sensor is naturally in landscape orientation
-    final previewRatio = isLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
-
-    // Check if we need to apply rotation for landscape left
-    final isLandscapeLeft = deviceOrientation == DeviceOrientation.landscapeLeft;
-
-    // Only apply rotation on Android - iOS handles orientation correctly by itself
-    if (Platform.isAndroid && isLandscapeLeft) {
-      // For landscape left on Android, we need to rotate 180 degrees to fix upside-down preview
-      debugPrint('📱 Applying rotation for Landscape LEFT in preview (Android)');
-      return AspectRatio(
-        aspectRatio: previewRatio,
-        child: Transform.rotate(
-          angle: 3.14159, // 180 degrees (π) rotation for landscape left
-          child: CameraPreview(_controller!),
-        ),
-      );
-    } else {
-      // For iOS or non-landscape-left on Android, no rotation needed
-      debugPrint('📱 No rotation needed for ${deviceOrientation.toString()} in preview (${Platform.isAndroid ? "Android" : "iOS"})');
-      return AspectRatio(
-        aspectRatio: previewRatio,
-        child: CameraPreview(_controller!),
-      );
-    }
+    // Apply the orientation change to the camera
+    await setDeviceOrientation(newOrientation);
   }
 
   /// Updates the value from the camera controller.
@@ -493,19 +421,6 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
     try {
       value = value.copyWith(isTakingPicture: true);
-
-      // Ensure the orientation is set correctly before taking the picture
-      // Only needed for Android - iOS handles orientation correctly by itself
-      if (Platform.isAndroid) {
-        // Use the current device orientation from our value
-        // This is more reliable than trying to detect it here
-        final deviceOrientation = value.deviceOrientation;
-
-        debugPrint('📸 Taking picture with orientation: $deviceOrientation (Android)');
-
-        // Lock the capture orientation to ensure the image is captured correctly
-        await _controller!.lockCaptureOrientation(deviceOrientation);
-      }
 
       // Take the picture
       final file = await _controller!.takePicture();
@@ -598,14 +513,23 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       // Ensure the orientation is set correctly before starting recording
       // Only needed for Android - iOS handles orientation correctly by itself
       if (Platform.isAndroid) {
-        // Use the current device orientation from our value
-        // This is more reliable than trying to detect it here
-        final deviceOrientation = value.deviceOrientation;
+        try {
+          // Get the exact device rotation from the platform
+          final DeviceOrientation deviceOrientation = await OrientationChannel.getPlatformOrientation();
 
-        debugPrint('🎥 Starting video recording with orientation: $deviceOrientation (Android)');
+          debugPrint('🎥 Starting video recording with orientation from platform channel: $deviceOrientation');
 
-        // Lock the capture orientation to ensure the video is recorded correctly
-        await _controller!.lockCaptureOrientation(deviceOrientation);
+          // Ensure orientation is set correctly before recording
+          await _controller!.lockCaptureOrientation(deviceOrientation);
+        } catch (e) {
+          // If platform channel fails, use the current orientation from our value
+          final deviceOrientation = value.deviceOrientation;
+          debugPrint('⚠️ Error getting platform orientation for video recording: $e');
+          debugPrint('🎥 Falling back to current orientation value: $deviceOrientation');
+
+          // Lock the capture orientation to ensure the video is recorded correctly
+          await _controller!.lockCaptureOrientation(deviceOrientation);
+        }
       }
 
       await _controller!.startVideoRecording();
@@ -1146,61 +1070,10 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
       // Then set the orientation on the camera controller
       await _controller!.lockCaptureOrientation(orientation);
+      debugPrint('🔒 Locked capture orientation to: $orientation');
     } catch (e) {
-      debugPrint('Error setting device orientation: $e');
+      debugPrint('❌ Error setting device orientation: $e');
     }
-  }
-
-  /// Handles orientation changes based on device sensor data rather than UI orientation.
-  /// This can provide smoother transitions when rotating the device.
-  void handleDeviceOrientationChange() {
-    if (!value.isInitialized || _controller == null) return;
-
-    // Skip orientation handling for iOS - it handles orientation correctly by itself
-    if (!Platform.isAndroid) {
-      debugPrint('📱 Skipping device orientation handling on iOS - handled natively');
-      return;
-    }
-
-    // Get the current device orientation from the platform
-    final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
-    final size = platformDispatcher.views.first.physicalSize;
-    final view = platformDispatcher.views.first;
-
-    // Determine orientation based on physical dimensions
-    final isLandscape = size.width > size.height;
-
-    // Print orientation information
-    debugPrint('📱 DEVICE ORIENTATION CHANGED (Android):');
-    debugPrint('📐 Physical Size: $size');
-    debugPrint('📱 Is Landscape: $isLandscape');
-    debugPrint('🧭 Previous Orientation: ${value.deviceOrientation}');
-    debugPrint('📷 Camera Sensor Orientation: ${_description.sensorOrientation}°');
-
-    // Set the appropriate orientation
-    DeviceOrientation newOrientation;
-    if (isLandscape) {
-      // Get the view padding - on most devices, the side with the notch or buttons
-      // will have larger padding
-      final viewPadding = view.padding;
-      final isLandscapeLeft = viewPadding.left > viewPadding.right;
-
-      if (isLandscapeLeft) {
-        newOrientation = DeviceOrientation.landscapeLeft;
-        debugPrint('🧭 Detected Landscape LEFT orientation (by padding)');
-      } else {
-        newOrientation = DeviceOrientation.landscapeRight;
-        debugPrint('🧭 Detected Landscape RIGHT orientation (by padding)');
-      }
-
-      debugPrint('📱 View Padding: $viewPadding');
-      debugPrint('🧭 New Orientation: $newOrientation');
-    } else {
-      newOrientation = DeviceOrientation.portraitUp;
-      debugPrint('🧭 New Orientation: $newOrientation');
-    }
-
-    setDeviceOrientation(newOrientation);
   }
 
   @override
