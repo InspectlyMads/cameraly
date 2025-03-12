@@ -144,6 +144,7 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.onCameraStateChanged,
     this.onMaxDurationReached,
     this.customBackButton,
+    this.backButtonBuilder,
     this.bottomOverlayWidget,
     this.showPlaceholders = false,
     this.topLeftWidget,
@@ -233,7 +234,40 @@ class DefaultCameralyOverlay extends StatefulWidget {
   final VoidCallback? onMaxDurationReached;
 
   /// Custom back button to display.
+  ///
+  /// Note: This property is deprecated. Use [backButtonBuilder] instead
+  /// for more flexible customization.
   final Widget? customBackButton;
+
+  /// Builder for a fully customizable back button.
+  ///
+  /// This provides access to the context and the current overlay state,
+  /// allowing for more dynamic customization based on camera state.
+  ///
+  /// Example:
+  /// ```dart
+  /// backButtonBuilder: (context, overlayState) {
+  ///   return GestureDetector(
+  ///     onTap: () {
+  ///       // Custom back action
+  ///       if (overlayState.isRecording) {
+  ///         // Show confirmation dialog when recording
+  ///         showDialog(...);
+  ///       } else {
+  ///         Navigator.of(context).pop();
+  ///       }
+  ///     },
+  ///     child: Container(
+  ///       padding: EdgeInsets.all(12),
+  ///       decoration: BoxDecoration(
+  ///         color: Colors.blue,
+  ///         shape: BoxShape.circle,
+  ///       ),
+  ///       child: Icon(Icons.close, color: Colors.white),
+  ///     ),
+  ///   );
+  /// }
+  final Widget Function(BuildContext context, CameralyOverlayState state)? backButtonBuilder;
 
   /// Widget to display in the bottom overlay area.
   final Widget? bottomOverlayWidget;
@@ -281,6 +315,52 @@ class DefaultCameralyOverlay extends StatefulWidget {
   static _DefaultCameralyOverlayState? of(BuildContext context) {
     final DefaultCameralyOverlayScope? scope = context.dependOnInheritedWidgetOfExactType<DefaultCameralyOverlayScope>();
     return scope?.state;
+  }
+
+  /// Creates a styled back button that can be used with [backButtonBuilder].
+  ///
+  /// This helper method makes it easy to create a custom back button with
+  /// the default styling but custom behavior.
+  ///
+  /// Parameters:
+  /// - [onPressed]: The callback to execute when the button is pressed
+  /// - [icon]: The icon to display (defaults to Icons.arrow_back)
+  /// - [backgroundColor]: The background color (defaults to semi-transparent black)
+  /// - [iconColor]: The icon color (defaults to white)
+  /// - [size]: The size of the button (defaults to 40)
+  ///
+  /// Example:
+  /// ```dart
+  /// backButtonBuilder: (context, state) => DefaultCameralyOverlay.createStyledBackButton(
+  ///   onPressed: () {
+  ///     if (state.isRecording) {
+  ///       // Show confirmation dialog
+  ///       showDialog(...);
+  ///     } else {
+  ///       Navigator.of(context).pop();
+  ///     }
+  ///   },
+  ///   icon: Icons.close,
+  ///   backgroundColor: Colors.red.withOpacity(0.7),
+  /// ),
+  /// ```
+  static Widget createStyledBackButton({
+    required VoidCallback onPressed,
+    IconData icon = Icons.arrow_back,
+    Color backgroundColor = const Color.fromARGB(102, 0, 0, 0),
+    Color iconColor = Colors.white,
+    double size = 40,
+  }) {
+    return CircleAvatar(
+      radius: size / 2,
+      backgroundColor: backgroundColor,
+      child: IconButton(
+        icon: Icon(icon, color: iconColor),
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        iconSize: size * 0.6,
+      ),
+    );
   }
 }
 
@@ -1013,7 +1093,19 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               padding: const EdgeInsets.all(8.0),
               child: Align(
                 alignment: Alignment.topLeft,
-                child: widget.customBackButton ?? CircleAvatar(backgroundColor: Colors.black.withAlpha(102), child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context))),
+                child: widget.backButtonBuilder != null
+                    ? widget.backButtonBuilder!(
+                        context, CameralyOverlayState(isRecording: _isRecording, isVideoMode: _isVideoMode, isFrontCamera: _isFrontCamera, flashMode: _flashMode, torchEnabled: _torchEnabled, recordingDuration: _recordingDuration))
+                    : widget.customBackButton ??
+                        CameralyOverlayButton(
+                          size: 40,
+                          backgroundColor: const Color.fromARGB(77, 0, 0, 0),
+                          borderColor: const Color.fromARGB(179, 255, 255, 255),
+                          borderWidth: 1.0,
+                          margin: EdgeInsets.zero,
+                          onTap: () => Navigator.pop(context),
+                          child: const Icon(Icons.arrow_back, color: Colors.white),
+                        ),
               ),
             ),
           ),
@@ -1318,19 +1410,26 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               // Left button (Gallery or custom)
-              widget.customLeftButton != null
-                  ? widget.customLeftButton!
-                  : widget.showGalleryButton && widget.customLeftButton == null
-                      ? Container(
-                          padding: const EdgeInsets.only(bottom: 17), // Add padding to align with capture button center
-                          child: CameralyOverlayButton(
-                            onTap: _isRecording ? null : _openMediaGallery,
-                            backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
-                            size: 56,
-                            child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
-                          ),
-                        )
-                      : const SizedBox.shrink(),
+              SizedBox(
+                width: 56,
+                height: 73, // 56 + 17 padding for consistent height
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start, // Align to top
+                  children: [
+                    widget.customLeftButton != null
+                        ? widget.customLeftButton!
+                        : widget.showGalleryButton && widget.customLeftButton == null
+                            ? CameralyOverlayButton(
+                                onTap: _isRecording ? null : _openMediaGallery,
+                                backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
+                                size: 56,
+                                margin: EdgeInsets.zero, // Remove the default top margin
+                                child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
+                              )
+                            : const SizedBox.shrink(),
+                  ],
+                ),
+              ),
 
               // Capture button
               if (widget.showCaptureButton)
@@ -1349,20 +1448,28 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 ),
 
               // Right button (Camera switch or custom)
-              widget.customRightButton != null
-                  ? widget.customRightButton!
-                  : widget.showSwitchCameraButton
-                      ? Container(
-                          padding: const EdgeInsets.only(bottom: 17), // Add padding to align with capture button center
-                          decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
-                          child: IconButton.filled(
-                            onPressed: _switchCamera,
-                            icon: const Icon(Icons.switch_camera),
-                            iconSize: 30,
-                            style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, padding: const EdgeInsets.all(12)),
-                          ),
-                        )
-                      : const SizedBox.shrink(),
+              SizedBox(
+                width: 56,
+                height: 73, // 56 + 17 padding for consistent height
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start, // Align to top
+                  children: [
+                    widget.customRightButton != null
+                        ? widget.customRightButton!
+                        : widget.showSwitchCameraButton
+                            ? Container(
+                                decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
+                                child: IconButton.filled(
+                                  onPressed: _switchCamera,
+                                  icon: const Icon(Icons.switch_camera),
+                                  iconSize: 30,
+                                  style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, padding: const EdgeInsets.all(12)),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -1432,15 +1539,18 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 ),
               ),
             ),
+
+          // Spacing after capture button
           SizedBox(height: isWideScreen ? 24 : 16),
 
           // Left button (Gallery or custom)
-          widget.customLeftButton != null
-              ? Padding(padding: EdgeInsets.only(top: isWideScreen ? 24 : 16), child: widget.customLeftButton!)
-              : widget.showGalleryButton && widget.customLeftButton == null
-                  ? Padding(
-                      padding: EdgeInsets.only(top: isWideScreen ? 24 : 16),
-                      child: Container(
+          SizedBox(
+            width: isWideScreen ? 64 : 56,
+            height: isWideScreen ? 64 : 56,
+            child: widget.customLeftButton != null
+                ? widget.customLeftButton!
+                : widget.showGalleryButton && widget.customLeftButton == null
+                    ? Container(
                         decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                         child: IconButton.filled(
                           onPressed: _isRecording ? null : _openMediaGallery, // Disable during recording
@@ -1451,26 +1561,30 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                             minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
                           ),
                         ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
+                      )
+                    : const SizedBox.shrink(),
+          ),
+
+          // Spacing between buttons
+          SizedBox(height: isWideScreen ? 24 : 16),
 
           // Right button (Camera switch or custom)
-          widget.customRightButton != null
-              ? Padding(padding: EdgeInsets.only(top: isWideScreen ? 24 : 16), child: widget.customRightButton!)
-              : widget.showSwitchCameraButton
-                  ? Padding(
-                      padding: EdgeInsets.only(top: isWideScreen ? 24 : 16),
-                      child: Container(
+          SizedBox(
+            width: isWideScreen ? 64 : 56,
+            height: isWideScreen ? 64 : 56,
+            child: widget.customRightButton != null
+                ? widget.customRightButton!
+                : widget.showSwitchCameraButton
+                    ? Container(
                         decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                         child: IconButton.filled(
                           onPressed: _switchCamera,
                           icon: Icon(Icons.switch_camera, size: isWideScreen ? 32 : 24),
                           style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48)),
                         ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
+                      )
+                    : const SizedBox.shrink(),
+          ),
         ],
       ),
     );

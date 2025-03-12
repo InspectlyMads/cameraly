@@ -35,14 +35,18 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
           maxMediaItems: 9999,
 
           // Add custom done button
-          customRightButton: FloatingActionButton(
-            onPressed: () {
-              debugPrint('Done button pressed with ${_capturedMedia.length} photos');
-              Navigator.of(context).pop(_capturedMedia);
-            },
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black87,
-            child: const Icon(Icons.check),
+          customRightButton: SizedBox(
+            height: 56, // Explicit height to ensure consistent sizing
+            width: 56, // Explicit width to ensure consistent sizing
+            child: FloatingActionButton(
+              onPressed: () {
+                debugPrint('Done button pressed with ${_capturedMedia.length} photos');
+                Navigator.of(context).pop(_capturedMedia);
+              },
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black87,
+              child: const Icon(Icons.check),
+            ),
           ),
 
           // Loading text

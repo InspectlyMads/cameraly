@@ -40,14 +40,18 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
           theme: const CameralyOverlayTheme(primaryColor: Colors.blue, secondaryColor: Colors.red, backgroundColor: Colors.black87, opacity: 0.8, buttonSize: 72.0, iconSize: 32.0),
 
           // Add custom done button
-          customRightButton: FloatingActionButton(
-            onPressed: () {
-              debugPrint('Done button pressed with ${_capturedMedia.length} videos');
-              Navigator.of(context).pop(_capturedMedia);
-            },
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black87,
-            child: const Icon(Icons.check),
+          customRightButton: SizedBox(
+            height: 56, // Explicit height to ensure consistent sizing
+            width: 56, // Explicit width to ensure consistent sizing
+            child: FloatingActionButton(
+              onPressed: () {
+                debugPrint('Done button pressed with ${_capturedMedia.length} videos');
+                Navigator.of(context).pop(_capturedMedia);
+              },
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black87,
+              child: const Icon(Icons.check),
+            ),
           ),
 
           // Add duration indicator at the top

@@ -232,8 +232,53 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
 
           // Use custom loading text
           loadingText: 'Preparing custom camera...',
+
+          // Using our new backButtonBuilder property for a custom back button
+          backButtonBuilder: (context, state) {
+            return DefaultCameralyOverlay.createStyledBackButton(
+              onPressed: () {
+                if (state.isRecording) {
+                  // Show confirmation dialog when recording
+                  _showExitConfirmationDialog(context);
+                } else {
+                  Navigator.of(context).pop();
+                }
+              },
+              icon: Icons.arrow_back_ios_new,
+              backgroundColor: Colors.blueAccent.withOpacity(0.7),
+              size: 50,
+            );
+          },
         ),
       ),
+    );
+  }
+
+  void _showExitConfirmationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Recording in progress'),
+            content: const Text('Do you want to stop recording and exit?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('CANCEL')),
+              TextButton(
+                onPressed: () {
+                  // Access the controller through a builder or finder since we don't store it anymore
+                  final cameralyController = CameralyControllerProvider.of(context);
+                  if (cameralyController != null) {
+                    // Stop recording
+                    cameralyController.stopVideoRecording();
+                  }
+                  // Exit
+                  Navigator.of(context).pop(); // close dialog
+                  Navigator.of(context).pop(); // exit screen
+                },
+                child: const Text('STOP & EXIT'),
+              ),
+            ],
+          ),
     );
   }
 }

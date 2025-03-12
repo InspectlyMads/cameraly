@@ -56,6 +56,8 @@ class CameraPreviewSettings {
     this.topLeftWidget,
     this.centerLeftWidget,
     this.bottomOverlayWidget,
+    this.customBackButton,
+    this.backButtonBuilder,
 
     // Custom overlay
     this.customOverlay,
@@ -145,6 +147,42 @@ class CameraPreviewSettings {
 
   /// Widget to display in the bottom overlay area.
   final Widget? bottomOverlayWidget;
+
+  /// Custom back button to display.
+  ///
+  /// Note: Consider using [backButtonBuilder] for more flexibility.
+  final Widget? customBackButton;
+
+  /// Builder for a fully customizable back button.
+  ///
+  /// This provides access to the context and the current overlay state,
+  /// allowing for more dynamic customization based on camera state.
+  ///
+  /// Example:
+  /// ```dart
+  /// backButtonBuilder: (context, state) {
+  ///   return GestureDetector(
+  ///     onTap: () {
+  ///       // Custom back action
+  ///       if (state.isRecording) {
+  ///         // Show confirmation dialog when recording
+  ///         showDialog(...);
+  ///       } else {
+  ///         Navigator.of(context).pop();
+  ///       }
+  ///     },
+  ///     child: Container(
+  ///       padding: EdgeInsets.all(12),
+  ///       decoration: BoxDecoration(
+  ///         color: Colors.blue,
+  ///         shape: BoxShape.circle,
+  ///       ),
+  ///       child: Icon(Icons.close, color: Colors.white),
+  ///     ),
+  ///   );
+  /// }
+  /// ```
+  final Widget Function(BuildContext context, CameralyOverlayState state)? backButtonBuilder;
 
   /// Custom overlay widget builder. If provided, this takes precedence
   /// over the default overlay and its customization options.
@@ -247,6 +285,8 @@ class CameraPreviewSettings {
     FocusMode? focusMode,
     DeviceOrientation? deviceOrientation,
     bool? multiImageSelect,
+    Widget? customBackButton,
+    Widget Function(BuildContext, CameralyOverlayState)? backButtonBuilder,
   }) {
     final newCameraMode = cameraMode ?? this.cameraMode;
     // If new camera mode is photoOnly, force enableAudio to false
@@ -274,6 +314,8 @@ class CameraPreviewSettings {
       topLeftWidget: topLeftWidget ?? this.topLeftWidget,
       centerLeftWidget: centerLeftWidget ?? this.centerLeftWidget,
       bottomOverlayWidget: bottomOverlayWidget ?? this.bottomOverlayWidget,
+      customBackButton: customBackButton ?? this.customBackButton,
+      backButtonBuilder: backButtonBuilder ?? this.backButtonBuilder,
       customOverlay: customOverlay ?? this.customOverlay,
       overlayPreset: overlayPreset ?? this.overlayPreset,
       maxMediaItems: maxMediaItems ?? this.maxMediaItems,
