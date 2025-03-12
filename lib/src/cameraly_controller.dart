@@ -11,7 +11,6 @@ import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
 import 'utils/media_manager.dart';
 import 'utils/orientation_channel.dart';
-import 'utils/permission_handler.dart';
 
 /// Controller for the Cameraly camera interface.
 class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindingObserver {
@@ -19,7 +18,6 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   CameralyController({required CameraDescription description, CaptureSettings? settings, CameralyMediaManager? mediaManager, CameralyMediaManager? existingMediaManager})
       : _description = description,
         _settings = settings ?? const CaptureSettings(),
-        _permissionHandler = const CameralyPermissionHandler(),
         _mediaManager = existingMediaManager ?? mediaManager ?? CameralyMediaManager(),
         super(const CameralyValue.uninitialized()) {
     // Register as an observer for app lifecycle changes
@@ -28,7 +26,6 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
   final CameraDescription _description;
   final CaptureSettings _settings;
-  final CameralyPermissionHandler _permissionHandler;
   final CameralyMediaManager _mediaManager;
   CameraController? _controller;
 
@@ -129,20 +126,13 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   }
 
   /// Initializes the camera controller.
+  ///
+  /// Note: This method no longer handles permissions. Permissions should be
+  /// handled by CameralyPermissionManager before calling initialize.
   Future<void> initialize() async {
     try {
-      // Check if we're already in a deniedButContinued state
-      if (value.permissionState == CameraPermissionState.deniedButContinued) {
-        // User has chosen to continue without camera, so we don't try to initialize
-        return;
-      }
-
-      final hasPermission = await _permissionHandler.requestPermissions(requireAudio: _settings.enableAudio);
-
-      if (!hasPermission) {
-        value = value.copyWith(permissionState: CameraPermissionState.denied, error: 'Camera permission denied');
-        return;
-      }
+      debugPrint('📸 Initializing camera with mode: ${_settings.cameraMode}');
+      debugPrint('📸 Audio enabled: ${_settings.enableAudio}');
 
       _controller = CameraController(_description, _settings.resolution, enableAudio: _settings.enableAudio);
 
@@ -201,7 +191,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         // Ignore zoom errors during initialization
       }
     } on CameraException catch (e) {
-      value = value.copyWith(error: 'Failed to initialize camera: ${e.description}', permissionState: CameraPermissionState.denied);
+      value = value.copyWith(error: 'Failed to initialize camera: ${e.description}');
       rethrow;
     }
   }

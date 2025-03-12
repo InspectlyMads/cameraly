@@ -9,7 +9,6 @@ import 'overlays/cameraly_overlay_theme.dart';
 import 'overlays/default_cameraly_overlay.dart';
 import 'utils/cameraly_controller_provider.dart';
 import 'utils/media_manager.dart';
-import 'utils/permission_landing_page.dart';
 
 /// A widget that displays the camera preview.
 class CameralyPreview extends StatefulWidget {
@@ -446,51 +445,6 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
                       ],
                     ),
                   );
-          }
-
-          // Handle permission denied state
-          if (value.permissionState == CameraPermissionState.denied) {
-            return CameralyPermissionLandingPage(
-              controller: _controller!,
-              backgroundColor: Colors.black,
-              textColor: Colors.white,
-              buttonColor: Theme.of(context).primaryColor,
-            );
-          }
-
-          // If permissions are denied but user chose to continue, show a placeholder
-          if (value.permissionState == CameraPermissionState.deniedButContinued) {
-            return Container(
-              color: Colors.black,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.no_photography,
-                      color: Colors.white54,
-                      size: 64,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Camera access not available',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        // Reset permission state and try again
-                        _controller!.value = _controller!.value.copyWith(
-                          permissionState: CameraPermissionState.unknown,
-                        );
-                        _controller!.initialize();
-                      },
-                      child: const Text('Enable Camera'),
-                    ),
-                  ],
-                ),
-              ),
-            );
           }
 
           // If camera is initialized, show the preview

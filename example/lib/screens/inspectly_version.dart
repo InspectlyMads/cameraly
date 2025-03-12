@@ -23,6 +23,7 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
           cameraMode: CameraMode.photoOnly,
           resolution: ResolutionPreset.high,
           flashMode: FlashMode.auto,
+          enableAudio: false,
 
           // UI configuration
           showSwitchCameraButton: true,

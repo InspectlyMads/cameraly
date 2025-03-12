@@ -14,16 +14,22 @@ import 'camera_mode.dart';
 /// camera hardware settings and UI/overlay configuration.
 class CaptureSettings {
   /// Creates settings for camera capture.
+  ///
+  /// Note: When [cameraMode] is set to [CameraMode.photoOnly], [enableAudio] will
+  /// automatically be set to false regardless of the value provided.
   const CaptureSettings({
     this.cameraMode = CameraMode.both,
-    this.enableAudio = true,
+    bool enableAudio = true,
     this.flashMode = FlashMode.auto,
     this.resolution = ResolutionPreset.max,
     this.exposureMode = ExposureMode.auto,
     this.focusMode = FocusMode.auto,
     this.deviceOrientation = DeviceOrientation.portraitUp,
     this.maxVideoDuration,
-  }) : assert(
+  })  :
+        // Force enableAudio to false when in photoOnly mode
+        enableAudio = cameraMode == CameraMode.photoOnly ? false : enableAudio,
+        assert(
           maxVideoDuration == null || cameraMode != CameraMode.photoOnly,
           'maxVideoDuration can only be used with CameraMode.videoOnly or CameraMode.both',
         );
@@ -32,6 +38,8 @@ class CaptureSettings {
   final CameraMode cameraMode;
 
   /// Whether to enable audio recording for videos.
+  ///
+  /// This is always false when [cameraMode] is [CameraMode.photoOnly].
   final bool enableAudio;
 
   /// The initial flash mode.
@@ -64,9 +72,13 @@ class CaptureSettings {
     DeviceOrientation? deviceOrientation,
     Duration? maxVideoDuration,
   }) {
+    final newCameraMode = cameraMode ?? this.cameraMode;
+    // If new camera mode is photoOnly, force enableAudio to false
+    final newEnableAudio = newCameraMode == CameraMode.photoOnly ? false : (enableAudio ?? this.enableAudio);
+
     return CaptureSettings(
-      cameraMode: cameraMode ?? this.cameraMode,
-      enableAudio: enableAudio ?? this.enableAudio,
+      cameraMode: newCameraMode,
+      enableAudio: newEnableAudio,
       flashMode: flashMode ?? this.flashMode,
       resolution: resolution ?? this.resolution,
       exposureMode: exposureMode ?? this.exposureMode,
@@ -96,9 +108,13 @@ class CaptureSettings {
   ///
   /// This allows for seamless conversion between the two settings classes.
   factory CaptureSettings.fromPreviewSettings(CameraPreviewSettings settings) {
+    final cameraMode = settings.cameraMode;
+    // If camera mode is photoOnly, force enableAudio to false
+    final enableAudio = cameraMode == CameraMode.photoOnly ? false : settings.enableAudio;
+
     return CaptureSettings(
-      cameraMode: settings.cameraMode,
-      enableAudio: settings.enableAudio,
+      cameraMode: cameraMode,
+      enableAudio: enableAudio,
       flashMode: settings.flashMode,
       resolution: settings.resolution,
       maxVideoDuration: settings.videoDurationLimit,

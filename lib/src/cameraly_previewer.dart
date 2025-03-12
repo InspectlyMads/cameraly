@@ -23,12 +23,15 @@ import 'utils/media_manager.dart';
 /// functionality and the user interface.
 class CameraPreviewSettings {
   /// Creates a comprehensive settings object for [CameraPreviewer].
+  ///
+  /// Note: When [cameraMode] is set to [CameraMode.photoOnly], [enableAudio] will
+  /// automatically be set to false regardless of the value provided.
   const CameraPreviewSettings({
     // Camera hardware/capture settings
     this.cameraMode = CameraMode.both,
     this.resolution = ResolutionPreset.high,
     this.flashMode = FlashMode.auto,
-    this.enableAudio = true,
+    bool enableAudio = true,
 
     // Overlay visibility settings
     this.showOverlay = true,
@@ -68,7 +71,9 @@ class CameraPreviewSettings {
     this.onCaptureError,
     this.onClose,
     this.onComplete,
-  });
+  }) :
+        // Force enableAudio to false when in photoOnly mode
+        enableAudio = cameraMode == CameraMode.photoOnly ? false : enableAudio;
 
   /// Camera mode setting (photo only, video only, or both).
   final CameraMode cameraMode;
@@ -80,6 +85,8 @@ class CameraPreviewSettings {
   final FlashMode flashMode;
 
   /// Whether to enable audio during video recording.
+  ///
+  /// This is always false when [cameraMode] is [CameraMode.photoOnly].
   final bool enableAudio;
 
   /// Whether to show any overlay on top of the camera preview.
@@ -216,11 +223,15 @@ class CameraPreviewSettings {
     VoidCallback? onClose,
     Function(List<XFile>)? onComplete,
   }) {
+    final newCameraMode = cameraMode ?? this.cameraMode;
+    // If new camera mode is photoOnly, force enableAudio to false
+    final newEnableAudio = newCameraMode == CameraMode.photoOnly ? false : (enableAudio ?? this.enableAudio);
+
     return CameraPreviewSettings(
-      cameraMode: cameraMode ?? this.cameraMode,
+      cameraMode: newCameraMode,
       resolution: resolution ?? this.resolution,
       flashMode: flashMode ?? this.flashMode,
-      enableAudio: enableAudio ?? this.enableAudio,
+      enableAudio: newEnableAudio,
       showOverlay: showOverlay ?? this.showOverlay,
       showFlashButton: showFlashButton ?? this.showFlashButton,
       showSwitchCameraButton: showSwitchCameraButton ?? this.showSwitchCameraButton,

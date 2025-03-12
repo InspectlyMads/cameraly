@@ -72,104 +72,26 @@
 /// ```
 library cameraly;
 
-// Re-export necessary types from the camera package
-/// Re-exports from the official camera package
-///
-/// These types are used throughout the Cameraly API and are re-exported
-/// for convenience so you don't need to import the camera package directly.
-export 'package:camera/camera.dart' show CameraException, CameraImage, FlashMode, ExposureMode, FocusMode, ResolutionPreset, XFile;
+// Re-export camera types that are needed
+export 'package:camera/camera.dart' show XFile, FlashMode, ResolutionPreset, ExposureMode, FocusMode;
 
-/// The main controller class for camera operations
-///
-/// [CameralyController] is the primary class for interacting with the camera.
-/// It provides methods for initialization, taking pictures, recording videos,
-/// and controlling camera settings.
+// Export controller and values
 export 'src/cameraly_controller.dart';
-
-/// The camera preview widget
-///
-/// [CameralyPreview] displays the camera feed and handles user interactions
-/// like tap-to-focus and pinch-to-zoom.
+// Export preview widgets
 export 'src/cameraly_preview.dart';
-
-/// The comprehensive camera previewer with simplified API
-///
-/// [CameraPreviewer] provides an all-in-one solution that handles
-/// controller creation, initialization, and UI in a single component.
-/// Recommended for most use cases.
+export 'src/cameraly_preview_enhanced.dart';
 export 'src/cameraly_previewer.dart';
-
-/// The state container for camera information
-///
-/// [CameralyValue] contains the current state of the camera, including
-/// initialization status, recording status, and current settings.
 export 'src/cameraly_value.dart';
-
-/// Theme class for styling camera overlays
-///
-/// [CameralyOverlayTheme] provides styling options for colors, sizes,
-/// and other visual properties of camera overlays.
+// Export overlay classes
 export 'src/overlays/cameraly_overlay_theme.dart';
-
-/// Overlay system for camera UI
-///
-/// The following exports provide classes for creating and customizing
-/// camera overlays with controls and UI elements.
-
-/// Default camera overlay implementation
-///
-/// [DefaultCameralyOverlay] is a ready-to-use overlay with standard
-/// camera controls like capture button, flash toggle, and camera switch.
 export 'src/overlays/default_cameraly_overlay.dart';
-
-/// Position utilities for overlay elements
-///
-/// [OverlayPosition] defines standard positions for UI elements in
-/// camera overlays and provides utilities for positioning widgets.
-export 'src/overlays/overlay_position.dart';
-
-/// Screens
-///
-/// [Screens] contains various screens related to camera operations.
-export 'src/screens/screens.dart';
-
-/// Camera device information
-///
-/// Contains information about available camera devices and their capabilities.
+// Export types
 export 'src/types/camera_device.dart';
-
-/// Camera mode options
-///
-/// [CameraMode] defines the available camera modes (photo only, video only, or both).
 export 'src/types/camera_mode.dart';
-
-/// Base class for camera capture settings
-///
-/// [CaptureSettings] is the base class for configuring camera settings like
-/// resolution, flash mode, and other capture parameters.
 export 'src/types/capture_settings.dart';
-
-/// CameralyControllerProvider class
-///
-/// [CameralyControllerProvider] provides a way to access the CameralyController instance.
+// Export utilities
 export 'src/utils/cameraly_controller_provider.dart';
-
-/// Utility functions for camera operations
-///
-/// [CameralyUtils] provides helper functions for common camera operations.
-export 'src/utils/cameraly_utils.dart';
-
-/// Media management utilities
-///
-/// Provides classes for managing captured media files and displaying them in the UI.
 export 'src/utils/media_manager.dart';
-
-/// Platform orientation detection utilities
-///
-/// [OrientationChannel] provides reliable device orientation detection via platform channels.
-export 'src/utils/orientation_channel.dart';
-
-/// Permission handling utilities
-///
-/// Provides methods for requesting and checking camera and microphone permissions.
-export 'src/utils/permission_handler.dart';
+// Export the new permission management system
+export 'src/utils/permission_manager.dart';
+export 'src/widgets/permission_ui.dart';
