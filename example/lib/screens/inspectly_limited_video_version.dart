@@ -20,7 +20,7 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CameraPreviewer(
+      body: CameralyCamera(
         settings: CameraPreviewSettings(
           // Camera settings - video only mode
           cameraMode: CameraMode.videoOnly,
@@ -67,12 +67,6 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
             setState(() {
               _capturedMedia.add(file);
             });
-
-            // For video recordings that reach maximum duration
-            if (file.path.isNotEmpty) {
-              ScaffoldMessenger.of(context).clearSnackBars();
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video saved'), backgroundColor: Colors.green));
-            }
           },
         ),
       ),

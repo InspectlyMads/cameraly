@@ -2,7 +2,7 @@ import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
 
 /// A screen that demonstrates the photo-only camera with a done button
-/// This implementation uses the simplified CameraPreviewer API
+/// This implementation uses the simplified CameralyCamera API
 class InspectlyVersionScreen extends StatefulWidget {
   const InspectlyVersionScreen({super.key});
 
@@ -17,7 +17,7 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CameraPreviewer(
+      body: CameralyCamera(
         settings: CameraPreviewSettings(
           // Camera settings - photo only mode
           cameraMode: CameraMode.photoOnly,

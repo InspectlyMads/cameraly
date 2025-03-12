@@ -25,7 +25,7 @@ This section helps maintain continuity across context resets.
 ### Current Implementation State
 - **Last Updated**: March 21, 2024
 - **Current Stage**: Pre-publishing Preparation
-- **Last Completed Task**: Implemented simplified CameraPreviewer API with automatic controller management
+- **Last Completed Task**: Implemented simplified CameralyCamera API with automatic controller management
 - **Next Task**: Update package configuration and implement tests
 - **Critical Files**:
   - `lib/cameraly.dart`: Main package entry point
@@ -38,7 +38,7 @@ This section helps maintain continuity across context resets.
   - `lib/src/types/photo_settings.dart`: Photo-specific settings
   - `lib/src/types/video_settings.dart`: Video-specific settings
   - `example/lib/main.dart`: Complete example app implementation
-  - `example/lib/screens/simple_camera_screen.dart`: Example using simplified CameraPreviewer API
+  - `example/lib/screens/simple_camera_screen.dart`: Example using simplified CameralyCamera API
   - `example/README.md`: Example app documentation
   - `example/android/app/src/main/AndroidManifest.xml`: Android configuration
   - `example/ios/Runner/Info.plist`: iOS configuration
@@ -65,7 +65,7 @@ This section helps maintain continuity across context resets.
 #### Simplified API (Recommended)
 ```dart
 // One widget handles everything
-CameraPreviewer(
+CameralyCamera(
   settings: CameraPreviewSettings(
     cameraMode: CameraMode.photoOnly,
     showFlashButton: true,

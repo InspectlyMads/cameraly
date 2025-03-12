@@ -38,19 +38,12 @@ class _PersistentStorageExampleState extends State<PersistentStorageExample> {
         final fileName = path.basename(file.path);
         final newPath = path.join(_savePath, fileName);
         await File(file.path).copy(newPath);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to: $newPath'), duration: const Duration(seconds: 2)));
-        }
       },
     );
 
     // Get available cameras
     final cameras = await CameralyController.getAvailableCameras();
     if (cameras.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No cameras available')));
-      }
       return;
     }
 
@@ -60,11 +53,7 @@ class _PersistentStorageExampleState extends State<PersistentStorageExample> {
     try {
       await _controller.initialize();
       if (mounted) setState(() {});
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error initializing camera: $e')));
-      }
-    }
+    } catch (e) {}
   }
 
   @override

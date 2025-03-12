@@ -73,20 +73,21 @@
 library cameraly;
 
 // Re-export camera types that are needed
-export 'package:camera/camera.dart' show XFile, FlashMode, ResolutionPreset, ExposureMode, FocusMode;
+export 'package:camera/camera.dart' show XFile, FlashMode, ResolutionPreset, ExposureMode, FocusMode, CameraLensDirection;
 
+export 'src/cameraly_camera.dart';
 // Export controller and values
 export 'src/cameraly_controller.dart';
 // Export preview widgets
 export 'src/cameraly_preview.dart';
 export 'src/cameraly_preview_enhanced.dart';
-export 'src/cameraly_previewer.dart';
+// Export both old and new names for backward compatibility
+export 'src/cameraly_camera.dart' hide CameraPreviewSettings, CameralyCamera, OverlayPreset;
 export 'src/cameraly_value.dart';
 // Export overlay classes
 export 'src/overlays/cameraly_overlay_theme.dart';
 export 'src/overlays/default_cameraly_overlay.dart';
 // Export types
-export 'src/types/camera_device.dart';
 export 'src/types/camera_mode.dart';
 export 'src/types/capture_settings.dart';
 // Export utilities

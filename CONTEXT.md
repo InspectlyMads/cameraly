@@ -15,7 +15,7 @@ Cameraly is a Flutter package that enhances the official Flutter camera plugin w
    - Manages camera state using ValueNotifier
    - Handles initialization, photo/video capture, and camera settings
 
-2. **CameraPreviewer** (`lib/src/cameraly_previewer.dart`) 
+2. **CameralyCamera** (`lib/src/cameraly_previewer.dart`) 
    - NEW: Ultra-simplified camera experience in a single widget
    - Manages the entire camera workflow automatically
    - Creates and disposes controller internally
@@ -24,7 +24,7 @@ Cameraly is a Flutter package that enhances the official Flutter camera plugin w
    - Perfect for rapid implementation with minimal code
 
 3. **CameraPreviewSettings** (`lib/src/cameraly_previewer.dart`)
-   - NEW: Configuration object for the CameraPreviewer
+   - NEW: Configuration object for the CameralyCamera
    - Encapsulates all camera and UI settings in a single object
    - Controls which buttons appear, overlay style, and callbacks
    - Allows custom UI components to be injected
@@ -63,7 +63,7 @@ Cameraly is a Flutter package that enhances the official Flutter camera plugin w
    - Can be created from CameraPreviewSettings using fromPreviewSettings factory
 
 2. **CameraPreviewSettings** (`lib/src/cameraly_previewer.dart`)
-   - Comprehensive settings for the simplified CameraPreviewer
+   - Comprehensive settings for the simplified CameralyCamera
    - Combines camera hardware settings with UI configuration
    - Includes both technical settings and UI customization options
    - Can be converted to CaptureSettings using toCaptureSettings method
@@ -130,7 +130,7 @@ Cameraly uses Flutter's built-in ValueNotifier for state management, which provi
 ## Development Status
 
 - **Current Stage**: Pre-publishing Preparation (95% complete)
-- **Last Completed Task**: Implemented simplified CameraPreviewer API with automatic controller management
+- **Last Completed Task**: Implemented simplified CameralyCamera API with automatic controller management
 - **Next Tasks**: 
   - Implement tests
   - Update package configuration
@@ -157,7 +157,7 @@ Cameraly uses Flutter's built-in ValueNotifier for state management, which provi
 
 ```dart
 // 1. Single widget handles everything - no controller management needed
-CameraPreviewer(
+CameralyCamera(
   settings: CameraPreviewSettings(
     // Camera configuration
     cameraMode: CameraMode.photoOnly,
@@ -186,7 +186,7 @@ CameraPreviewer(
 )
 
 // The CameraPreviewSettings automatically converts to CaptureSettings internally
-// No need to create CaptureSettings manually when using CameraPreviewer
+// No need to create CaptureSettings manually when using CameralyCamera
 ```
 
 ### Legacy API (Manual Controller Management)
@@ -285,7 +285,7 @@ if (permissionResult == PermissionStatus.granted) {
 ### Simplified API (No Lifecycle Management Needed)
 
 ```dart
-// The CameraPreviewer handles all these concerns internally:
+// The CameralyCamera handles all these concerns internally:
 // - Camera initialization
 // - Permission requests
 // - Error handling
@@ -297,7 +297,7 @@ class CameraScreen extends StatelessWidget {  // StatelessWidget is all you need
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CameraPreviewer(
+      body: CameralyCamera(
         settings: CameraPreviewSettings(
           // Camera hardware settings (automatically converted to CaptureSettings internally)
           cameraMode: CameraMode.photoOnly,
@@ -342,7 +342,7 @@ try {
 The package includes a comprehensive example app in the `example/` directory that demonstrates all features:
 
 - `example/lib/main.dart`: Entry point with navigation
-- `example/lib/screens/simple_camera_screen.dart`: Demonstrates the new simplified CameraPreviewer API
+- `example/lib/screens/simple_camera_screen.dart`: Demonstrates the new simplified CameralyCamera API
 - `example/lib/screens/camera_screen.dart`: Shows traditional controller-based implementation
 - `example/lib/screens/overlay_example.dart`: Overlay system demonstration
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'cameraly_controller.dart';
 import 'cameraly_preview.dart';
@@ -12,7 +13,7 @@ import 'types/capture_settings.dart';
 import 'utils/cameraly_controller_provider.dart';
 import 'utils/media_manager.dart';
 
-/// Settings for configuring the appearance, behavior, and functionality of the CameraPreviewer.
+/// Settings for configuring the appearance, behavior, and functionality of the CameralyCamera.
 ///
 /// This class extends the capabilities of [CaptureSettings] by adding UI configuration options.
 /// It includes both camera hardware settings (like resolution, flash mode) and UI settings
@@ -22,7 +23,7 @@ import 'utils/media_manager.dart';
 /// [CameraPreviewSettings] provides a comprehensive configuration for both camera
 /// functionality and the user interface.
 class CameraPreviewSettings {
-  /// Creates a comprehensive settings object for [CameraPreviewer].
+  /// Creates a comprehensive settings object for [CameralyCamera].
   ///
   /// Note: When [cameraMode] is set to [CameraMode.photoOnly], [enableAudio] will
   /// automatically be set to false regardless of the value provided.
@@ -41,7 +42,6 @@ class CameraPreviewSettings {
     this.showGalleryButton = true,
     this.showMediaStack = false,
     this.showZoomControls = true,
-    this.showZoomSlider = false,
 
     // Theme and appearance
     this.theme,
@@ -68,9 +68,15 @@ class CameraPreviewSettings {
     // Callbacks
     this.onCapture,
     this.onInitialized,
-    this.onCaptureError,
+    this.onError,
     this.onClose,
     this.onComplete,
+
+    // Additional settings
+    this.exposureMode = ExposureMode.auto,
+    this.focusMode = FocusMode.auto,
+    this.deviceOrientation = DeviceOrientation.portraitUp,
+    this.multiImageSelect = false,
   }) :
         // Force enableAudio to false when in photoOnly mode
         enableAudio = cameraMode == CameraMode.photoOnly ? false : enableAudio;
@@ -109,9 +115,6 @@ class CameraPreviewSettings {
 
   /// Whether to show zoom controls.
   final bool showZoomControls;
-
-  /// Whether to show the zoom slider.
-  final bool showZoomSlider;
 
   /// Theme for customizing the appearance of the overlay.
   final CameralyOverlayTheme? theme;
@@ -164,8 +167,14 @@ class CameraPreviewSettings {
   /// Callback when the camera controller is fully initialized.
   final Function(CameralyController)? onInitialized;
 
-  /// Callback when a capture error occurs.
-  final Function(String)? onCaptureError;
+  /// Callback for any camera error that occurs.
+  ///
+  /// The callback includes:
+  /// - source: The source of the error (e.g., 'initialization', 'capture', etc.)
+  /// - message: A human-readable error message
+  /// - error: The original error object (if available)
+  /// - isRecoverable: Whether the error is potentially recoverable
+  final Function(String source, String message, {Object? error, bool isRecoverable})? onError;
 
   /// Callback when the camera is closed.
   final VoidCallback? onClose;
@@ -176,9 +185,21 @@ class CameraPreviewSettings {
   /// and wants to return the captured media to the calling screen.
   final Function(List<XFile>)? onComplete;
 
+  /// The initial exposure mode.
+  final ExposureMode exposureMode;
+
+  /// The initial focus mode.
+  final FocusMode focusMode;
+
+  /// The device orientation to use.
+  final DeviceOrientation deviceOrientation;
+
+  /// Whether to allow multiple image selection in the gallery picker.
+  final bool multiImageSelect;
+
   /// Converts this settings object to a [CaptureSettings] object.
   ///
-  /// This is used internally by [CameraPreviewer] to configure the [CameralyController].
+  /// This is used internally by [CameralyCamera] to configure the [CameralyController].
   CaptureSettings toCaptureSettings() {
     return CaptureSettings(
       cameraMode: cameraMode,
@@ -219,9 +240,13 @@ class CameraPreviewSettings {
     Duration? videoDurationLimit,
     Function(XFile)? onCapture,
     Function(CameralyController)? onInitialized,
-    Function(String)? onCaptureError,
+    Function(String, String, {Object? error, bool isRecoverable})? onError,
     VoidCallback? onClose,
     Function(List<XFile>)? onComplete,
+    ExposureMode? exposureMode,
+    FocusMode? focusMode,
+    DeviceOrientation? deviceOrientation,
+    bool? multiImageSelect,
   }) {
     final newCameraMode = cameraMode ?? this.cameraMode;
     // If new camera mode is photoOnly, force enableAudio to false
@@ -239,7 +264,6 @@ class CameraPreviewSettings {
       showGalleryButton: showGalleryButton ?? this.showGalleryButton,
       showMediaStack: showMediaStack ?? this.showMediaStack,
       showZoomControls: showZoomControls ?? this.showZoomControls,
-      showZoomSlider: showZoomSlider ?? this.showZoomSlider,
       theme: theme ?? this.theme,
       loadingBackgroundColor: loadingBackgroundColor ?? this.loadingBackgroundColor,
       loadingIndicatorColor: loadingIndicatorColor ?? this.loadingIndicatorColor,
@@ -256,14 +280,18 @@ class CameraPreviewSettings {
       videoDurationLimit: videoDurationLimit ?? this.videoDurationLimit,
       onCapture: onCapture ?? this.onCapture,
       onInitialized: onInitialized ?? this.onInitialized,
-      onCaptureError: onCaptureError ?? this.onCaptureError,
+      onError: onError ?? this.onError,
       onClose: onClose ?? this.onClose,
       onComplete: onComplete ?? this.onComplete,
+      exposureMode: exposureMode ?? this.exposureMode,
+      focusMode: focusMode ?? this.focusMode,
+      deviceOrientation: deviceOrientation ?? this.deviceOrientation,
+      multiImageSelect: multiImageSelect ?? this.multiImageSelect,
     );
   }
 }
 
-/// Predefined overlay styles that can be used with the [CameraPreviewer].
+/// Predefined overlay styles that can be used with the [CameralyCamera].
 enum OverlayPreset {
   /// Standard overlay with all default controls.
   standard,
@@ -293,9 +321,9 @@ enum OverlayPreset {
 /// Unlike the more low-level [CameralyPreview], this widget doesn't require you to
 /// create and manage a controller - it handles everything internally based on the
 /// provided [settings].
-class CameraPreviewer extends StatefulWidget {
-  /// Creates a [CameraPreviewer] with the specified settings.
-  const CameraPreviewer({
+class CameralyCamera extends StatefulWidget {
+  /// Creates a [CameralyCamera] with the specified settings.
+  const CameralyCamera({
     required this.settings,
     super.key,
   });
@@ -304,10 +332,10 @@ class CameraPreviewer extends StatefulWidget {
   final CameraPreviewSettings settings;
 
   @override
-  State<CameraPreviewer> createState() => _CameraPreviewerState();
+  State<CameralyCamera> createState() => _CameralyCameraState();
 }
 
-class _CameraPreviewerState extends State<CameraPreviewer> {
+class _CameralyCameraState extends State<CameralyCamera> {
   CameralyController? _controller;
   late CameralyMediaManager _mediaManager;
   bool _isInitializing = true;
@@ -326,7 +354,7 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
   }
 
   @override
-  void didUpdateWidget(CameraPreviewer oldWidget) {
+  void didUpdateWidget(CameralyCamera oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     // Handle settings changes that require controller re-initialization
@@ -361,7 +389,9 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
           _isInitializing = false;
           _errorMessage = 'No cameras available on this device';
         });
-        widget.settings.onCaptureError?.call('No cameras available on this device');
+
+        // Call both the deprecated and new error callbacks
+        widget.settings.onError?.call('initialization', 'No cameras available on this device', isRecoverable: false);
         return;
       }
 
@@ -392,12 +422,15 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
         widget.settings.onInitialized?.call(controller);
       } catch (e) {
         // Handle initialization error
+        final errorMsg = 'Failed to initialize camera: ${e.toString()}';
+
         if (mounted) {
           setState(() {
             _isInitializing = false;
-            _errorMessage = 'Failed to initialize camera: ${e.toString()}';
+            _errorMessage = errorMsg;
           });
-          widget.settings.onCaptureError?.call('Failed to initialize camera: ${e.toString()}');
+
+          widget.settings.onError?.call('initialization', errorMsg, error: e, isRecoverable: true);
         }
 
         // Clean up the controller
@@ -405,12 +438,15 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
       }
     } catch (e) {
       // Handle general error
+      final errorMsg = 'Camera error: ${e.toString()}';
+
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _errorMessage = 'Camera error: ${e.toString()}';
+          _errorMessage = errorMsg;
         });
-        widget.settings.onCaptureError?.call('Camera error: ${e.toString()}');
+
+        widget.settings.onError?.call('system', errorMsg, error: e, isRecoverable: false);
       }
     }
   }
@@ -489,7 +525,6 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
       showGalleryButton: widget.settings.showGalleryButton,
       showMediaStack: widget.settings.showMediaStack,
       showZoomControls: widget.settings.showZoomControls,
-      showZoomSlider: widget.settings.showZoomSlider,
       theme: widget.settings.theme,
       maxVideoDuration: widget.settings.videoDurationLimit,
       customLeftButton: widget.settings.customLeftButton,
@@ -498,8 +533,8 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
       centerLeftWidget: widget.settings.centerLeftWidget,
       bottomOverlayWidget: widget.settings.bottomOverlayWidget,
       onCapture: widget.settings.onCapture,
-      onCaptureError: widget.settings.onCaptureError,
       onClose: widget.settings.onClose,
+      multiImageSelect: widget.settings.multiImageSelect,
       // Handle controller changed event by re-initializing our controller
       onControllerChanged: (newController) {
         setState(() {

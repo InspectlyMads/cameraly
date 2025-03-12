@@ -10,139 +10,122 @@ class CustomDisplayScreen extends StatefulWidget {
 }
 
 class _CustomDisplayScreenState extends State<CustomDisplayScreen> {
-  late CameralyController _controller;
-  late CameralyMediaManager _mediaManager;
-  bool _isInitialized = false;
+  String? _errorMessage;
 
-  @override
-  void initState() {
-    super.initState();
-    _initCamera();
-  }
+  void _handleError(String source, String message, {Object? error, bool isRecoverable = false}) {
+    debugPrint('Camera error from $source: $message');
+    debugPrint('Original error: $error');
 
-  Future<void> _initCamera() async {
-    // Create the media manager
-    _mediaManager = CameralyMediaManager(maxItems: 30);
-
-    // Get available cameras
-    final cameras = await CameralyController.getAvailableCameras();
-    if (cameras.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No cameras available')));
-      }
-      return;
-    }
-
-    // Initialize the camera controller
-    _controller = CameralyController(description: cameras.first, settings: CaptureSettings(cameraMode: CameraMode.both), mediaManager: _mediaManager);
-
-    try {
-      await _controller.initialize();
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error initializing camera: $e')));
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    setState(() {
+      _errorMessage = message;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body:
-          !_isInitialized
-              ? Container(
-                color: Colors.black,
-                child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text('Initializing Camera...', style: TextStyle(color: Colors.white))])),
-              )
-              : Stack(
-                children: [
-                  // Camera preview with default overlay
-                  CameralyPreview(
-                    controller: _controller,
-                    overlay: DefaultCameralyOverlay(
-                      controller: _controller,
-
-                      // Show colored boxes for customizable widgets
-                      showPlaceholders: true,
-                      // Show flash and zoom controls
-                      showFlashButton: true,
-                      showZoomControls: true,
-                      // Enable camera switch button (it will move to top)
-                      showSwitchCameraButton: true,
-                      // Enable media stack
-                      showMediaStack: true,
-                      // Add custom buttons with colored boxes
-                      customLeftButton: Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(244, 67, 54, 0.7), // Red
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Center(child: Text('Custom\nLeft', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
-                      ),
-                      customRightButton: Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(33, 150, 243, 0.7), // Blue
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Center(child: Text('Custom\nRight', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
-                      ),
-                      // Add custom widgets to demonstrate positions
-                      topLeftWidget: Container(
-                        width: 120,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(33, 150, 243, 0.7), // Blue
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(child: Text('Top Left', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                      ),
-                      centerLeftWidget: Container(
-                        width: 100,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(76, 175, 80, 0.7), // Green
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(child: Text('Center Left', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                      ),
-                      bottomOverlayWidget: Container(
-                        width: double.infinity,
-                        height: 60,
-                        margin: const EdgeInsets.symmetric(horizontal: 20),
-                        decoration: BoxDecoration(
-                          color: const Color.fromRGBO(156, 39, 176, 0.7), // Purple
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(child: Text('Bottom Overlay', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                      ),
-                    ),
-                  ),
-
-                  // Media stack in the bottom-right corner
-                  Positioned(
-                    right: 16,
-                    bottom: 100,
-                    child: SafeArea(
-                      child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Theme.of(context).primaryColor),
-                    ),
-                  ),
-                ],
+    // Show error screen if there's an error
+    if (_errorMessage != null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text('Camera Error: $_errorMessage'),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _errorMessage = null;
+                  });
+                },
+                child: const Text('Try Again'),
               ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Custom Display')),
+      body: CameralyCamera(
+        settings: CameraPreviewSettings(
+          // Camera settings
+          cameraMode: CameraMode.both,
+          resolution: ResolutionPreset.high,
+          flashMode: FlashMode.auto,
+
+          // Error handling
+          onError: _handleError,
+
+          // Media settings
+          maxMediaItems: 30,
+
+          // Loading widget
+          loadingText: 'Initializing Custom Camera...',
+
+          // Overlay configuration
+          showOverlay: true,
+          showFlashButton: true,
+          showSwitchCameraButton: true,
+          showCaptureButton: true,
+          showGalleryButton: true,
+          showMediaStack: true,
+          showZoomControls: true,
+
+          // Add custom buttons with colored boxes
+          customLeftButton: Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: const Color.fromRGBO(244, 67, 54, 0.7), // Red
+              shape: BoxShape.circle,
+            ),
+            child: const Center(child: Text('Custom\nLeft', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+          ),
+          customRightButton: Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: const Color.fromRGBO(33, 150, 243, 0.7), // Blue
+              shape: BoxShape.circle,
+            ),
+            child: const Center(child: Text('Custom\nRight', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+          ),
+
+          // Add custom widgets to demonstrate positions
+          topLeftWidget: Container(
+            width: 120,
+            height: 60,
+            decoration: BoxDecoration(
+              color: const Color.fromRGBO(33, 150, 243, 0.7), // Blue
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Center(child: Text('Top Left', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+          ),
+          centerLeftWidget: Container(
+            width: 100,
+            height: 80,
+            decoration: BoxDecoration(
+              color: const Color.fromRGBO(76, 175, 80, 0.7), // Green
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Center(child: Text('Center Left', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+          ),
+          bottomOverlayWidget: Container(
+            width: double.infinity,
+            height: 60,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              color: const Color.fromRGBO(156, 39, 176, 0.7), // Purple
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Center(child: Text('Bottom Overlay', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+          ),
+        ),
+      ),
     );
   }
 }

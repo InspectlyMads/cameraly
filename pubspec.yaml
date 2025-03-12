@@ -24,7 +24,6 @@ dependencies:
   path: ^1.8.3
   permission_handler: ^11.3.0
   cupertino_icons: ^1.0.6
-  meta: ^1.10.0
   cross_file: ^0.3.3+8
   image_picker: ^1.0.7
   video_player: ^2.8.2

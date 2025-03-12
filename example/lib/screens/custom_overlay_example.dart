@@ -10,46 +10,14 @@ class CustomOverlayExample extends StatefulWidget {
 }
 
 class _CustomOverlayExampleState extends State<CustomOverlayExample> {
-  late CameralyController _controller;
-  bool _isInitialized = false;
   bool _isRecording = false;
   bool _torchEnabled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initCamera();
-  }
-
-  Future<void> _initCamera() async {
-    final cameras = await CameralyController.getAvailableCameras();
-    if (cameras.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No cameras available')));
-      }
-      return;
-    }
-
-    _controller = CameralyController(description: cameras.first, settings: const CaptureSettings(cameraMode: CameraMode.both));
-
-    try {
-      await _controller.initialize();
-      if (mounted) setState(() => _isInitialized = true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to initialize camera: $e')));
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  String? _errorMessage;
 
   // Custom overlay widget that demonstrates various UI elements
-  Widget _buildCustomOverlay() {
+  Widget _buildCustomOverlay(BuildContext context, CameralyController controller) {
+    // We use the provided controller parameter directly
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -63,17 +31,17 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // Flash toggle button
-                ValueListenableBuilder(
-                  valueListenable: _controller,
+                ValueListenableBuilder<CameralyValue>(
+                  valueListenable: controller,
                   builder: (context, value, child) {
                     // Only show flash controls for photo mode or video mode with torch
-                    final isPhotoMode = _controller.settings.cameraMode == CameraMode.photoOnly;
+                    final isPhotoMode = controller.settings.cameraMode == CameraMode.photoOnly;
                     if (!isPhotoMode && !_isRecording) {
                       return IconButton(
                         icon: Icon(_torchEnabled ? Icons.flashlight_on : Icons.flashlight_off, color: Colors.white),
                         onPressed: () async {
                           setState(() => _torchEnabled = !_torchEnabled);
-                          await _controller.setFlashMode(_torchEnabled ? FlashMode.torch : FlashMode.off);
+                          await controller.setFlashMode(_torchEnabled ? FlashMode.torch : FlashMode.off);
                         },
                       );
                     }
@@ -88,7 +56,7 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
                               : Icons.flash_on,
                           color: Colors.white,
                         ),
-                        onPressed: _controller.toggleFlash,
+                        onPressed: controller.toggleFlash,
                       );
                     }
 
@@ -96,7 +64,7 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
                   },
                 ),
                 // Camera switch button
-                IconButton(icon: const Icon(Icons.cameraswitch, color: Colors.white), onPressed: _controller.switchCamera),
+                IconButton(icon: const Icon(Icons.cameraswitch, color: Colors.white), onPressed: controller.switchCamera),
               ],
             ),
           ),
@@ -116,31 +84,13 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
               children: [
                 // Custom mode toggle
                 ValueListenableBuilder(
-                  valueListenable: _controller,
+                  valueListenable: controller,
                   builder: (context, value, child) {
-                    final isPhotoMode = _controller.settings.cameraMode == CameraMode.photoOnly;
+                    final isPhotoMode = controller.settings.cameraMode == CameraMode.photoOnly;
                     return TextButton(
                       onPressed: () async {
-                        // Create new settings with the opposite mode
-                        final newSettings = CaptureSettings(
-                          cameraMode: isPhotoMode ? CameraMode.videoOnly : CameraMode.photoOnly,
-                          resolution: _controller.settings.resolution,
-                          enableAudio: !isPhotoMode, // Enable audio for video mode
-                        );
-
-                        // Create and initialize a new controller with the new mode
-                        final cameras = await CameralyController.getAvailableCameras();
-                        if (cameras.isEmpty) return;
-
-                        final newController = CameralyController(description: _controller.description, settings: newSettings);
-
-                        await newController.initialize();
-
-                        // Dispose the old controller and update state
-                        _controller.dispose();
-                        setState(() {
-                          _controller = newController;
-                        });
+                        // Use navigation to rebuild screen with different mode
+                        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => CustomOverlayExample()));
                       },
                       child: Text(isPhotoMode ? 'PHOTO' : 'VIDEO', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     );
@@ -149,25 +99,23 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
                 // Capture/record button
                 GestureDetector(
                   onTapDown: (_) async {
-                    if (_controller.settings.cameraMode == CameraMode.photoOnly) {
-                      await _controller.takePicture();
+                    if (controller.settings.cameraMode == CameraMode.photoOnly) {
+                      await controller.takePicture();
                     } else {
                       if (_isRecording) {
-                        final video = await _controller.stopVideoRecording();
+                        // Get the recorded video but handle it with onCapture instead
+                        await controller.stopVideoRecording();
                         setState(() => _isRecording = false);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Video saved: ${video.path}')));
-                        }
                       } else {
-                        await _controller.startVideoRecording();
+                        await controller.startVideoRecording();
                         setState(() => _isRecording = true);
                       }
                     }
                   },
                   child: ValueListenableBuilder(
-                    valueListenable: _controller,
+                    valueListenable: controller,
                     builder: (context, value, child) {
-                      final isPhoto = _controller.settings.cameraMode == CameraMode.photoOnly;
+                      final isPhoto = controller.settings.cameraMode == CameraMode.photoOnly;
                       return AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         width: isPhoto ? 80 : 60,
@@ -185,7 +133,7 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
                 ),
                 // Zoom indicator
                 ValueListenableBuilder(
-                  valueListenable: _controller,
+                  valueListenable: controller,
                   builder: (context, value, child) {
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -224,19 +172,67 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
     );
   }
 
+  // Handle errors
+  void _handleError(String source, String message, {Object? error, bool isRecoverable = false}) {
+    debugPrint('Camera error from $source: $message');
+    debugPrint('Original error: $error');
+
+    // Only update the error state in this example
+    setState(() {
+      _errorMessage = message;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    // Show error screen if there's an error
+    if (_errorMessage != null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text('Camera Error: $_errorMessage'),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _errorMessage = null;
+                  });
+                },
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Scaffold(
-      body: CameralyPreview(
-        controller: _controller,
-        overlay: _buildCustomOverlay(),
-        onScale: (scale) {
-          setState(() {});
-        },
+      appBar: AppBar(title: const Text('Custom Overlay Example')),
+      body: CameralyCamera(
+        settings: CameraPreviewSettings(
+          // Camera settings
+          cameraMode: CameraMode.both,
+          resolution: ResolutionPreset.high,
+          flashMode: FlashMode.auto,
+
+          // Use our custom overlay builder function directly
+          customOverlay: _buildCustomOverlay,
+
+          // Handle errors
+          onError: _handleError,
+
+          // Initialize callback - no longer need to save controller
+          onInitialized: (controller) {
+            debugPrint('Camera initialized');
+          },
+
+          // Use custom loading text
+          loadingText: 'Preparing custom camera...',
+        ),
       ),
     );
   }

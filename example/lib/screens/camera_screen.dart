@@ -13,48 +13,58 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  CameralyController? _controller;
-  final CameralyMediaManager _mediaManager = CameralyMediaManager(
-    maxItems: 30, // Keep only the last 30 items
-    onMediaAdded: _handleMediaAdded,
-  );
-
   // Keep orientation info ValueNotifier
   final ValueNotifier<String> _orientationInfo = ValueNotifier<String>("Tap to check orientation");
-
-  static void _handleMediaAdded(XFile file) {
-    // Note: we can't show snackbar here since it's static
-    // The UI feedback will be handled by the overlay itself
-  }
+  String? _errorMessage;
+  CameralyController? _controller;
 
   @override
   void initState() {
     super.initState();
-    _initCamera();
+    if (widget.useEnhanced) {
+      _initializeController();
+    }
   }
 
-  Future<void> _initCamera() async {
-    // Get available cameras
-    final cameras = await CameralyController.getAvailableCameras();
-    if (cameras.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No cameras available')));
+  Future<void> _initializeController() async {
+    try {
+      final cameras = await CameralyController.getAvailableCameras();
+      if (cameras.isEmpty) {
+        _handleError('initialization', 'No cameras available');
+        return;
       }
-      return;
-    }
 
-    // Initialize the camera controller
-    final controller = CameralyController(
-      description: cameras.first,
-      settings: CaptureSettings(cameraMode: widget.cameraMode),
-      mediaManager: _mediaManager, // Pass the already created media manager
-    );
+      final controller = CameralyController(description: cameras.first, settings: CaptureSettings(cameraMode: widget.cameraMode, resolution: ResolutionPreset.high, flashMode: FlashMode.auto, enableAudio: widget.cameraMode != CameraMode.photoOnly));
 
-    if (mounted) {
-      setState(() {
-        _controller = controller;
-      });
+      await controller.initialize();
+
+      if (mounted) {
+        setState(() {
+          _controller = controller;
+        });
+      }
+    } catch (e) {
+      _handleError('initialization', 'Failed to initialize camera', error: e);
     }
+  }
+
+  void _handleError(String source, String message, {Object? error, bool isRecoverable = false}) {
+    debugPrint('Camera error from $source: $message');
+    debugPrint('Original error: $error');
+
+    // Only update the error state in this example
+    setState(() {
+      _errorMessage = message;
+    });
+
+    // Removed snackbar notification to let parent component handle it
+  }
+
+  void _handleCapture(XFile file) {
+    // Just log the capture in this example
+    debugPrint('Captured: ${file.path}');
+
+    // Removed snackbar notification to let parent component handle it
   }
 
   @override
@@ -67,55 +77,64 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_controller == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (widget.useEnhanced) {
+      // Using the enhanced preview with the new overlay system
+      if (_controller == null) {
+        return Scaffold(appBar: AppBar(title: const Text('Enhanced Camera')), body: Center(child: _errorMessage != null ? Text('Error: $_errorMessage') : const CircularProgressIndicator()));
+      }
+
+      return Scaffold(
+        appBar: AppBar(title: const Text('Enhanced Camera')),
+        body: CameralyPreviewEnhanced(
+          controller: _controller!,
+          backgroundColor: Colors.black,
+          textColor: Colors.white,
+          child: CameralyPreview(
+            controller: _controller!,
+            overlay: DefaultCameralyOverlay(showFlashButton: true, showSwitchCameraButton: true, showGalleryButton: true, showZoomControls: true, showMediaStack: true, onCapture: _handleCapture, onError: _handleError),
+          ),
+        ),
+      );
     }
 
-    // Build the camera preview widget
-    Widget cameraWidget;
+    // Simple implementation using CameralyCamera with default overlay
+    return Scaffold(
+      appBar: AppBar(title: const Text('Camera')),
+      body: CameralyCamera(
+        settings: CameraPreviewSettings(
+          // Camera mode from widget parameter
+          cameraMode: widget.cameraMode,
 
-    // Create the camera preview with overlay
-    final previewWithOverlay = CameralyControllerProvider(
-      controller: _controller!,
-      child: CameralyPreview(
-        controller: _controller!,
-        // We don't need to pass the controller to the overlay anymore!
-        // It will get it from the CameralyControllerProvider
-        overlay: DefaultCameralyOverlay(
-          // Customize which buttons to show
+          // Higher resolution for better quality
+          resolution: ResolutionPreset.high,
+
+          // Default to auto flash
+          flashMode: FlashMode.auto,
+
+          // UI visibility settings
           showFlashButton: true,
           showSwitchCameraButton: true,
           showGalleryButton: true,
           showZoomControls: true,
-          showMediaStack: true, // Ensure media stack is enabled
-          showZoomSlider: true,
-          onControllerChanged: (CameralyController newController) {
-            // This still needs setState because we're changing a field
-            setState(() {
-              _controller = newController;
-            });
+          showMediaStack: true,
+
+          // Media settings
+          maxMediaItems: 30,
+
+          // Loading indicator
+          loadingText: 'Preparing camera...',
+          loadingBackgroundColor: Colors.black,
+          loadingIndicatorColor: Colors.white,
+          loadingTextColor: Colors.white,
+
+          // Callbacks
+          onError: _handleError,
+          onCapture: _handleCapture,
+          onInitialized: (controller) {
+            debugPrint('Camera initialized successfully');
           },
         ),
       ),
     );
-
-    // Use the enhanced permission handling if requested
-    if (widget.useEnhanced) {
-      cameraWidget = CameralyPreviewEnhanced(
-        controller: _controller!,
-        // Custom loading widget
-        loadingWidget: Container(
-          color: Colors.black,
-          child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text('Preparing camera...', style: TextStyle(color: Colors.white))])),
-        ),
-        // Pass the preview widget as the child
-        child: previewWithOverlay,
-      );
-    } else {
-      // Use the original implementation
-      cameraWidget = previewWithOverlay;
-    }
-
-    return Scaffold(body: cameraWidget);
   }
 }

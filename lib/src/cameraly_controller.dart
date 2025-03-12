@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:camera/camera.dart' hide CameraLensDirection;
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'cameraly_value.dart';
-import 'types/camera_device.dart';
 import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
 import 'utils/media_manager.dart';
@@ -153,6 +152,10 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       // but we need a default value for now
       final deviceOrientation = _settings.deviceOrientation;
 
+      // IMPORTANT: Properly determine if this is a front camera based on lens direction
+      final bool isFrontCamera = _description.lensDirection == CameraLensDirection.front;
+      debugPrint('📸 Is front camera? $isFrontCamera (based on lens direction: ${_description.lensDirection})');
+
       value = CameralyValue(
         isInitialized: true,
         flashMode: _settings.flashMode,
@@ -160,7 +163,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         focusMode: _settings.focusMode,
         deviceOrientation: deviceOrientation,
         permissionState: CameraPermissionState.granted,
-        isFrontCamera: _description.lensDirection == CameraLensDirection.front,
+        isFrontCamera: isFrontCamera,
         zoomLevel: 1.0,
         hasFlashCapability: hasFlashCapability,
       );
@@ -242,15 +245,35 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     await setDeviceOrientation(newOrientation);
   }
 
-  /// Updates the value from the camera controller.
+  /// Updates the value notifier based on the underlying camera controller's value.
   void _updateValueFromController() {
-    if (_controller == null) return;
+    if (_controller == null || !_controller!.value.isInitialized) return;
 
-    // Update our value with the latest from the camera controller
-    value = value.copyWith(
-      isRecordingVideo: _controller!.value.isRecordingVideo,
-      // We don't update zoom level here as it's updated in setZoomLevel
-    );
+    try {
+      // Get current values from the controller
+      final cameraValue = _controller!.value;
+
+      // IMPORTANT: Maintain the isFrontCamera value based on lens direction
+      // This ensures it stays correct even during controller updates
+      final isFrontCamera = _description.lensDirection == CameraLensDirection.front;
+
+      // Update our value object with current state from the controller
+      // Note: we don't update all properties because some are managed by this wrapper
+      value = value.copyWith(
+        isInitialized: cameraValue.isInitialized,
+        isTakingPicture: cameraValue.isTakingPicture,
+        isRecordingVideo: cameraValue.isRecordingVideo,
+        isRecordingPaused: cameraValue.isRecordingPaused,
+        // Keep our explicitly set values for these properties
+        flashMode: value.flashMode,
+        exposureMode: value.exposureMode,
+        focusMode: value.focusMode,
+        isFrontCamera: isFrontCamera, // Use lens direction as the source of truth
+      );
+    } catch (e) {
+      debugPrint('📸 Error updating value from controller: $e');
+      // Don't update the value in case of error
+    }
   }
 
   /// Takes a picture using the current settings.
@@ -632,10 +655,17 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
           debugPrint('⚠️ Native camera controller is NOT initialized');
         }
 
-        // Immediately update the isFrontCamera property based on the lens direction
-        newController.value = newController.value.copyWith(isFrontCamera: isNewCameraFront);
-        debugPrint('📸 Updated isFrontCamera to: ${newController.value.isFrontCamera}');
+        // IMPORTANT: Always update the isFrontCamera property after initialization
+        // Use lens direction as the source of truth
+        final bool isActuallyFrontCamera = newCamera.lensDirection == CameraLensDirection.front;
 
+        // Force update the isFrontCamera value to match the actual lens direction
+        if (newController.value.isFrontCamera != isActuallyFrontCamera) {
+          debugPrint('📸 Fixing mismatch: value.isFrontCamera (${newController.value.isFrontCamera}) != actual lens direction ($isActuallyFrontCamera)');
+          newController.value = newController.value.copyWith(isFrontCamera: isActuallyFrontCamera);
+        }
+
+        debugPrint('📸 Updated isFrontCamera to: ${newController.value.isFrontCamera}');
         debugPrint('📸 New controller initialized successfully');
       } catch (e) {
         debugPrint('📸 Failed to initialize new controller: $e');

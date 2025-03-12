@@ -1,6 +1,5 @@
 import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 /// A screen that demonstrates video recording with a duration limit
 class LimitedVideoExample extends StatefulWidget {
@@ -11,140 +10,94 @@ class LimitedVideoExample extends StatefulWidget {
 }
 
 class _LimitedVideoExampleState extends State<LimitedVideoExample> {
-  late CameralyController _controller;
-  late CameralyMediaManager _mediaManager;
-  bool _isInitialized = false;
+  // Keep track of captured media
+  final List<XFile> _capturedMedia = [];
+  bool _showError = false;
+  String? _errorMessage;
 
-  @override
-  void initState() {
-    super.initState();
-    _initCamera();
+  void _handleError(String source, String message, {Object? error, bool isRecoverable = false}) {
+    debugPrint('Camera error from $source: $message');
+    debugPrint('Original error: $error');
+    debugPrint('Is recoverable: $isRecoverable');
+
+    // Only update the error state in this example
+    setState(() {
+      _showError = true;
+      _errorMessage = message;
+    });
+
+    // Removed snackbar notification to let parent component handle it
   }
 
-  Future<void> _initCamera() async {
-    // Create the media manager
-    _mediaManager = CameralyMediaManager(maxItems: 30);
-
-    // Get available cameras
-    final cameras = await CameralyController.getAvailableCameras();
-    if (cameras.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No cameras available')));
-      }
-      return;
-    }
-
-    // Initialize the camera controller with video-only mode
-    _controller = CameralyController(
-      description: cameras.first,
-      settings: const CaptureSettings(
-        cameraMode: CameraMode.videoOnly,
-        enableAudio: true, // Enable audio for video recording
-      ),
-    );
-
-    try {
-      await _controller.initialize();
-      if (mounted) setState(() => _isInitialized = true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to initialize camera: $e')));
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _handleVideoRecorded(XFile videoFile) {
-    _mediaManager.addMedia(videoFile);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Video saved: ${videoFile.path}')));
-    }
-  }
-
-  void _handleMaxDurationReached(XFile videoFile) {
-    _mediaManager.addMedia(videoFile);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Maximum duration reached (15 seconds)'), backgroundColor: Colors.orange));
+  void _handleMaxDurationReached(List<XFile> mediaList) {
+    // Handle the list of captured media
+    if (mediaList.isNotEmpty) {
+      final XFile lastFile = mediaList.last;
+      debugPrint('Maximum duration reached: ${lastFile.path}');
+      setState(() {
+        _capturedMedia.addAll(mediaList);
+      });
+    } else {
+      debugPrint('No files were captured');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return const Scaffold(body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Initializing Camera...')])));
+    if (_showError) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Video Recording Error')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(_errorMessage ?? 'An unknown error occurred'),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _showError = false;
+                    _errorMessage = null;
+                  });
+                },
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
+    // Use the CameralyCamera for simplified camera handling
     return Scaffold(
-      body: Stack(
-        children: [
-          // Camera preview with default overlay
-          CameralyPreview(
-            controller: _controller,
-            overlay: DefaultCameralyOverlay(
-              controller: _controller,
-              // Custom theme for video recording
-              theme: const CameralyOverlayTheme(primaryColor: Colors.orange, secondaryColor: Colors.red, backgroundColor: Colors.black87, opacity: 0.8, buttonSize: 72.0, iconSize: 32.0),
-              // Callbacks for media handling
+      body: CameralyCamera(
+        settings: CameraPreviewSettings(
+          // Configure for video-only mode with audio
+          cameraMode: CameraMode.videoOnly,
+          enableAudio: true,
 
-              // Set maximum video duration to 15 seconds
-              maxVideoDuration: const Duration(seconds: 15),
-              onMaxDurationReached: () => _handleMaxDurationReached(XFile('')),
-              // Show video-specific controls
-              showFlashButton: true, // For torch mode
-              showSwitchCameraButton: true,
-              showGalleryButton: true,
-              showZoomControls: true,
-              // Add custom buttons that match the top-right style
-              customRightButton: Container(
-                decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                child: IconButton(onPressed: () => _controller.switchCamera(), icon: const Icon(Icons.switch_camera), iconSize: 28, color: Colors.white, padding: const EdgeInsets.all(12)),
-              ),
-              customLeftButton: ValueListenableBuilder<CameralyValue>(
-                valueListenable: _controller,
-                builder: (context, value, child) {
-                  return Container(
-                    decoration: BoxDecoration(color: value.isRecordingVideo ? Colors.grey.withAlpha(77) : Colors.black54, shape: BoxShape.circle),
-                    child: IconButton(
-                      onPressed:
-                          value.isRecordingVideo
-                              ? null
-                              : () async {
-                                final picker = ImagePicker();
-                                final result = await picker.pickMedia();
-                                if (result != null && mounted) {
-                                  _mediaManager.addMedia(result);
-                                }
-                              },
-                      icon: const Icon(Icons.photo_library),
-                      iconSize: 28,
-                      color: value.isRecordingVideo ? Colors.white60 : Colors.white,
-                      padding: const EdgeInsets.all(12),
-                    ),
-                  );
-                },
-              ),
-              // Add a custom progress indicator at the top
-              topLeftWidget: Container(
-                margin: const EdgeInsets.only(top: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-                child: const Text('Maximum Duration: 15 seconds', style: TextStyle(color: Colors.white)),
-              ),
-            ),
-          ),
+          // Set maximum video duration to 15 seconds
+          videoDurationLimit: const Duration(seconds: 15),
 
-          // Media stack in the bottom-right corner
-          Positioned(
-            right: 16,
-            bottom: 100,
-            child: SafeArea(child: CameralyMediaStack(mediaManager: _mediaManager, itemSize: 60, maxDisplayItems: 3, borderColor: Colors.white, borderWidth: 2, borderRadius: 8, showCountBadge: true, countBadgeColor: Colors.orange)),
-          ),
-        ],
+          // UI customization
+          showFlashButton: true,
+          showSwitchCameraButton: true,
+          showGalleryButton: true,
+
+          // Handle video recording completion
+          onComplete: _handleMaxDurationReached,
+
+          // Handle errors
+          onError: _handleError,
+
+          // Handle media capture
+          onCapture: (file) {
+            debugPrint('Video recorded: ${file.path}');
+            // Implement your file handling here
+          },
+        ),
       ),
     );
   }

@@ -1,17 +1,20 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 
-import '../cameraly_previewer.dart'; // Import for CameraPreviewSettings
+import '../cameraly_camera.dart'; // Import for CameraPreviewSettings
 import 'camera_mode.dart';
 
-/// Settings for camera capture.
+/// Base settings for camera capture operations.
 ///
-/// This class focuses on the technical aspects of camera operation.
-/// For UI-related settings, see [CameraPreviewSettings] in the CameraPreviewer.
+/// This class contains the technical settings for camera hardware configuration,
+/// such as resolution, flash mode, and camera mode. It is used by [CameralyController]
+/// for camera initialization and configuration.
 ///
-/// [CaptureSettings] is used by [CameralyController] to configure the camera hardware,
-/// while [CameraPreviewSettings] is used by [CameraPreviewer] and includes both
-/// camera hardware settings and UI/overlay configuration.
+/// For UI-related settings, see [CameraPreviewSettings] in the CameralyCamera.
+///
+/// Note: [CaptureSettings] focuses on the technical aspects of camera operation,
+/// while [CameraPreviewSettings] is used by [CameralyCamera] and includes both
+/// technical settings and UI configuration options.
 class CaptureSettings {
   /// Creates settings for camera capture.
   ///

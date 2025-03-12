@@ -135,14 +135,14 @@ Add camera usage descriptions to your `Info.plist`:
 
 ### New Simplified API (Recommended)
 
-Cameraly now provides a significantly simplified API through `CameraPreviewer` - a single widget that manages the entire camera experience for you:
+Cameraly now provides a significantly simplified API through `CameralyCamera` - a single widget that manages the entire camera experience for you:
 
 ```dart
 class CameraScreen extends StatelessWidget {  // StatelessWidget is all you need!
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CameraPreviewer(
+      body: CameralyCamera(
         settings: CameraPreviewSettings(
           // Camera settings
           cameraMode: CameraMode.photoOnly,
@@ -176,7 +176,7 @@ class CameraScreen extends StatelessWidget {  // StatelessWidget is all you need
 }
 ```
 
-The `CameraPreviewer` handles everything for you:
+The `CameralyCamera` handles everything for you:
 - ✅ Controller creation and initialization
 - ✅ Lifecycle management (no need for dispose)
 - ✅ State management (no StatefulWidget required)

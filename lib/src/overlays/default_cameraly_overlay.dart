@@ -122,7 +122,6 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.controller,
     this.theme,
     this.onCapture,
-    this.onCaptureError,
     this.onCaptureMode,
     this.onClose,
     this.onFlashTap,
@@ -134,7 +133,6 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.showFlashButton = true,
     this.showGalleryButton = true,
     this.showSwitchCameraButton = true,
-    this.showZoomSlider = true,
     this.showZoomControls = true,
     this.maxVideoDuration,
     this.captureButtonBuilder,
@@ -154,6 +152,8 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.customRightButton,
     this.centerLeftWidget,
     this.showCaptureButton = true,
+    this.onError,
+    this.multiImageSelect = true,
     super.key,
   });
 
@@ -167,9 +167,6 @@ class DefaultCameralyOverlay extends StatefulWidget {
 
   /// Callback when a photo is captured or video recording is stopped.
   final Function(XFile)? onCapture;
-
-  /// Callback when an error occurs during capture.
-  final Function(String)? onCaptureError;
 
   /// Callback when the capture mode is changed (photo/video).
   final Function(bool)? onCaptureMode;
@@ -204,9 +201,6 @@ class DefaultCameralyOverlay extends StatefulWidget {
 
   /// Whether to show the switch camera button.
   final bool showSwitchCameraButton;
-
-  /// Whether to show the zoom slider.
-  final bool showZoomSlider;
 
   /// Whether to show zoom controls.
   final bool showZoomControls;
@@ -264,6 +258,18 @@ class DefaultCameralyOverlay extends StatefulWidget {
 
   /// Whether to show the capture button.
   final bool showCaptureButton;
+
+  /// Whether to allow multiple image selection in the gallery picker.
+  final bool multiImageSelect;
+
+  /// Callback for any camera error that occurs.
+  ///
+  /// This provides comprehensive error information including:
+  /// - source: The source of the error (e.g., 'initialization', 'capture', etc.)
+  /// - message: A human-readable error message
+  /// - error: The original error object (if available)
+  /// - isRecoverable: Whether the error is potentially recoverable
+  final Function(String source, String message, {Object? error, bool isRecoverable})? onError;
 
   @override
   State<DefaultCameralyOverlay> createState() => _DefaultCameralyOverlayState();
@@ -331,7 +337,8 @@ class DefaultCameralyOverlayScope extends InheritedWidget {
 }
 
 class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with WidgetsBindingObserver {
-  late CameralyController _controller;
+  // Changed from late to nullable
+  CameralyController? _controller;
   bool _hasControllerFromProvider = false;
   bool _isFrontCamera = false;
   bool _isVideoMode = false;
@@ -351,12 +358,29 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   /// Whether to show the mode toggle button.
   /// This is determined by the camera mode - only shown when mode is [CameraMode.both].
-  bool get effectiveShowModeToggle => widget.controller?.settings.cameraMode == CameraMode.both;
+  bool get effectiveShowModeToggle => _controller?.settings.cameraMode == CameraMode.both;
 
   @override
   void initState() {
     super.initState();
-    // Controller will be initialized in didChangeDependencies
+
+    // Initialize with widget.controller (which might be null)
+    _controller = widget.controller;
+
+    // We'll look for a controller in didChangeDependencies if needed
+    if (_controller != null) {
+      // IMPORTANT: Always initialize _isFrontCamera based on the actual lens direction
+      _isFrontCamera = _controller!.description.lensDirection == CameraLensDirection.front;
+      debugPrint('🎥 Initial camera is front-facing: $_isFrontCamera');
+
+      _initializeValues();
+      _initializeZoomLevels();
+
+      // Listen for controller value changes
+      _controller!.addListener(_handleControllerChanged);
+    }
+
+    // Register for lifecycle events
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -364,53 +388,24 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Get the controller - either from the widget or from the provider
-    if (widget.controller != null) {
-      _controller = widget.controller!;
-      _hasControllerFromProvider = false;
-    } else {
-      // Try to get controller from provider
-      final providerController = CameralyControllerProvider.of(context);
-      if (providerController == null) {
-        throw FlutterError(
-          'DefaultCameralyOverlay requires a controller. Either provide a controller '
-          'directly using the controller parameter, or ensure the widget is a descendant '
-          'of a CameralyControllerProvider.',
-        );
+    // If we don't have a controller yet, try to get one from the provider
+    if (_controller == null) {
+      final controller = CameralyControllerProvider.of(context);
+      if (controller != null) {
+        _controller = controller;
+        _hasControllerFromProvider = true;
+
+        // Set initial front camera status
+        _isFrontCamera = _controller!.description.lensDirection == CameraLensDirection.front;
+        debugPrint('🎥 Initial camera is front-facing (from provider): $_isFrontCamera');
+
+        _initializeValues();
+        _initializeZoomLevels();
+
+        // Listen for controller value changes
+        _controller!.addListener(_handleControllerChanged);
       }
-      _controller = providerController;
-      _hasControllerFromProvider = true;
     }
-
-    // Finish initialization now that we have a controller
-    _flashMode = _controller.settings.flashMode;
-    _isFrontCamera = _controller.description.lensDirection == CameraLensDirection.front;
-    _torchEnabled = false;
-    _hasVideoDurationLimit = widget.maxVideoDuration != null;
-    _maxVideoDuration = widget.maxVideoDuration;
-
-    // Initialize zoom levels
-    _initializeZoomLevels();
-
-    // Set initial video mode based on camera mode setting
-    switch (_controller.settings.cameraMode) {
-      case CameraMode.photoOnly:
-        _isVideoMode = false;
-        break;
-      case CameraMode.videoOnly:
-        _isVideoMode = true;
-        break;
-      case CameraMode.both:
-        // Default behavior, keep as is
-        break;
-    }
-
-    // Listen for changes to the controller
-    _controller.addListener(_handleControllerUpdate);
-    _initializeValues();
-
-    // Notify initial state
-    Future.microtask(() => _notifyCameraStateChanged());
   }
 
   @override
@@ -425,7 +420,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   @override
   void dispose() {
-    _controller.removeListener(_handleControllerUpdate);
+    _controller?.removeListener(_handleControllerChanged);
     WidgetsBinding.instance.removeObserver(this);
     _recordingTimer?.cancel();
     _recordingLimitTimer?.cancel();
@@ -444,16 +439,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _initializeValues() async {
-    final value = _controller.value;
+    final value = _controller?.value;
 
     // Initialize zoom levels
-    _currentZoom = value.zoomLevel;
+    _currentZoom = value?.zoomLevel ?? 1.0;
   }
 
   Future<void> _initializeZoomLevels() async {
     try {
-      _minZoom = await _controller.getMinZoomLevel();
-      _maxZoom = await _controller.getMaxZoomLevel();
+      _minZoom = await _controller?.getMinZoomLevel() ?? 1.0;
+      _maxZoom = await _controller?.getMaxZoomLevel() ?? 1.0;
 
       // Create a list of available zoom levels based on device capabilities
       final zoomLevels = <double>[];
@@ -490,7 +485,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Future<void> _setZoomLevel(double zoom) async {
     try {
-      await _controller.setZoomLevel(zoom);
+      await _controller?.setZoomLevel(zoom);
       setState(() {
         _currentZoom = zoom;
       });
@@ -526,13 +521,36 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     );
   }
 
+  void _handleControllerChanged() {
+    if (!mounted || _controller == null) return;
+
+    // Update our state based on the controller value
+    // This is especially important for camera switching
+    if (_controller!.value.isInitialized) {
+      // Check if the front camera status has changed
+      final bool isActuallyFrontCamera = _controller!.description.lensDirection == CameraLensDirection.front;
+
+      if (_isFrontCamera != isActuallyFrontCamera) {
+        debugPrint('🎥 Detected front camera change: $_isFrontCamera -> $isActuallyFrontCamera');
+        setState(() {
+          _isFrontCamera = isActuallyFrontCamera;
+          // Adjust flash settings for front camera (usually no flash)
+          if (_isFrontCamera) {
+            _flashMode = FlashMode.off;
+            _torchEnabled = false;
+          }
+        });
+      }
+    }
+  }
+
   void _handleControllerUpdate() {
-    final value = _controller.value;
+    final value = _controller?.value;
 
     // Update recording state
-    if (value.isRecordingVideo != _isRecording) {
+    if (value?.isRecordingVideo != _isRecording) {
       setState(() {
-        _isRecording = value.isRecordingVideo;
+        _isRecording = value?.isRecordingVideo ?? false;
 
         if (_isRecording) {
           _startRecordingTimer();
@@ -550,24 +568,49 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
 
     // Update zoom level
-    if (value.zoomLevel != _currentZoom) {
+    if (value?.zoomLevel != _currentZoom) {
       setState(() {
-        _currentZoom = value.zoomLevel;
+        _currentZoom = value?.zoomLevel ?? 1.0;
       });
     }
   }
 
   void _startRecordingTimer() {
     _recordingDuration = Duration.zero;
-    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _recordingDuration = Duration(seconds: timer.tick);
-          // Notify recording duration update
-          _notifyCameraStateChanged();
-        });
-      }
+    _recordingTimer?.cancel();
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {
+        _recordingDuration = _recordingDuration + const Duration(seconds: 1);
+      });
     });
+
+    // Start video duration limit timer if needed
+    if (_hasVideoDurationLimit && _maxVideoDuration != null) {
+      _recordingLimitTimer = Timer(_maxVideoDuration!, () {
+        if (_isRecording) {
+          _controller?.stopVideoRecording().then((file) {
+            // Add to the controller's media manager
+            _controller?.mediaManager.addMedia(file);
+
+            // Call the callback if provided
+            if (widget.onCapture != null) {
+              widget.onCapture!(file);
+            }
+
+            if (widget.onMaxDurationReached != null) {
+              widget.onMaxDurationReached!();
+            }
+          });
+
+          setState(() {
+            _isRecording = false;
+            _recordingTimer?.cancel();
+            _recordingTimer = null;
+            _recordingDuration = Duration.zero;
+          });
+        }
+      });
+    }
   }
 
   void _stopRecordingTimer() {
@@ -591,16 +634,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final newMode = modes[nextIndex];
 
     try {
-      await _controller.setFlashMode(newMode);
+      await _controller?.setFlashMode(newMode);
       setState(() {
         _flashMode = newMode;
         // Notify flash mode change
         _notifyCameraStateChanged();
       });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error setting flash mode: $e')));
-      }
+      widget.onError!('flash', 'Error setting flash mode: $e');
     }
   }
 
@@ -618,24 +659,24 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _switchCamera() async {
-    if (_controller.cameraController == null || !_controller.value.isInitialized) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Camera not ready yet - please try again'), duration: Duration(seconds: 2)));
+    if (_controller?.cameraController == null || !_controller!.value.isInitialized) {
+      // Call error callback instead of showing snackbar
+      if (widget.onError != null) {
+        widget.onError!('camera_switch', 'Camera not ready yet - please try again');
       }
       return;
     }
 
     try {
-      // Show a temporary message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Switching camera...'), duration: Duration(seconds: 1)));
-      }
+      // Notify that camera is switching (this could be done with a different callback if needed)
+      debugPrint('🎥 Switching camera...');
 
       // Get available cameras
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No cameras detected on this device'), duration: Duration(seconds: 2)));
+        // Call error callback instead of showing snackbar
+        if (widget.onError != null) {
+          widget.onError!('camera_switch', 'No cameras detected on this device');
         }
         return;
       }
@@ -650,19 +691,21 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
       // Log current controller state
       debugPrint('🎥 Current controller hashcode: ${_controller.hashCode}');
-      debugPrint('🎥 Current native controller: ${_controller.cameraController?.hashCode}');
-      debugPrint('🎥 Current camera direction: ${_controller.description.lensDirection}');
+      debugPrint('🎥 Current native controller: ${_controller?.cameraController?.hashCode}');
+      debugPrint('🎥 Current camera direction: ${_controller?.description.lensDirection}');
       debugPrint('🎥 Current _isFrontCamera: $_isFrontCamera');
-      debugPrint('🎥 Current controller.value.isFrontCamera: ${_controller.value.isFrontCamera}');
+      debugPrint('🎥 Current controller.value.isFrontCamera: ${_controller?.value.isFrontCamera}');
 
       // Switch to the new camera
       debugPrint('🎥 Attempting to switch camera from ${_isFrontCamera ? 'front' : 'back'} to ${_isFrontCamera ? 'back' : 'front'}');
-      final newController = await _controller.switchCamera();
+      final newController = await _controller?.switchCamera();
 
       if (newController == null) {
         debugPrint('🎥 No alternative camera found');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(cameras.length > 1 ? 'Failed to switch camera - please try again' : 'This device only has one camera'), duration: const Duration(seconds: 2)));
+        // Call error callback instead of showing snackbar
+        if (widget.onError != null) {
+          final message = cameras.length > 1 ? 'Failed to switch camera - please try again' : 'This device only has one camera';
+          widget.onError!('camera_switch', message);
         }
         return;
       }
@@ -677,6 +720,13 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       debugPrint('🎥 New camera is front-facing according to lens direction: $isNewCameraFront');
       debugPrint('🎥 New controller.value.isFrontCamera: ${newController.value.isFrontCamera}');
       debugPrint('🎥 New controller initialized: ${newController.value.isInitialized}');
+
+      // IMPORTANT: Ensure the controller's isFrontCamera value is correct
+      if (newController.value.isFrontCamera != isNewCameraFront) {
+        debugPrint('🎥 WARNING: Controller value does not match lens direction. Fixing...');
+        newController.value = newController.value.copyWith(isFrontCamera: isNewCameraFront);
+        debugPrint('🎥 Updated controller.value.isFrontCamera to: ${newController.value.isFrontCamera}');
+      }
 
       if (mounted) {
         // Log before notifying parent
@@ -714,7 +764,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
           // Apply flash mode
           if (!_isFrontCamera) {
-            _controller.setFlashMode(_flashMode);
+            _controller?.setFlashMode(_flashMode);
           }
 
           // Set current zoom to default 1.0 upon switching
@@ -739,13 +789,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           widget.onSwitchCamera!();
         }
 
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Switched to ${_isFrontCamera ? 'front' : 'back'} camera'), duration: const Duration(seconds: 1)));
+        // Log success instead of showing snackbar
+        debugPrint('🎥 Switched to ${_isFrontCamera ? 'front' : 'back'} camera');
       }
     } catch (e) {
       debugPrint('🎥 Error switching camera: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to switch camera: ${e.toString().split('\n').first}'), duration: const Duration(seconds: 2)));
+      // Call error callback instead of showing snackbar
+      if (widget.onError != null) {
+        widget.onError!('camera_switch', 'Failed to switch camera: ${e.toString().split('\n').first}');
       }
     }
   }
@@ -761,33 +812,32 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Future<void> _toggleRecording() async {
     try {
       if (_isRecording) {
-        final file = await _controller.stopVideoRecording();
+        final file = await _controller?.stopVideoRecording();
 
-        // Add to the controller's media manager
-        _controller.mediaManager.addMedia(file);
+        // Only process the file if it's not null
+        if (file != null) {
+          // Add to the controller's media manager
+          _controller?.mediaManager.addMedia(file);
 
-        // Call the callback if provided
-        if (widget.onCapture != null) {
-          widget.onCapture!(file);
+          // Call the callback if provided
+          if (widget.onCapture != null) {
+            widget.onCapture!(file);
+          }
         }
       } else {
         // Ensure we maintain torch state when starting recording
         final currentTorchState = _torchEnabled;
-        await _controller.startVideoRecording();
+        await _controller?.startVideoRecording();
 
         // If torch was on, make sure it stays on during recording
         if (currentTorchState && !_isFrontCamera) {
-          await _controller.setFlashMode(FlashMode.torch);
+          await _controller?.setFlashMode(FlashMode.torch);
         }
       }
     } catch (e) {
       // Call error callback if provided
-      if (widget.onCaptureError != null) {
-        widget.onCaptureError!(e.toString());
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (widget.onError != null) {
+        widget.onError!('capture', 'Error: $e');
       }
     }
   }
@@ -796,27 +846,69 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     try {
       // Ensure flash mode is set correctly before taking the picture
       if (!_isFrontCamera) {
-        await _controller.setFlashMode(_flashMode);
+        await _controller?.setFlashMode(_flashMode);
       }
 
-      final file = await _controller.takePicture();
+      final file = await _controller?.takePicture();
 
-      // Add to the controller's media manager
-      _controller.mediaManager.addMedia(file);
+      // Only process the file if it's not null
+      if (file != null) {
+        // Add to the controller's media manager
+        _controller?.mediaManager.addMedia(file);
 
-      // Call the callback if provided
-      if (widget.onCapture != null) {
-        // Schedule the callback in a microtask to ensure proper state update
-        widget.onCapture!(file);
+        // Call the callback if provided
+        if (widget.onCapture != null) {
+          widget.onCapture!(file);
+        }
       }
     } catch (e) {
       // Call error callback if provided
-      if (widget.onCaptureError != null) {
-        widget.onCaptureError!(e.toString());
+      if (widget.onError != null) {
+        widget.onError!('capture', 'Error: $e');
+      }
+    }
+  }
+
+  Future<void> _openMediaGallery() async {
+    try {
+      if (widget.multiImageSelect) {
+        // Pick multiple images from device gallery
+        final List<XFile> pickedFiles = await _imagePicker.pickMultiImage();
+
+        // Add each image to the media manager
+        if (pickedFiles.isNotEmpty && widget.controller?.mediaManager != null) {
+          for (final file in pickedFiles) {
+            widget.controller!.mediaManager.addMedia(file);
+
+            // Call the onCapture callback for each file if provided
+            if (widget.onCapture != null) {
+              widget.onCapture!(file);
+            }
+          }
+        }
+      } else {
+        // Pick a single image from device gallery
+        final XFile? pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
+
+        if (pickedFile != null && widget.controller?.mediaManager != null) {
+          // Add the image to the media manager
+          widget.controller!.mediaManager.addMedia(pickedFile);
+
+          // Call the onCapture callback if provided
+          if (widget.onCapture != null) {
+            widget.onCapture!(pickedFile);
+          }
+        }
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      // Call the gallery tap callback if provided
+      if (widget.onGalleryTap != null) {
+        widget.onGalleryTap!();
+      }
+    } catch (e) {
+      // Call error callback if provided
+      if (widget.onError != null) {
+        widget.onError!('gallery', 'Error opening gallery: $e', error: e, isRecoverable: true);
       }
     }
   }
@@ -836,7 +928,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (mediaManager == null) {
         return const SizedBox.shrink();
       }
-      return CameralyMediaStack(mediaManager: mediaManager, onTap: _openCustomGallery, itemSize: 60, maxDisplayItems: 5);
+      return CameralyMediaStack(mediaManager: mediaManager, onTap: _openMediaGallery, itemSize: 60, maxDisplayItems: 5);
     }
 
     Widget buildPlaceholder() {
@@ -877,10 +969,25 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     _recordingLimitTimer?.cancel();
     _recordingLimitTimer = Timer(_maxVideoDuration!, () {
       if (_isRecording) {
-        _controller.stopVideoRecording().then((file) {
+        _controller?.stopVideoRecording().then((file) {
+          // Add to the controller's media manager
+          _controller?.mediaManager.addMedia(file);
+
+          // Call the callback if provided
+          if (widget.onCapture != null) {
+            widget.onCapture!(file);
+          }
+
           if (widget.onMaxDurationReached != null) {
             widget.onMaxDurationReached!();
           }
+        });
+
+        setState(() {
+          _isRecording = false;
+          _recordingTimer?.cancel();
+          _recordingTimer = null;
+          _recordingDuration = Duration.zero;
         });
       }
     });
@@ -1036,7 +1143,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     } else {
       // Calculate based on content
       double height = 90; // Base height for capture button
-      if (!_isRecording && _controller.settings.cameraMode == CameraMode.both) {
+      if (!_isRecording && _controller?.settings.cameraMode == CameraMode.both) {
         height += 60; // Add height for mode toggle
       }
       return height + MediaQuery.of(context).padding.bottom + 40; // Add padding and extra space
@@ -1087,11 +1194,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               ),
 
             // Flash button (for photo mode)
-            if (widget.showFlashButton && !_isVideoMode && !_isFrontCamera && _controller.value.hasFlashCapability)
+            if (widget.showFlashButton && !_isVideoMode && !_isFrontCamera && _controller?.value.hasFlashCapability == true)
               Align(alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight, child: CameralyOverlayButton(onTap: _cycleFlashMode, child: Icon(_getFlashIcon(), color: _flashMode == FlashMode.off ? Colors.white60 : Colors.white))),
 
             // Torch button (for video mode)
-            if (widget.showFlashButton && _isVideoMode && !_isFrontCamera && _controller.value.hasFlashCapability)
+            if (widget.showFlashButton && _isVideoMode && !_isFrontCamera && _controller?.value.hasFlashCapability == true)
               Align(
                 alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
                 child: CameralyOverlayButton(onTap: _toggleTorch, child: Icon(_torchEnabled ? Icons.flashlight_on : Icons.flashlight_off, color: _torchEnabled ? Colors.white : Colors.white60)),
@@ -1101,7 +1208,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             if (widget.showGalleryButton && widget.customLeftButton != null)
               Align(
                 alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: CameralyOverlayButton(onTap: _isRecording ? null : _openCustomGallery, child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 28)),
+                child: CameralyOverlayButton(onTap: _isRecording ? null : _openMediaGallery, child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 28)),
               ),
 
             // Camera switch button (shown in top area when customRightButton is provided)
@@ -1141,7 +1248,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           const SizedBox(height: 16),
 
           // Photo/Video toggle
-          if (!_isRecording && _controller.settings.cameraMode == CameraMode.both) ...[
+          if (!_isRecording && _controller?.settings.cameraMode == CameraMode.both) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(color: const Color.fromRGBO(0, 0, 0, 0.4), borderRadius: BorderRadius.circular(30)),
@@ -1155,7 +1262,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       onTap: () => setState(() {
                         _isVideoMode = false;
                         if (!_isFrontCamera) {
-                          _controller.setFlashMode(_flashMode);
+                          _controller?.setFlashMode(_flashMode);
                         }
                         _torchEnabled = false;
                         _notifyCameraStateChanged();
@@ -1181,7 +1288,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     child: InkWell(
                       onTap: () => setState(() {
                         _isVideoMode = true;
-                        _controller.setFlashMode(FlashMode.off);
+                        _controller?.setFlashMode(FlashMode.off);
                         _torchEnabled = false;
                         _notifyCameraStateChanged();
                       }),
@@ -1215,7 +1322,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   ? widget.customLeftButton!
                   : widget.showGalleryButton && widget.customLeftButton == null
                       ? CameralyOverlayButton(
-                          onTap: _isRecording ? null : _openCustomGallery,
+                          onTap: _isRecording ? null : _openMediaGallery,
                           backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
                           size: 56,
                           child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
@@ -1267,7 +1374,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Photo/Video toggle
-          if (!_isRecording && _controller.settings.cameraMode == CameraMode.both)
+          if (!_isRecording && _controller?.settings.cameraMode == CameraMode.both)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(color: Colors.black.withAlpha(102), borderRadius: BorderRadius.circular(20)),
@@ -1279,7 +1386,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     onPressed: () => setState(() {
                       _isVideoMode = false;
                       if (!_isFrontCamera) {
-                        _controller.setFlashMode(_flashMode);
+                        _controller?.setFlashMode(_flashMode);
                       }
                       _torchEnabled = false;
                       _notifyCameraStateChanged();
@@ -1291,7 +1398,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   TextButton(
                     onPressed: () => setState(() {
                       _isVideoMode = true;
-                      _controller.setFlashMode(FlashMode.off);
+                      _controller?.setFlashMode(FlashMode.off);
                       _torchEnabled = false;
                       _notifyCameraStateChanged();
                     }),
@@ -1332,7 +1439,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       child: Container(
                         decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                         child: IconButton.filled(
-                          onPressed: _isRecording ? null : _openCustomGallery, // Disable during recording
+                          onPressed: _isRecording ? null : _openMediaGallery, // Disable during recording
                           icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
                           style: IconButton.styleFrom(
                             backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
@@ -1368,15 +1475,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Future<void> _toggleTorch() async {
     try {
       final newTorchState = !_torchEnabled;
-      await _controller.setFlashMode(newTorchState ? FlashMode.torch : FlashMode.off);
+      await _controller?.setFlashMode(newTorchState ? FlashMode.torch : FlashMode.off);
       setState(() {
         _torchEnabled = newTorchState;
         // Notify torch state change
         _notifyCameraStateChanged();
       });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error toggling torch: $e')));
+      // Call error callback instead of showing snackbar
+      if (widget.onError != null) {
+        widget.onError!('torch', 'Error toggling torch: $e');
       }
     }
   }
