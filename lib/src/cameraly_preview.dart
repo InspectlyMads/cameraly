@@ -369,11 +369,24 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     // This is because the camera sensor is naturally in landscape orientation
     final previewRatio = isLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
 
+    // Check if front camera by using both the value and the lens direction
+    // This double-verification approach ensures mirroring works even if the value isn't updated correctly
+    final bool isFrontCameraByLens = _controller!.description.lensDirection == CameraLensDirection.front;
+    final bool shouldMirror = isFrontCameraByLens || value.isFrontCamera;
+
+    // Debug logs for mirroring diagnosis
+    debugPrint('🎥 PREVIEW BUILDING:');
+    debugPrint('🎥 Camera type: ${_controller!.description.lensDirection}');
+    debugPrint('🎥 isFrontCamera value: ${value.isFrontCamera}');
+    debugPrint('🎥 isFrontCamera by lens: $isFrontCameraByLens');
+    debugPrint('🎥 Should mirror: $shouldMirror');
+    debugPrint('🎥 scaleX will be: ${shouldMirror ? -1.0 : 1.0}');
+
     // Use the standard preview with the correct aspect ratio for the current orientation
     return AspectRatio(
       aspectRatio: previewRatio,
       child: Transform.scale(
-        scaleX: value.isFrontCamera ? -1.0 : 1.0, // Only flip for front camera
+        scaleX: shouldMirror ? -1.0 : 1.0, // Flip if either indicator says it's a front camera
         scaleY: 1.0,
         child: CameraPreview(_controller!.cameraController!),
       ),

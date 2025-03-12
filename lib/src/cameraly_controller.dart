@@ -16,12 +16,8 @@ import 'utils/permission_handler.dart';
 /// Controller for the Cameraly camera interface.
 class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindingObserver {
   /// Creates a new controller instance.
-  CameralyController({
-    required CameraDescription description,
-    CaptureSettings? settings,
-    CameralyMediaManager? mediaManager,
-    CameralyMediaManager? existingMediaManager,
-  })  : _description = description,
+  CameralyController({required CameraDescription description, CaptureSettings? settings, CameralyMediaManager? mediaManager, CameralyMediaManager? existingMediaManager})
+      : _description = description,
         _settings = settings ?? const CaptureSettings(),
         _permissionHandler = const CameralyPermissionHandler(),
         _mediaManager = existingMediaManager ?? mediaManager ?? CameralyMediaManager(),
@@ -56,9 +52,22 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// This is a convenience method to avoid importing the camera package directly.
   static Future<List<CameraDescription>> getAvailableCameras() async {
     try {
-      return await availableCameras();
+      // Get cameras from the camera plugin
+      final List<CameraDescription> cameras = await availableCameras();
+
+      if (cameras.isEmpty) {
+        debugPrint('📸 No cameras found by availableCameras()');
+      } else {
+        debugPrint('📸 Found ${cameras.length} cameras via availableCameras()');
+        for (int i = 0; i < cameras.length; i++) {
+          final camera = cameras[i];
+          debugPrint('📸 Camera $i: ${camera.name}, direction: ${camera.lensDirection}, sensorOrientation: ${camera.sensorOrientation}');
+        }
+      }
+
+      return cameras;
     } catch (e) {
-      debugPrint('Error getting available cameras: $e');
+      debugPrint('📸 Error getting available cameras: $e');
       return [];
     }
   }
@@ -87,11 +96,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// // For both photos and videos
   /// final controller = await CameralyController.initializeCamera();
   /// ```
-  static Future<CameralyController?> initializeCamera({
-    int cameraIndex = 0,
-    CaptureSettings? settings,
-    bool enableFallback = true,
-  }) async {
+  static Future<CameralyController?> initializeCamera({int cameraIndex = 0, CaptureSettings? settings, bool enableFallback = true}) async {
     try {
       // Get available cameras
       final cameras = await getAvailableCameras();
@@ -107,10 +112,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       }
 
       // Create controller with the selected camera
-      final controller = CameralyController(
-        description: cameras[cameraIndex],
-        settings: settings,
-      );
+      final controller = CameralyController(description: cameras[cameraIndex], settings: settings);
 
       // Initialize the controller with fallback if enabled
       if (enableFallback) {
@@ -135,23 +137,14 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         return;
       }
 
-      final hasPermission = await _permissionHandler.requestPermissions(
-        requireAudio: _settings.enableAudio,
-      );
+      final hasPermission = await _permissionHandler.requestPermissions(requireAudio: _settings.enableAudio);
 
       if (!hasPermission) {
-        value = value.copyWith(
-          permissionState: CameraPermissionState.denied,
-          error: 'Camera permission denied',
-        );
+        value = value.copyWith(permissionState: CameraPermissionState.denied, error: 'Camera permission denied');
         return;
       }
 
-      _controller = CameraController(
-        _description,
-        _settings.resolution,
-        enableAudio: _settings.enableAudio,
-      );
+      _controller = CameraController(_description, _settings.resolution, enableAudio: _settings.enableAudio);
 
       await _controller!.initialize();
 
@@ -208,10 +201,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         // Ignore zoom errors during initialization
       }
     } on CameraException catch (e) {
-      value = value.copyWith(
-        error: 'Failed to initialize camera: ${e.description}',
-        permissionState: CameraPermissionState.denied,
-      );
+      value = value.copyWith(error: 'Failed to initialize camera: ${e.description}', permissionState: CameraPermissionState.denied);
       rethrow;
     }
   }
@@ -276,17 +266,11 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// Takes a picture using the current settings.
   Future<XFile> takePicture() async {
     if (!value.isInitialized) {
-      throw CameraException(
-        'notInitialized',
-        'Camera has not been initialized',
-      );
+      throw CameraException('notInitialized', 'Camera has not been initialized');
     }
 
     if (value.isTakingPicture) {
-      throw CameraException(
-        'captureInProgress',
-        'A capture operation is already in progress',
-      );
+      throw CameraException('captureInProgress', 'A capture operation is already in progress');
     }
 
     try {
@@ -317,17 +301,11 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       // Take the picture
       final file = await _controller!.takePicture();
 
-      value = value.copyWith(
-        isTakingPicture: false,
-        lastCapturedPhoto: file,
-      );
+      value = value.copyWith(isTakingPicture: false, lastCapturedPhoto: file);
 
       return file;
     } catch (e) {
-      value = value.copyWith(
-        isTakingPicture: false,
-        error: e.toString(),
-      );
+      value = value.copyWith(isTakingPicture: false, error: e.toString());
       rethrow;
     }
   }
@@ -388,17 +366,11 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// Starts video recording.
   Future<void> startVideoRecording() async {
     if (!value.isInitialized) {
-      throw CameraException(
-        'notInitialized',
-        'Camera has not been initialized',
-      );
+      throw CameraException('notInitialized', 'Camera has not been initialized');
     }
 
     if (value.isRecordingVideo) {
-      throw CameraException(
-        'captureInProgress',
-        'A video recording is already in progress',
-      );
+      throw CameraException('captureInProgress', 'A video recording is already in progress');
     }
 
     try {
@@ -435,25 +407,16 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// Stops video recording and returns the file.
   Future<XFile> stopVideoRecording() async {
     if (!value.isInitialized) {
-      throw CameraException(
-        'notInitialized',
-        'Camera has not been initialized',
-      );
+      throw CameraException('notInitialized', 'Camera has not been initialized');
     }
 
     if (!value.isRecordingVideo) {
-      throw CameraException(
-        'notRecording',
-        'No video recording in progress',
-      );
+      throw CameraException('notRecording', 'No video recording in progress');
     }
 
     try {
       final file = await _controller!.stopVideoRecording();
-      value = value.copyWith(
-        isRecordingVideo: false,
-        lastRecordedVideo: file,
-      );
+      value = value.copyWith(isRecordingVideo: false, lastRecordedVideo: file);
       // Add the recorded video to the media manager
       _mediaManager.addMedia(file);
       return file;
@@ -536,12 +499,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// - [maxZoom]: Optional maximum zoom level, defaults to 5.0
   ///
   /// Returns a Future that completes when the zoom is applied.
-  Future<void> handleScale(
-    double scale, {
-    double sensitivity = 0.3,
-    double? minZoom,
-    double? maxZoom,
-  }) async {
+  Future<void> handleScale(double scale, {double sensitivity = 0.3, double? minZoom, double? maxZoom}) async {
     if (!value.isInitialized) return;
 
     try {
@@ -554,10 +512,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
       // Apply sensitivity adjustment to make zooming more controlled
       // Use the initial zoom level as the base for calculations to prevent jumps
-      final newZoom = (baseZoom * scale).clamp(
-        effectiveMinZoom,
-        effectiveMaxZoom,
-      );
+      final newZoom = (baseZoom * scale).clamp(effectiveMinZoom, effectiveMaxZoom);
 
       // Apply the new zoom level
       await setZoomLevel(newZoom);
@@ -602,89 +557,111 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       final cameras = await getAvailableCameras();
       debugPrint('📸 Available cameras: ${cameras.length}');
 
-      for (final camera in cameras) {
-        debugPrint('📸 Camera: ${camera.name}, direction: ${camera.lensDirection}');
+      // Log all available cameras for debugging
+      for (int i = 0; i < cameras.length; i++) {
+        final camera = cameras[i];
+        debugPrint('📸 Camera $i: ${camera.name}, direction: ${camera.lensDirection}, sensorOrientation: ${camera.sensorOrientation}');
       }
 
-      // Find a camera facing the opposite direction
-      final lensDirection = _description.lensDirection;
-      final newDirection = lensDirection == CameraLensDirection.front ? CameraLensDirection.back : CameraLensDirection.front;
-      debugPrint('📸 Looking for camera with direction: $newDirection');
-
-      final newCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == newDirection,
-        orElse: () => _description,
-      );
-
-      // If we found a different camera, dispose the current one and initialize the new one
-      if (newCamera.name != _description.name) {
-        debugPrint('📸 Switching from ${_description.name} to ${newCamera.name}');
-        final previousSettings = _settings;
-        final wasRecording = value.isRecordingVideo;
-
-        // Create a reference to the current controller
-        final currentController = this;
-        debugPrint('📸 Current controller hashcode: ${currentController.hashCode}');
-
-        // Store the current media manager to reuse in the new controller
-        final currentMediaManager = mediaManager;
-
-        // Stop recording if needed
-        if (wasRecording) {
-          debugPrint('📸 Stopping current recording before switching');
-          await stopVideoRecording();
-        }
-
-        // Ensure the native controller is properly disposed
-        debugPrint('📸 Disposing current controller: ${_controller?.hashCode}');
-        await _controller?.dispose();
-        _controller = null;
-
-        // Create a new controller with the new camera and existing media manager
-        final newController = CameralyController(
-          description: newCamera,
-          settings: previousSettings,
-          existingMediaManager: currentMediaManager, // Use existing media manager
-        );
-        debugPrint('📸 Created new controller with hashcode: ${newController.hashCode}');
-
-        try {
-          // Initialize the new controller
-          debugPrint('📸 Initializing new controller');
-          await newController.initializeWithFallback();
-
-          // Double-check if native controller is initialized
-          if (newController._controller != null && newController._controller!.value.isInitialized) {
-            debugPrint('📸 Native camera controller is initialized');
-          } else {
-            debugPrint('⚠️ Native camera controller is NOT initialized');
-          }
-
-          debugPrint('📸 New controller initialized successfully');
-        } catch (e) {
-          debugPrint('📸 Failed to initialize new controller: $e');
-          rethrow;
-        }
-
-        // Restore previous state
-        if (wasRecording) {
-          debugPrint('📸 Restoring recording state');
-          await newController.startVideoRecording();
-        }
-
-        // Return the new controller
-        debugPrint('📸 Returning new controller to caller');
-        return newController;
-      } else {
-        debugPrint('📸 No camera with opposite direction found');
+      // If there's only one camera, we can't switch
+      if (cameras.length <= 1) {
+        debugPrint('📸 No alternative cameras available');
         return null;
       }
+
+      // Determine current camera index
+      int currentIndex = -1;
+      for (int i = 0; i < cameras.length; i++) {
+        if (cameras[i].name == _description.name) {
+          currentIndex = i;
+          break;
+        }
+      }
+
+      if (currentIndex == -1) {
+        debugPrint('📸 Current camera not found in available cameras');
+        return null;
+      }
+
+      // Simply choose the next camera in the list, wrapping around if needed
+      final newIndex = (currentIndex + 1) % cameras.length;
+      final newCamera = cameras[newIndex];
+
+      debugPrint('📸 Switching from camera index $currentIndex to index $newIndex');
+      debugPrint('📸 Switching from ${_description.name} (${_description.lensDirection}) to ${newCamera.name} (${newCamera.lensDirection})');
+      debugPrint('📸 Current isFrontCamera value: ${value.isFrontCamera}');
+
+      // Immediately determine if the new camera is front-facing
+      final bool isNewCameraFront = newCamera.lensDirection == CameraLensDirection.front;
+      debugPrint('📸 New camera will be front-facing: $isNewCameraFront');
+
+      // If we're switching to the same camera, return null
+      if (newCamera.name == _description.name) {
+        debugPrint('📸 Selected the same camera, not switching');
+        return null;
+      }
+
+      final previousSettings = _settings;
+      final wasRecording = value.isRecordingVideo;
+
+      // Create a reference to the current controller
+      final currentController = this;
+      debugPrint('📸 Current controller hashcode: ${currentController.hashCode}');
+
+      // Store the current media manager to reuse in the new controller
+      final currentMediaManager = mediaManager;
+
+      // Stop recording if needed
+      if (wasRecording) {
+        debugPrint('📸 Stopping current recording before switching');
+        await stopVideoRecording();
+      }
+
+      // Ensure the native controller is properly disposed
+      debugPrint('📸 Disposing current controller: ${_controller?.hashCode}');
+      await _controller?.dispose();
+      _controller = null;
+
+      // Create a new controller with the new camera and existing media manager
+      final newController = CameralyController(
+        description: newCamera,
+        settings: previousSettings,
+        existingMediaManager: currentMediaManager, // Use existing media manager
+      );
+      debugPrint('📸 Created new controller with hashcode: ${newController.hashCode}');
+
+      try {
+        // Initialize the new controller
+        debugPrint('📸 Initializing new controller');
+        await newController.initializeWithFallback();
+
+        // Double-check if native controller is initialized
+        if (newController._controller != null && newController._controller!.value.isInitialized) {
+          debugPrint('📸 Native camera controller is initialized');
+        } else {
+          debugPrint('⚠️ Native camera controller is NOT initialized');
+        }
+
+        // Immediately update the isFrontCamera property based on the lens direction
+        newController.value = newController.value.copyWith(isFrontCamera: isNewCameraFront);
+        debugPrint('📸 Updated isFrontCamera to: ${newController.value.isFrontCamera}');
+
+        debugPrint('📸 New controller initialized successfully');
+      } catch (e) {
+        debugPrint('📸 Failed to initialize new controller: $e');
+        rethrow;
+      }
+
+      // Restore previous state
+      if (wasRecording) {
+        debugPrint('📸 Restoring recording state');
+        await newController.startVideoRecording();
+      }
+
+      // Return the new controller
+      return newController;
     } catch (e) {
       debugPrint('📸 Error switching camera: $e');
-      value = value.copyWith(
-        error: 'Failed to switch camera: $e',
-        isInitialized: false,
-      );
       rethrow;
     }
   }
@@ -702,9 +679,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         return await takePicture();
       }
     } catch (e) {
-      value = value.copyWith(
-        error: 'Failed to capture media: $e',
-      );
+      value = value.copyWith(error: 'Failed to capture media: $e');
       return null;
     }
   }
@@ -723,9 +698,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         return null;
       }
     } catch (e) {
-      value = value.copyWith(
-        error: 'Failed to toggle video recording: $e',
-      );
+      value = value.copyWith(error: 'Failed to toggle video recording: $e');
       return null;
     }
   }
@@ -740,10 +713,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
       // The point is already normalized (0.0 to 1.0) from the CameralyPreview
       // Make sure it's within valid bounds
-      final normalizedPoint = Offset(
-        point.dx.clamp(0.0, 1.0),
-        point.dy.clamp(0.0, 1.0),
-      );
+      final normalizedPoint = Offset(point.dx.clamp(0.0, 1.0), point.dy.clamp(0.0, 1.0));
 
       // Update the value with the new focus and exposure points immediately
       // This will trigger the UI update for the focus circle right away
@@ -768,9 +738,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       await _controller!.setExposurePoint(normalizedPoint);
     } catch (e) {
       debugPrint('Error setting focus and exposure: $e');
-      value = value.copyWith(
-        error: 'Failed to set focus and exposure point: $e',
-      );
+      value = value.copyWith(error: 'Failed to set focus and exposure point: $e');
     }
   }
 
@@ -809,19 +777,14 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
           );
 
           // Create a new controller with the new settings
-          final newController = CameralyController(
-            description: _description,
-            settings: newSettings,
-          );
+          final newController = CameralyController(description: _description, settings: newSettings);
 
           // Initialize the new controller
           await newController.initialize();
 
           // Update this controller with the new controller's values
           _controller = newController._controller;
-          value = newController.value.copyWith(
-            hasFlashCapability: false,
-          );
+          value = newController.value.copyWith(hasFlashCapability: false);
 
           debugPrint('Camera initialized successfully with flash disabled');
           return true;
@@ -846,19 +809,14 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
           );
 
           // Create a new controller with the new settings
-          final newController = CameralyController(
-            description: _description,
-            settings: newSettings,
-          );
+          final newController = CameralyController(description: _description, settings: newSettings);
 
           // Initialize the new controller
           await newController.initialize();
 
           // Update this controller with the new controller's values
           _controller = newController._controller;
-          value = newController.value.copyWith(
-            hasFlashCapability: false,
-          );
+          value = newController.value.copyWith(hasFlashCapability: false);
 
           debugPrint('Camera initialized successfully with lower resolution');
           return true;
@@ -871,26 +829,17 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       debugPrint('Attempting video-only initialization as last resort');
       try {
         // Create new settings for video-only mode
-        const newSettings = CaptureSettings(
-          resolution: ResolutionPreset.medium,
-          enableAudio: false,
-          cameraMode: CameraMode.videoOnly,
-        );
+        const newSettings = CaptureSettings(resolution: ResolutionPreset.medium, enableAudio: false, cameraMode: CameraMode.videoOnly);
 
         // Create a new controller with video settings
-        final newController = CameralyController(
-          description: _description,
-          settings: newSettings,
-        );
+        final newController = CameralyController(description: _description, settings: newSettings);
 
         // Initialize the new controller
         await newController.initialize();
 
         // Update this controller with the new controller's values
         _controller = newController._controller;
-        value = newController.value.copyWith(
-          hasFlashCapability: false,
-        );
+        value = newController.value.copyWith(hasFlashCapability: false);
 
         debugPrint('Video-only initialization successful');
         return true;
@@ -899,9 +848,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       }
 
       // If all attempts fail, update the value with an error
-      value = value.copyWith(
-        error: 'Failed to initialize camera after multiple attempts',
-      );
+      value = value.copyWith(error: 'Failed to initialize camera after multiple attempts');
 
       return false;
     }

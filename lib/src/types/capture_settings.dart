@@ -1,9 +1,17 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 
+import '../cameraly_previewer.dart'; // Import for CameraPreviewSettings
 import 'camera_mode.dart';
 
 /// Settings for camera capture.
+///
+/// This class focuses on the technical aspects of camera operation.
+/// For UI-related settings, see [CameraPreviewSettings] in the CameraPreviewer.
+///
+/// [CaptureSettings] is used by [CameralyController] to configure the camera hardware,
+/// while [CameraPreviewSettings] is used by [CameraPreviewer] and includes both
+/// camera hardware settings and UI/overlay configuration.
 class CaptureSettings {
   /// Creates settings for camera capture.
   const CaptureSettings({
@@ -83,6 +91,23 @@ class CaptureSettings {
         exposureMode: ExposureMode.auto,
         focusMode: FocusMode.auto,
       );
+
+  /// Creates a new settings instance from a [CameraPreviewSettings] object.
+  ///
+  /// This allows for seamless conversion between the two settings classes.
+  factory CaptureSettings.fromPreviewSettings(CameraPreviewSettings settings) {
+    return CaptureSettings(
+      cameraMode: settings.cameraMode,
+      enableAudio: settings.enableAudio,
+      flashMode: settings.flashMode,
+      resolution: settings.resolution,
+      maxVideoDuration: settings.videoDurationLimit,
+      // Use defaults for other properties
+      exposureMode: ExposureMode.auto,
+      focusMode: FocusMode.auto,
+      deviceOrientation: DeviceOrientation.portraitUp,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>

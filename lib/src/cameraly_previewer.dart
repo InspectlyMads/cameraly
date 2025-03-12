@@ -13,6 +13,14 @@ import 'utils/cameraly_controller_provider.dart';
 import 'utils/media_manager.dart';
 
 /// Settings for configuring the appearance, behavior, and functionality of the CameraPreviewer.
+///
+/// This class extends the capabilities of [CaptureSettings] by adding UI configuration options.
+/// It includes both camera hardware settings (like resolution, flash mode) and UI settings
+/// (like button visibility, theme customization).
+///
+/// While [CaptureSettings] is focused on the technical aspects of camera operation,
+/// [CameraPreviewSettings] provides a comprehensive configuration for both camera
+/// functionality and the user interface.
 class CameraPreviewSettings {
   /// Creates a comprehensive settings object for [CameraPreviewer].
   const CameraPreviewSettings({
@@ -160,6 +168,19 @@ class CameraPreviewSettings {
   /// This is typically used when the user finishes the camera session
   /// and wants to return the captured media to the calling screen.
   final Function(List<XFile>)? onComplete;
+
+  /// Converts this settings object to a [CaptureSettings] object.
+  ///
+  /// This is used internally by [CameraPreviewer] to configure the [CameralyController].
+  CaptureSettings toCaptureSettings() {
+    return CaptureSettings(
+      cameraMode: cameraMode,
+      enableAudio: enableAudio,
+      flashMode: flashMode,
+      resolution: resolution,
+      maxVideoDuration: videoDurationLimit,
+    );
+  }
 
   /// Creates a copy of this settings object with the given fields replaced.
   CameraPreviewSettings copyWith({
@@ -329,18 +350,12 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
           _isInitializing = false;
           _errorMessage = 'No cameras available on this device';
         });
+        widget.settings.onCaptureError?.call('No cameras available on this device');
         return;
       }
 
-      // Create capture settings from our simplified settings
-      final captureSettings = CaptureSettings(
-        cameraMode: widget.settings.cameraMode,
-        resolution: widget.settings.resolution,
-        flashMode: widget.settings.flashMode,
-        enableAudio: widget.settings.enableAudio,
-      );
-
-      // Create and initialize the controller
+      // Convert to capture settings and create the controller
+      final captureSettings = widget.settings.toCaptureSettings();
       final controller = CameralyController(
         description: cameras.first,
         settings: captureSettings,
@@ -348,32 +363,43 @@ class _CameraPreviewerState extends State<CameraPreviewer> {
       );
 
       try {
+        // Initialize the controller
         await controller.initialize();
 
-        if (mounted) {
-          setState(() {
-            _controller = controller;
-            _isInitializing = false;
-          });
+        // Only set the controller if we're still mounted
+        if (!mounted) {
+          controller.dispose();
+          return;
+        }
 
-          // Notify that controller is initialized
-          widget.settings.onInitialized?.call(controller);
-        }
+        setState(() {
+          _controller = controller;
+          _isInitializing = false;
+        });
+
+        // Call the onInitialized callback if provided
+        widget.settings.onInitialized?.call(controller);
       } catch (e) {
+        // Handle initialization error
         if (mounted) {
           setState(() {
             _isInitializing = false;
-            _errorMessage = 'Failed to initialize camera: $e';
+            _errorMessage = 'Failed to initialize camera: ${e.toString()}';
           });
+          widget.settings.onCaptureError?.call('Failed to initialize camera: ${e.toString()}');
         }
+
+        // Clean up the controller
         controller.dispose();
       }
     } catch (e) {
+      // Handle general error
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _errorMessage = 'Error accessing camera: $e';
+          _errorMessage = 'Camera error: ${e.toString()}';
         });
+        widget.settings.onCaptureError?.call('Camera error: ${e.toString()}');
       }
     }
   }

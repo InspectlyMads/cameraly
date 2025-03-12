@@ -57,15 +57,25 @@ Cameraly is a Flutter package that enhances the official Flutter camera plugin w
 ### Settings and Types
 
 1. **CaptureSettings** (`lib/src/types/capture_settings.dart`)
-   - Base class for camera capture settings
+   - Technical settings for camera hardware configuration
+   - Used by CameralyController for camera initialization
+   - Focuses on camera functionality (resolution, flash mode, etc.)
+   - Can be created from CameraPreviewSettings using fromPreviewSettings factory
 
-2. **PhotoSettings** (`lib/src/types/photo_settings.dart`)
+2. **CameraPreviewSettings** (`lib/src/cameraly_previewer.dart`)
+   - Comprehensive settings for the simplified CameraPreviewer
+   - Combines camera hardware settings with UI configuration
+   - Includes both technical settings and UI customization options
+   - Can be converted to CaptureSettings using toCaptureSettings method
+   - Preferred for most use cases with the simplified API
+
+3. **PhotoSettings** (`lib/src/types/photo_settings.dart`)
    - Settings specific to photo capture
 
-3. **VideoSettings** (`lib/src/types/video_settings.dart`)
+4. **VideoSettings** (`lib/src/types/video_settings.dart`)
    - Settings specific to video recording
 
-4. **CameraDevice** (`lib/src/types/camera_device.dart`)
+5. **CameraDevice** (`lib/src/types/camera_device.dart`)
    - Information about available camera devices
 
 ### Utilities
@@ -174,12 +184,23 @@ CameraPreviewer(
     },
   ),
 )
+
+// The CameraPreviewSettings automatically converts to CaptureSettings internally
+// No need to create CaptureSettings manually when using CameraPreviewer
 ```
 
 ### Legacy API (Manual Controller Management)
 
 ```dart
-// 1. Async initialization pattern with nullable controller
+// 1. Create capture settings for the controller
+final captureSettings = CaptureSettings(
+  cameraMode: CameraMode.both,
+  resolution: ResolutionPreset.high,
+  flashMode: FlashMode.auto,
+  enableAudio: true,
+);
+
+// 2. Async initialization pattern with nullable controller
 CameralyController? _controller;
 
 @override
@@ -190,7 +211,10 @@ void initState() {
 
 Future<void> _initCamera() async {
   final cameras = await CameralyController.getAvailableCameras();
-  final controller = CameralyController(description: cameras.first);
+  final controller = CameralyController(
+    description: cameras.first,
+    settings: captureSettings,
+  );
   await controller.initialize();
   
   if (mounted) {
@@ -267,6 +291,7 @@ if (permissionResult == PermissionStatus.granted) {
 // - Error handling
 // - Lifecycle management (no need for dispose)
 // - Loading states
+// - Settings conversion (CameraPreviewSettings → CaptureSettings)
 
 class CameraScreen extends StatelessWidget {  // StatelessWidget is all you need!
   @override
@@ -274,8 +299,20 @@ class CameraScreen extends StatelessWidget {  // StatelessWidget is all you need
     return Scaffold(
       body: CameraPreviewer(
         settings: CameraPreviewSettings(
+          // Camera hardware settings (automatically converted to CaptureSettings internally)
           cameraMode: CameraMode.photoOnly,
+          resolution: ResolutionPreset.high,
+          
+          // UI settings (only available in CameraPreviewSettings)
+          showFlashButton: true,
+          showMediaStack: true,
+          
+          // Callbacks
           onCapture: (file) => print('Captured: ${file.path}'),
+          onInitialized: (controller) {
+            // Access to controller if needed for advanced operations
+            print('Camera initialized with resolution: ${controller.settings.resolution}');
+          },
         ),
       ),
     );
@@ -338,4 +375,4 @@ The package follows a comprehensive testing approach:
 ### Future Releases
 - Custom overlays
 - Advanced camera controls
-- ML integration 
+- ML integration
