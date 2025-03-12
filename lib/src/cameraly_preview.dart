@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -369,13 +370,27 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     // Check if front camera by using both the value and the lens direction
     // This double-verification approach ensures mirroring works even if the value isn't updated correctly
     final bool isFrontCameraByLens = _controller!.description.lensDirection == CameraLensDirection.front;
-    final bool shouldMirror = isFrontCameraByLens || value.isFrontCamera;
+    final bool isFrontCamera = isFrontCameraByLens || value.isFrontCamera;
+
+    // Platform-specific mirroring logic
+    bool shouldMirror = false;
+
+    if (isFrontCamera) {
+      if (Platform.isAndroid) {
+        // On Android: Front camera preview should be mirrored (default behavior is already mirrored)
+        shouldMirror = true;
+      } else if (Platform.isIOS) {
+        // On iOS: Is mirrored by default
+        shouldMirror = false;
+      }
+    }
 
     // Debug logs for mirroring diagnosis
     debugPrint('🎥 PREVIEW BUILDING:');
     debugPrint('🎥 Camera type: ${_controller!.description.lensDirection}');
     debugPrint('🎥 isFrontCamera value: ${value.isFrontCamera}');
     debugPrint('🎥 isFrontCamera by lens: $isFrontCameraByLens');
+    debugPrint('🎥 Platform: ${Platform.isAndroid ? 'Android' : Platform.isIOS ? 'iOS' : 'Other'}');
     debugPrint('🎥 Should mirror: $shouldMirror');
     debugPrint('🎥 scaleX will be: ${shouldMirror ? -1.0 : 1.0}');
 
@@ -383,7 +398,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     return AspectRatio(
       aspectRatio: previewRatio,
       child: Transform.scale(
-        scaleX: shouldMirror ? -1.0 : 1.0, // Flip if either indicator says it's a front camera
+        scaleX: shouldMirror ? -1.0 : 1.0, // Flip based on platform-specific logic
         scaleY: 1.0,
         child: CameraPreview(_controller!.cameraController!),
       ),

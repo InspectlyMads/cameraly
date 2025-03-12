@@ -928,7 +928,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (mediaManager == null) {
         return const SizedBox.shrink();
       }
-      return CameralyMediaStack(mediaManager: mediaManager, onTap: _openMediaGallery, itemSize: 60, maxDisplayItems: 5);
+      return CameralyMediaStack(mediaManager: mediaManager, onTap: _openCustomGallery, itemSize: 60, maxDisplayItems: 5);
     }
 
     Widget buildPlaceholder() {
@@ -1321,11 +1321,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               widget.customLeftButton != null
                   ? widget.customLeftButton!
                   : widget.showGalleryButton && widget.customLeftButton == null
-                      ? CameralyOverlayButton(
-                          onTap: _isRecording ? null : _openMediaGallery,
-                          backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
-                          size: 56,
-                          child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
+                      ? Container(
+                          padding: const EdgeInsets.only(bottom: 17), // Add padding to align with capture button center
+                          child: CameralyOverlayButton(
+                            onTap: _isRecording ? null : _openMediaGallery,
+                            backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
+                            size: 56,
+                            child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
+                          ),
                         )
                       : const SizedBox.shrink(),
 
@@ -1350,6 +1353,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   ? widget.customRightButton!
                   : widget.showSwitchCameraButton
                       ? Container(
+                          padding: const EdgeInsets.only(bottom: 17), // Add padding to align with capture button center
                           decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
                           child: IconButton.filled(
                             onPressed: _switchCamera,

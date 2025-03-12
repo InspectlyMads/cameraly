@@ -76,7 +76,7 @@ class CameraPreviewSettings {
     this.exposureMode = ExposureMode.auto,
     this.focusMode = FocusMode.auto,
     this.deviceOrientation = DeviceOrientation.portraitUp,
-    this.multiImageSelect = false,
+    this.multiImageSelect = true,
   }) :
         // Force enableAudio to false when in photoOnly mode
         enableAudio = cameraMode == CameraMode.photoOnly ? false : enableAudio;
