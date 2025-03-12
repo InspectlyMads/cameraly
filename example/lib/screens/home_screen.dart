@@ -7,6 +7,7 @@ import 'custom_display_screen.dart';
 import 'custom_overlay_example.dart';
 import 'inspectly_version.dart';
 import 'limited_video_example.dart';
+import 'simple_camera_screen.dart';
 
 /// Home screen with examples list
 class HomeScreen extends StatelessWidget {
@@ -18,6 +19,14 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Cameraly Examples'), backgroundColor: Theme.of(context).colorScheme.primaryContainer),
       body: ListView(
         children: [
+          _buildExampleTile(
+            context,
+            title: 'Simple Camera (New API)',
+            subtitle: 'Ultra-simple camera with automatic controller management',
+            icon: Icons.auto_awesome,
+            color: Colors.amber,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SimpleCameraScreen())),
+          ),
           _buildExampleTile(
             context,
             title: 'Inspectly Photo Only',
@@ -85,7 +94,7 @@ class HomeScreen extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 3,
       shadowColor: color.withAlpha((0.3 * 255).round()),
-      
+
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(backgroundColor: color.withAlpha((0.2 * 255).round()), child: Icon(icon, color: color)),

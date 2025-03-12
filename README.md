@@ -133,7 +133,61 @@ Add camera usage descriptions to your `Info.plist`:
 
 ## Basic Usage
 
-### Photo Only Camera
+### New Simplified API (Recommended)
+
+Cameraly now provides a significantly simplified API through `CameraPreviewer` - a single widget that manages the entire camera experience for you:
+
+```dart
+class CameraScreen extends StatelessWidget {  // StatelessWidget is all you need!
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: CameraPreviewer(
+        settings: CameraPreviewSettings(
+          // Camera settings
+          cameraMode: CameraMode.photoOnly,
+          resolution: ResolutionPreset.high,
+          
+          // UI customization
+          showFlashButton: true,
+          showSwitchCameraButton: true,
+          showMediaStack: true,
+          
+          // Add a custom "done" button
+          customRightButton: FloatingActionButton(
+            onPressed: () => Navigator.pop(context),
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black87,
+            child: const Icon(Icons.check),
+          ),
+          
+          // Callbacks
+          onCapture: (file) {
+            print('Photo captured: ${file.path}');
+          },
+          onComplete: (mediaList) {
+            // Return all captured photos when done
+            Navigator.pop(context, mediaList);
+          },
+        ),
+      ),
+    );
+  }
+}
+```
+
+The `CameraPreviewer` handles everything for you:
+- ✅ Controller creation and initialization
+- ✅ Lifecycle management (no need for dispose)
+- ✅ State management (no StatefulWidget required)
+- ✅ Loading and error states
+- ✅ UI overlay and controls
+- ✅ Camera switching
+- ✅ Media management
+
+### Legacy Approach (Manual Controller Management)
+
+The following examples show the traditional approach with manual controller management, which is still supported but no longer recommended:
 
 ```dart
 class CameraScreen extends StatefulWidget {
@@ -142,7 +196,7 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  late CameralyController _controller;
+  CameralyController? _controller;
 
   @override
   void initState() {
@@ -152,32 +206,146 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _initCamera() async {
     final cameras = await CameralyController.getAvailableCameras();
-    _controller = CameralyController(
+    final controller = CameralyController(
       description: cameras.first,
       settings: const CaptureSettings(
         cameraMode: CameraMode.photoOnly,
       ),
     );
-    await _controller.initialize();
-    setState(() {});
+    
+    await controller.initialize();
+    
+    // Only update state if widget is still mounted
+    if (mounted) {
+      setState(() {
+        _controller = controller;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_controller == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    // Use CameralyControllerProvider to share controller with descendants
     return Scaffold(
-      body: CameralyPreview(
-        controller: _controller,
-        overlay: DefaultCameralyOverlay(
-          controller: _controller,
-          onPictureTaken: (file) {
-            print('Picture saved to: ${file.path}');
-          },
+      body: CameralyControllerProvider(
+        controller: _controller!,
+        child: CameralyPreview(
+          controller: _controller!,
+          // No need to pass controller to overlay - it gets it from the provider
+          overlay: DefaultCameralyOverlay(
+            showFlashButton: true,
+            showSwitchCameraButton: true,
+            onCapture: (file) {
+              print('Picture saved to: ${file.path}');
+            },
+          ),
+          // Optional custom loading widget
+          loadingBuilder: (context, value) => Container(
+            color: Colors.black,
+            child: const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 16),
+                  Text('Initializing camera...', style: TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 ```
+
+### Simplified Controller Sharing
+
+Cameraly provides a convenient way to share the controller between widgets using `CameralyControllerProvider`. This eliminates the need to pass the controller to both `CameralyPreview` and `DefaultCameralyOverlay`:
+
+```dart
+// Old approach - controller passed to both widgets
+CameralyPreview(
+  controller: controller,  
+  overlay: DefaultCameralyOverlay(
+    controller: controller,  // Duplicate reference
+    // other parameters
+  ),
+)
+
+// New approach - controller is shared automatically
+CameralyControllerProvider(
+  controller: controller,
+  child: CameralyPreview(
+    controller: controller,
+    overlay: DefaultCameralyOverlay(
+      // No need to pass controller here
+      // other parameters
+    ),
+  ),
+)
+```
+
+The `CameralyControllerProvider` is an `InheritedWidget` that makes the controller available to its descendants. This is particularly useful for custom overlay implementations that need access to the controller.
+
+### Handling Async Initialization
+
+Cameraly provides a clean pattern for handling the asynchronous camera initialization process:
+
+1. Declare your controller as nullable: `CameralyController? _controller;`
+2. Initialize it asynchronously in `_initCamera()` method
+3. Set the controller in state after successful initialization
+4. Use CameralyPreview's `uninitializedBuilder` to show a UI while the controller is being created
+
+This pattern solves the common issue of accessing an uninitialized controller in the build method, which often happens because initialization is asynchronous and the build method may be called before initialization completes.
+
+```dart
+// Simplified async initialization pattern
+CameralyController? _controller;
+
+@override
+void initState() {
+  super.initState();
+  _initializeAsync();
+}
+
+Future<void> _initializeAsync() async {
+  final cameras = await CameralyController.getAvailableCameras();
+  final controller = CameralyController(...);
+  await controller.initialize();
+  
+  if (mounted) {
+    setState(() {
+      _controller = controller;
+    });
+  }
+}
+
+@override
+Widget build(BuildContext context) {
+  return CameralyPreview(
+    controller: _controller!,
+    overlay: _controller != null ? DefaultCameralyOverlay(...) : null,
+    uninitializedBuilder: (context) => YourLoadingWidget(),
+  );
+}
+```
+
+CameralyPreview handles both cases:
+- When `_controller` is null (controller not yet created): shows `uninitializedBuilder`
+- When `_controller` exists but not initialized: shows `loadingBuilder`
+- When `_controller` is fully initialized: shows the camera preview
 
 ### Video Recording with Duration Limit
 
@@ -396,3 +564,14 @@ final videoController = await CameralyController.initializeCamera(
 ```
 
 > **Note:** The specialized methods `initializeForPhotos()` and `initializeForVideos()` are deprecated and will be removed in a future version. Please use `initializeCamera()` with the appropriate `CameraMode` instead.
+
+### Smart Camera Preview
+
+CameralyPreview intelligently handles all camera states internally:
+
+- Shows a loading indicator when the camera is initializing
+- Displays permission request UI when camera access is denied
+- Automatically renders the camera feed once ready
+- Shows error messages when problems occur
+
+This means you don't need to manually check `controller.value.isInitialized` in your code - just place the CameralyPreview in your widget tree and it handles everything.

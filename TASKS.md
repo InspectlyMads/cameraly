@@ -23,20 +23,22 @@ advanced camera controls, and simplified permission handling.
 This section helps maintain continuity across context resets.
 
 ### Current Implementation State
-- **Last Updated**: March 6, 2024
+- **Last Updated**: March 21, 2024
 - **Current Stage**: Pre-publishing Preparation
-- **Last Completed Task**: Restructured example app and project organization
+- **Last Completed Task**: Implemented simplified CameraPreviewer API with automatic controller management
 - **Next Task**: Update package configuration and implement tests
 - **Critical Files**:
   - `lib/cameraly.dart`: Main package entry point
   - `lib/src/cameraly_controller.dart`: Camera control implementation
   - `lib/src/cameraly_value.dart`: State management
-  - `lib/src/cameraly_preview.dart`: Camera preview widget
+  - `lib/src/cameraly_preview.dart`: Camera preview widget with automatic state handling and async initialization support
+  - `lib/src/cameraly_previewer.dart`: New simplified API with automatic controller management
   - `lib/src/utils/cameraly_utils.dart`: Utility functions
   - `lib/src/types/capture_settings.dart`: Base capture settings
   - `lib/src/types/photo_settings.dart`: Photo-specific settings
   - `lib/src/types/video_settings.dart`: Video-specific settings
   - `example/lib/main.dart`: Complete example app implementation
+  - `example/lib/screens/simple_camera_screen.dart`: Example using simplified CameraPreviewer API
   - `example/README.md`: Example app documentation
   - `example/android/app/src/main/AndroidManifest.xml`: Android configuration
   - `example/ios/Runner/Info.plist`: iOS configuration
@@ -45,12 +47,14 @@ This section helps maintain continuity across context resets.
 
 - **CameralyController**: Core class that manages camera operations and state
   - Uses **CameralyValue** to track and expose camera state
-  - Configures camera using **PhotoSettings** and **VideoSettings**
+  - Configures camera using **CaptureSettings**
   - Provides methods for camera operations (takePicture, startVideoRecording, etc.)
 
 - **CameralyPreview**: UI widget that displays camera feed
   - Consumes **CameralyController** to display preview
   - Handles user interactions (tap-to-focus, pinch-to-zoom)
+  - Automatically manages loading states, permission states, and errors
+  - Provides customization through loadingBuilder
 
 - **Utils and Types**: Support classes that enhance functionality
   - **CameralyUtils**: Helper methods for camera operations
@@ -58,12 +62,28 @@ This section helps maintain continuity across context resets.
 
 ### Basic Usage Example
 
+#### Simplified API (Recommended)
+```dart
+// One widget handles everything
+CameraPreviewer(
+  settings: CameraPreviewSettings(
+    cameraMode: CameraMode.photoOnly,
+    showFlashButton: true,
+    showSwitchCameraButton: true,
+    onCapture: (file) {
+      print('Captured photo: ${file.path}');
+    },
+  ),
+)
+```
+
+#### Legacy API (Manual Controller Management)
 ```dart
 // Initialize controller
 final controller = CameralyController();
 await controller.initialize();
 
-// Display preview
+// Display preview - handles all states automatically
 CameralyPreview(controller: controller);
 
 // Take picture

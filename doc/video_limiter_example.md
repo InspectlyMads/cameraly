@@ -28,10 +28,11 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _initCamera() async {
     try {
       // Initialize the controller optimized for video recording
-      final controller = await CameralyController.initializeForVideos(
-        settings: const VideoSettings(
+      final controller = await CameralyController.initializeCamera(
+        settings: const CaptureSettings(
           resolution: ResolutionPreset.high,
           cameraMode: CameraMode.videoOnly, // Set to video-only mode
+          enableAudio: true, // Enable audio for video recording
         ),
       );
       

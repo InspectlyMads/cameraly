@@ -15,12 +15,30 @@ Cameraly is a Flutter package that enhances the official Flutter camera plugin w
    - Manages camera state using ValueNotifier
    - Handles initialization, photo/video capture, and camera settings
 
-2. **CameralyPreview** (`lib/src/cameraly_preview.dart`)
+2. **CameraPreviewer** (`lib/src/cameraly_previewer.dart`) 
+   - NEW: Ultra-simplified camera experience in a single widget
+   - Manages the entire camera workflow automatically
+   - Creates and disposes controller internally
+   - Handles all camera states (loading, permissions, errors)
+   - Takes a single CameraPreviewSettings object for configuration
+   - Perfect for rapid implementation with minimal code
+
+3. **CameraPreviewSettings** (`lib/src/cameraly_previewer.dart`)
+   - NEW: Configuration object for the CameraPreviewer
+   - Encapsulates all camera and UI settings in a single object
+   - Controls which buttons appear, overlay style, and callbacks
+   - Allows custom UI components to be injected
+
+4. **CameralyPreview** (`lib/src/cameraly_preview.dart`)
    - UI widget that displays the camera feed
    - Handles user interactions (tap-to-focus, pinch-to-zoom)
    - Manages the overlay system
+   - Intelligently handles all camera states (loading, permissions, errors)
+   - Supports nullable controllers for async initialization pattern
+   - Provides customizable loading UI via loadingBuilder and uninitializedBuilder
+   - Eliminates common Flutter camera initialization issues
 
-3. **CameralyValue** (`lib/src/cameraly_value.dart`)
+5. **CameralyValue** (`lib/src/cameraly_value.dart`)
    - State container for camera information
    - Tracks initialization status, recording status, and settings
 
@@ -101,8 +119,8 @@ Cameraly uses Flutter's built-in ValueNotifier for state management, which provi
 
 ## Development Status
 
-- **Current Stage**: Pre-publishing Preparation (93% complete)
-- **Last Completed Task**: Implemented overlay system
+- **Current Stage**: Pre-publishing Preparation (95% complete)
+- **Last Completed Task**: Implemented simplified CameraPreviewer API with automatic controller management
 - **Next Tasks**: 
   - Implement tests
   - Update package configuration
@@ -125,58 +143,93 @@ Cameraly uses Flutter's built-in ValueNotifier for state management, which provi
 
 ## Usage Patterns
 
+### Simplified API (Recommended)
+
 ```dart
-// 1. Initialize controller
-final controller = CameralyController(description: cameras.first);
-await controller.initialize();
+// 1. Single widget handles everything - no controller management needed
+CameraPreviewer(
+  settings: CameraPreviewSettings(
+    // Camera configuration
+    cameraMode: CameraMode.photoOnly,
+    resolution: ResolutionPreset.high,
+    flashMode: FlashMode.auto,
+    
+    // UI configuration
+    showFlashButton: true,
+    showSwitchCameraButton: true,
+    showMediaStack: true,
+    
+    // Custom components
+    customRightButton: FloatingActionButton(
+      onPressed: () => Navigator.pop(context),
+      child: const Icon(Icons.check),
+    ),
+    
+    // Callbacks
+    onCapture: (file) {
+      print('Captured photo: ${file.path}');
+    },
+    onComplete: (mediaList) {
+      Navigator.pop(context, mediaList);
+    },
+  ),
+)
+```
+
+### Legacy API (Manual Controller Management)
+
+```dart
+// 1. Async initialization pattern with nullable controller
+CameralyController? _controller;
+
+@override
+void initState() {
+  super.initState();
+  _initCamera();
+}
+
+Future<void> _initCamera() async {
+  final cameras = await CameralyController.getAvailableCameras();
+  final controller = CameralyController(description: cameras.first);
+  await controller.initialize();
+  
+  if (mounted) {
+    setState(() {
+      _controller = controller; 
+    });
+  }
+}
 
 // 2. Display preview with default overlay
+// CameralyPreview intelligently handles null controllers and initialization state
 CameralyPreview(
-  controller: controller,
-  onTap: (position) {
-    controller.setFocusAndExposurePoint(position);
-  },
+  controller: _controller!,
+  overlay: _controller != null ? DefaultCameralyOverlay(controller: _controller!) : null,
+  // Optional custom loading UI when controller exists but isn't initialized
+  loadingBuilder: (context, value) => YourCustomLoadingWidget(),
+  // Optional UI when controller is null during async initialization
+  uninitializedBuilder: (context) => YourPreparingCameraWidget(),
 )
 
 // 3. Capture media
-final photo = await controller.takePicture();
+final photo = await _controller?.takePicture();
 // OR
-await controller.startVideoRecording();
-final video = await controller.stopVideoRecording();
+await _controller?.startVideoRecording();
+final video = await _controller?.stopVideoRecording();
 
 // 4. Control camera
-await controller.switchCamera();
-await controller.toggleFlash();
-await controller.setZoomLevel(2.0);
+await _controller?.switchCamera();
+await _controller?.toggleFlash();
+await _controller?.setZoomLevel(2.0);
 
 // 5. Custom overlay
 CameralyPreview(
-  controller: controller,
-  overlayType: CameralyOverlayType.custom,
-  customOverlay: YourCustomOverlay(controller: controller),
+  controller: _controller!,
+  overlay: _controller != null ? YourCustomOverlay(controller: _controller!) : null,
 )
 ```
 
-## Common Patterns and Idioms
-
-### Error Handling
-
-```dart
-try {
-  await controller.initialize();
-} catch (e) {
-  if (e is CameraException) {
-    // Handle camera-specific errors
-    if (e.code == 'cameraPermission') {
-      // Handle permission denied
-    }
-  } else {
-    // Handle general errors
-  }
-}
-```
-
-### Lifecycle Management
+### Legacy API Lifecycle Management
 
 ```dart
 @override
@@ -203,13 +256,58 @@ if (permissionResult == PermissionStatus.granted) {
 }
 ```
 
+## Common Patterns and Idioms
+
+### Simplified API (No Lifecycle Management Needed)
+
+```dart
+// The CameraPreviewer handles all these concerns internally:
+// - Camera initialization
+// - Permission requests
+// - Error handling
+// - Lifecycle management (no need for dispose)
+// - Loading states
+
+class CameraScreen extends StatelessWidget {  // StatelessWidget is all you need!
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: CameraPreviewer(
+        settings: CameraPreviewSettings(
+          cameraMode: CameraMode.photoOnly,
+          onCapture: (file) => print('Captured: ${file.path}'),
+        ),
+      ),
+    );
+  }
+}
+```
+
+### Error Handling
+
+```dart
+try {
+  await controller.initialize();
+} catch (e) {
+  if (e is CameraException) {
+    // Handle camera-specific errors
+    if (e.code == 'cameraPermission') {
+      // Handle permission denied
+    }
+  } else {
+    // Handle general errors
+  }
+}
+```
+
 ## Example App
 
 The package includes a comprehensive example app in the `example/` directory that demonstrates all features:
 
 - `example/lib/main.dart`: Entry point with navigation
-- `example/lib/cameraly_example.dart`: Basic usage example
-- `example/lib/overlay_example.dart`: Overlay system demonstration
+- `example/lib/screens/simple_camera_screen.dart`: Demonstrates the new simplified CameraPreviewer API
+- `example/lib/screens/camera_screen.dart`: Shows traditional controller-based implementation
+- `example/lib/screens/overlay_example.dart`: Overlay system demonstration
 
 ## Testing Strategy
 

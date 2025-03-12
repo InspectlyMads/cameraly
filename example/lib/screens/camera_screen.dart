@@ -14,13 +14,14 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  late CameralyController _controller;
+  CameralyController? _controller;
   final CameralyMediaManager _mediaManager = CameralyMediaManager(
     maxItems: 30, // Keep only the last 30 items
     onMediaAdded: _handleMediaAdded,
   );
-  bool _isInitialized = false;
-  String _orientationInfo = "Tap to check orientation";
+
+  // Keep orientation info ValueNotifier
+  final ValueNotifier<String> _orientationInfo = ValueNotifier<String>("Tap to check orientation");
 
   static void _handleMediaAdded(XFile file) {
     // Note: we can't show snackbar here since it's static
@@ -44,17 +45,18 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     // Initialize the camera controller
-    _controller = CameralyController(
+    final controller = CameralyController(
       description: cameras.first,
       settings: CaptureSettings(cameraMode: widget.cameraMode),
       mediaManager: _mediaManager, // Pass the already created media manager
     );
 
     try {
-      await _controller.initialize();
+      await controller.initialize();
+      // Controller's value.isInitialized will be true after initialization
       if (mounted) {
         setState(() {
-          _isInitialized = true;
+          _controller = controller;
         });
       }
     } catch (e) {
@@ -66,17 +68,18 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    _controller.dispose();
+    // Dispose ValueNotifiers
+    _orientationInfo.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   /// Tests the orientation detection using the platform method channel
   Future<void> _testOrientationDetection() async {
-    if (!_isInitialized) return;
+    if (_controller == null || !_controller!.value.isInitialized) return;
 
-    setState(() {
-      _orientationInfo = "Checking orientation...";
-    });
+    // Update the ValueNotifier instead of calling setState
+    _orientationInfo.value = "Checking orientation...";
 
     try {
       // Get raw rotation value for debugging
@@ -89,20 +92,17 @@ class _CameraScreenState extends State<CameraScreen> {
       final size = MediaQuery.of(context).size;
       final isLandscape = size.width > size.height;
 
-      // Update state with the results
-      setState(() {
-        _orientationInfo = '''
+      // Update ValueNotifier with the results instead of calling setState
+      _orientationInfo.value = '''
 Orientation Info:
 • Raw Rotation: $rawRotation
 • Device Orientation: ${channelOrientation.toString().split('.').last}
 • Is Landscape: $isLandscape
 • Screen Size: ${size.width.toInt()}x${size.height.toInt()}
 ''';
-      });
     } catch (e) {
-      setState(() {
-        _orientationInfo = "Error checking orientation: $e";
-      });
+      // Update ValueNotifier with error instead of calling setState
+      _orientationInfo.value = "Error checking orientation: $e";
     }
   }
 
@@ -111,17 +111,18 @@ Orientation Info:
     return Scaffold(
       body: Stack(
         children: [
-          // Camera preview or loading indicator
-          !_isInitialized
-              ? Container(
-                color: Colors.black,
-                child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text('Initializing Camera...', style: TextStyle(color: Colors.white))])),
-              )
-              : CameralyPreview(
-                controller: _controller,
+          // If controller is null, show a loading indicator
+          if (_controller == null)
+            const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Starting camera...')]))
+          else
+            // If controller exists, wrap with CameralyControllerProvider
+            CameralyControllerProvider(
+              controller: _controller!,
+              child: CameralyPreview(
+                controller: _controller!,
+                // We don't need to pass the controller to the overlay anymore!
+                // It will get it from the CameralyControllerProvider
                 overlay: DefaultCameralyOverlay(
-                  controller: _controller,
-
                   // Customize which buttons to show
                   showFlashButton: true,
                   showSwitchCameraButton: true,
@@ -130,27 +131,40 @@ Orientation Info:
                   showMediaStack: true, // Ensure media stack is enabled
                   showZoomSlider: true,
                   onControllerChanged: (CameralyController newController) {
+                    // This still needs setState because we're changing a field
                     setState(() {
                       _controller = newController;
                     });
                   },
                 ),
+                // Optional custom loading builder example
+                loadingBuilder:
+                    (context, value) => Container(
+                      color: Colors.black,
+                      child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text('Preparing camera...', style: TextStyle(color: Colors.white))])),
+                    ),
               ),
+            ),
 
-          // Orientation testing button and info
-          if (kDebugMode)
+          // Orientation testing button and info - use ValueListenableBuilder
+          if (kDebugMode && _controller != null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 80,
               left: 0,
               right: 0,
               child: Center(
-                child: GestureDetector(
-                  onTap: _testOrientationDetection,
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(10)),
-                    child: Text(_orientationInfo, style: const TextStyle(color: Colors.white, fontSize: 12), textAlign: TextAlign.center),
-                  ),
+                child: ValueListenableBuilder<String>(
+                  valueListenable: _orientationInfo,
+                  builder: (context, orientationInfo, child) {
+                    return GestureDetector(
+                      onTap: _testOrientationDetection,
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(10)),
+                        child: Text(orientationInfo, style: const TextStyle(color: Colors.white, fontSize: 12), textAlign: TextAlign.center),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),

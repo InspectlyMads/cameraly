@@ -9,7 +9,7 @@
 /// * Simple API for camera preview, photo capture, and video recording
 /// * Seamless switching between front and back cameras
 /// * Zoom controls with intuitive pinch-to-zoom gesture support
-/// * Flash mode control (auto, on, off) for photo capture
+/// * Flash mode control (auto, on, off) for photo and video capture
 /// * Tap-to-focus functionality with visual focus indicator
 /// * Exposure control for manual brightness adjustment
 /// * Resolution settings for both photo and video capture
@@ -92,6 +92,13 @@ export 'src/cameraly_controller.dart';
 /// like tap-to-focus and pinch-to-zoom.
 export 'src/cameraly_preview.dart';
 
+/// The comprehensive camera previewer with simplified API
+///
+/// [CameraPreviewer] provides an all-in-one solution that handles
+/// controller creation, initialization, and UI in a single component.
+/// Recommended for most use cases.
+export 'src/cameraly_previewer.dart';
+
 /// The state container for camera information
 ///
 /// [CameralyValue] contains the current state of the camera, including
@@ -138,20 +145,14 @@ export 'src/types/camera_mode.dart';
 
 /// Base class for camera capture settings
 ///
-/// [CaptureSettings] is the base class for both photo and video settings.
+/// [CaptureSettings] is the base class for configuring camera settings like
+/// resolution, flash mode, and other capture parameters.
 export 'src/types/capture_settings.dart';
 
-/// Settings specific to photo capture
+/// CameralyControllerProvider class
 ///
-/// [PhotoSettings] allows configuration of photo-specific options like
-/// resolution and flash mode.
-export 'src/types/photo_settings.dart';
-
-/// Settings specific to video recording
-///
-/// [VideoSettings] allows configuration of video-specific options like
-/// resolution, frame rate, and audio settings.
-export 'src/types/video_settings.dart';
+/// [CameralyControllerProvider] provides a way to access the CameralyController instance.
+export 'src/utils/cameraly_controller_provider.dart';
 
 /// Utility functions for camera operations
 ///

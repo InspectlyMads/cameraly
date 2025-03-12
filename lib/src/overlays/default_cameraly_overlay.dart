@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../cameraly_controller.dart';
 import '../types/camera_mode.dart';
+import '../utils/cameraly_controller_provider.dart';
 import '../utils/media_manager.dart';
 import 'cameraly_overlay_theme.dart';
 
@@ -127,8 +128,11 @@ class CameralyOverlayButton extends StatelessWidget {
 /// )
 class DefaultCameralyOverlay extends StatefulWidget {
   /// Creates a new [DefaultCameralyOverlay] widget.
+  ///
+  /// The [controller] can be provided explicitly or obtained automatically from a
+  /// [CameralyControllerProvider] ancestor widget, but it must be available from one of these sources.
   const DefaultCameralyOverlay({
-    required this.controller,
+    this.controller,
     this.theme,
     this.onCapture,
     this.onCaptureError,
@@ -169,7 +173,9 @@ class DefaultCameralyOverlay extends StatefulWidget {
   });
 
   /// The controller for the camera.
-  final CameralyController controller;
+  ///
+  /// This can be null if a [CameralyControllerProvider] ancestor provides the controller.
+  final CameralyController? controller;
 
   /// The theme for the overlay.
   final CameralyOverlayTheme? theme;
@@ -282,6 +288,15 @@ class DefaultCameralyOverlay extends StatefulWidget {
 
   @override
   State<DefaultCameralyOverlay> createState() => _DefaultCameralyOverlayState();
+
+  /// Returns the [_DefaultCameralyOverlayState] from the closest [DefaultCameralyOverlay]
+  /// ancestor, or null if none exists.
+  ///
+  /// This allows other widgets to interact with the overlay's state.
+  static _DefaultCameralyOverlayState? of(BuildContext context) {
+    final DefaultCameralyOverlayScope? scope = context.dependOnInheritedWidgetOfExactType<DefaultCameralyOverlayScope>();
+    return scope?.state;
+  }
 }
 
 /// Represents the current state of the camera overlay.
@@ -334,8 +349,29 @@ class CameralyOverlayState {
   }
 }
 
+/// An InheritedWidget that provides access to the DefaultCameralyOverlay's state.
+///
+/// This allows descendant widgets to access the overlay's state directly.
+class DefaultCameralyOverlayScope extends InheritedWidget {
+  /// Creates a new [DefaultCameralyOverlayScope] widget.
+  const DefaultCameralyOverlayScope({
+    required this.state,
+    required super.child,
+    super.key,
+  });
+
+  /// The state of the [DefaultCameralyOverlay] widget.
+  final _DefaultCameralyOverlayState state;
+
+  @override
+  bool updateShouldNotify(DefaultCameralyOverlayScope oldWidget) {
+    return state != oldWidget.state;
+  }
+}
+
 class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with WidgetsBindingObserver {
   late CameralyController _controller;
+  bool _hasControllerFromProvider = false;
   bool _isFrontCamera = false;
   bool _isVideoMode = false;
   bool _isRecording = false;
@@ -354,12 +390,38 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   /// Whether to show the mode toggle button.
   /// This is determined by the camera mode - only shown when mode is [CameraMode.both].
-  bool get effectiveShowModeToggle => widget.controller.settings.cameraMode == CameraMode.both;
+  bool get effectiveShowModeToggle => widget.controller?.settings.cameraMode == CameraMode.both;
 
   @override
   void initState() {
     super.initState();
-    _controller = widget.controller;
+    // Controller will be initialized in didChangeDependencies
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Get the controller - either from the widget or from the provider
+    if (widget.controller != null) {
+      _controller = widget.controller!;
+      _hasControllerFromProvider = false;
+    } else {
+      // Try to get controller from provider
+      final providerController = CameralyControllerProvider.of(context);
+      if (providerController == null) {
+        throw FlutterError(
+          'DefaultCameralyOverlay requires a controller. Either provide a controller '
+          'directly using the controller parameter, or ensure the widget is a descendant '
+          'of a CameralyControllerProvider.',
+        );
+      }
+      _controller = providerController;
+      _hasControllerFromProvider = true;
+    }
+
+    // Finish initialization now that we have a controller
     _flashMode = _controller.settings.flashMode;
     _isFrontCamera = _controller.description.lensDirection == CameraLensDirection.front;
     _torchEnabled = false;
@@ -384,7 +446,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     // Listen for changes to the controller
     _controller.addListener(_handleControllerUpdate);
-    WidgetsBinding.instance.addObserver(this);
     _initializeValues();
 
     // Notify initial state
@@ -725,34 +786,18 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
-  Future<void> _takePicture() async {
-    try {
-      // Ensure flash mode is set correctly before taking the picture
-      if (!_isFrontCamera) {
-        await _controller.setFlashMode(_flashMode);
-      }
-
-      final file = await _controller.takePicture();
-      _controller.mediaManager.addMedia(file);
-
-      // Call the callback if provided
-      if (widget.onCapture != null) {
-        // Schedule the callback in a microtask to ensure proper state update
-        widget.onCapture!(file);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
-  }
-
   Future<void> _toggleRecording() async {
     try {
       if (_isRecording) {
         final file = await _controller.stopVideoRecording();
+
+        // Add to the controller's media manager
+        _controller.mediaManager.addMedia(file);
+
+        // Call the callback if provided
+        if (widget.onCapture != null) {
+          widget.onCapture!(file);
+        }
       } else {
         // Ensure we maintain torch state when starting recording
         final currentTorchState = _torchEnabled;
@@ -764,6 +809,42 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         }
       }
     } catch (e) {
+      // Call error callback if provided
+      if (widget.onCaptureError != null) {
+        widget.onCaptureError!(e.toString());
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _takePicture() async {
+    try {
+      // Ensure flash mode is set correctly before taking the picture
+      if (!_isFrontCamera) {
+        await _controller.setFlashMode(_flashMode);
+      }
+
+      final file = await _controller.takePicture();
+
+      // Add to the controller's media manager
+      _controller.mediaManager.addMedia(file);
+
+      // Call the callback if provided
+      if (widget.onCapture != null) {
+        // Schedule the callback in a microtask to ensure proper state update
+        widget.onCapture!(file);
+      }
+    } catch (e) {
+      // Call error callback if provided
+      if (widget.onCaptureError != null) {
+        widget.onCaptureError!(e.toString());
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
@@ -773,26 +854,24 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _openCustomGallery() async {
-    // If media stack is enabled and has media, show our custom gallery view
-    if (mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => CameralyGalleryView(
-            mediaManager: widget.controller.mediaManager,
-            onDelete: (file) => widget.controller.mediaManager.removeMedia(file),
-            backgroundColor: Colors.black,
-            appBarColor: Colors.black,
-            appBarTextColor: Colors.white,
-            gridSpacing: 2,
-            gridCrossAxisCount: 3,
-            emptyStateWidget: const Center(
-              child: Text('No photos yet', style: TextStyle(color: Colors.white)),
-            ),
-          ),
-        ),
-      );
+    final mediaManager = widget.controller?.mediaManager;
+    if (mediaManager == null || mediaManager.count == 0) {
+      return;
     }
-    return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CameralyGalleryView(
+          mediaManager: mediaManager,
+          onDelete: (file) => mediaManager.removeMedia(file),
+          backgroundColor: Colors.black,
+          appBarColor: Colors.black,
+          // The following parameters don't exist in CameralyGalleryView
+          // allowMultipleSelection: widget.allowMultipleSelection,
+          // onMediaSelected: widget.onMediaSelected,
+        ),
+      ),
+    );
   }
 
   Future<void> _openGallery() async {
@@ -908,96 +987,100 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final size = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
 
-    return Stack(
-      fit: StackFit.expand,
-      key: ValueKey<Orientation>(MediaQuery.of(context).orientation),
-      children: [
-        // Back button
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: widget.customBackButton ??
-                  CircleAvatar(
-                    backgroundColor: Colors.black.withAlpha(102),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ),
-            ),
-          ),
-        ),
-
-        // Main layout container
-        isLandscape ? _buildLandscapeLayout(theme, size, padding) : _buildPortraitLayout(theme, size, padding),
-
-        // Video duration limit UI
-        if (_isRecording && _hasVideoDurationLimit && _maxVideoDuration != null)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Timer display
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withAlpha((0.4 * 255).round()),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${_formatDuration(_recordingDuration)} / ${_formatDuration(_maxVideoDuration!)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Progress bar
-                  const SizedBox(height: 8),
-                  Container(
-                    width: 200,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withAlpha((0.4 * 255).round()),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: _recordingDuration.inMilliseconds / _maxVideoDuration!.inMilliseconds,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: _recordingDuration.inSeconds > (_maxVideoDuration!.inSeconds * 0.8) ? Colors.red : Colors.white,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+    // Wrap the result with DefaultCameralyOverlayScope to expose the state
+    return DefaultCameralyOverlayScope(
+      state: this,
+      child: Stack(
+        fit: StackFit.expand,
+        key: ValueKey<Orientation>(MediaQuery.of(context).orientation),
+        children: [
+          // Back button
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: widget.customBackButton ??
+                    CircleAvatar(
+                      backgroundColor: Colors.black.withAlpha(102),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ),
-                  ),
-                ],
               ),
             ),
           ),
-      ],
+
+          // Main layout container
+          isLandscape ? _buildLandscapeLayout(theme, size, padding) : _buildPortraitLayout(theme, size, padding),
+
+          // Video duration limit UI
+          if (_isRecording && _hasVideoDurationLimit && _maxVideoDuration != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Timer display
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha((0.4 * 255).round()),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${_formatDuration(_recordingDuration)} / ${_formatDuration(_maxVideoDuration!)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Progress bar
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 200,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha((0.4 * 255).round()),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: _recordingDuration.inMilliseconds / _maxVideoDuration!.inMilliseconds,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _recordingDuration.inSeconds > (_maxVideoDuration!.inSeconds * 0.8) ? Colors.red : Colors.white,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1269,16 +1352,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Widget _buildCenterArea({required bool isLandscape, required CameralyOverlayTheme theme}) {
     Widget buildMediaStack() {
+      final mediaManager = widget.controller?.mediaManager;
+      if (mediaManager == null) {
+        return const SizedBox.shrink();
+      }
       return CameralyMediaStack(
-        mediaManager: widget.controller.mediaManager,
+        mediaManager: mediaManager,
         onTap: _openCustomGallery,
         itemSize: 60,
-        maxDisplayItems: 3,
-        borderColor: Colors.white,
-        borderWidth: 2,
-        borderRadius: 8,
-        showCountBadge: true,
-        countBadgeColor: theme.primaryColor,
+        maxDisplayItems: 5,
       );
     }
 
@@ -1306,13 +1388,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           Positioned(
             left: 16,
             top: MediaQuery.of(context).size.height / 2 - 40,
-            child: widget.centerLeftWidget ??
-                (widget.showMediaStack
+            child: widget.centerLeftWidget != null
+                ? widget.centerLeftWidget!
+                : widget.showMediaStack && widget.controller?.mediaManager != null
                     ? AnimatedBuilder(
-                        animation: widget.controller.mediaManager,
+                        animation: widget.controller!.mediaManager,
                         builder: (context, _) => buildMediaStack(),
                       )
-                    : buildPlaceholder()),
+                    : buildPlaceholder(),
           ),
       ],
     );
