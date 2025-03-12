@@ -23,26 +23,23 @@ class OrientationChannel {
       switch (rotation) {
         case 0:
           orientation = DeviceOrientation.portraitUp;
-          debugPrint('🧭 Mapped to DeviceOrientation.portraitUp');
           break;
         case 1:
-          orientation = DeviceOrientation.landscapeRight;
-          debugPrint('🧭 Mapped to DeviceOrientation.landscapeRight');
+          orientation = DeviceOrientation.landscapeLeft;
           break;
         case 2:
           orientation = DeviceOrientation.portraitDown;
-          debugPrint('🧭 Mapped to DeviceOrientation.portraitDown');
           break;
         case 3:
-          orientation = DeviceOrientation.landscapeLeft;
-          debugPrint('🧭 Mapped to DeviceOrientation.landscapeLeft');
+          orientation = DeviceOrientation.landscapeRight;
           break;
         default:
           orientation = DeviceOrientation.portraitUp;
-          debugPrint('🧭 Unknown rotation value, defaulting to portraitUp');
+          debugPrint('🧭 Unknown rotation value $rotation, defaulting to portraitUp');
           break;
       }
 
+      debugPrint('🧭 Mapped to $orientation');
       return orientation;
     } catch (e) {
       debugPrint('❌ Error getting platform orientation: $e');

@@ -338,11 +338,11 @@ final maxZoom = await _controller.getMaxZoomLevel();
 
 ## Orientation Detection
 
-Cameraly includes an advanced orientation detection system that ensures your camera captures photos and videos with the correct orientation, even in landscape mode.
+Cameraly includes a reliable native orientation detection system that ensures your camera captures photos and videos with the correct orientation on all devices.
 
 ### OrientationChannel
 
-The `OrientationChannel` class provides device rotation information using platform-specific implementation:
+The `OrientationChannel` class provides device rotation information using platform-specific native implementations:
 
 ```dart
 // Get current device orientation
@@ -355,14 +355,12 @@ final isLandscapeLeft = await OrientationChannel.isLandscapeLeft();
 final rawRotation = await OrientationChannel.getRawRotationValue();
 ```
 
-The orientation detection works by using a method channel to communicate with native platform code:
+The orientation detection works by using a dedicated method channel to communicate directly with native platform code:
 
-- **Android**: Uses `WindowManager.getDefaultDisplay().getRotation()` to get the exact device rotation
-- **iOS**: Uses `UIDevice.current.orientation` to get the device orientation
+- **Android**: Uses `WindowManager.getDefaultDisplay().getRotation()` to get the exact device rotation value
+- **iOS**: Uses `UIDevice.current.orientation` with fallback to `UIApplication.shared.statusBarOrientation`
 
-This approach is more reliable than using Flutter's MediaQuery or view padding, especially for distinguishing between landscape left and landscape right orientations on Android devices.
-
-The `CameralyController` automatically uses this system to ensure photos and videos are captured with the correct orientation, but you can also use it directly in your app if needed.
+This approach is far more reliable than using Flutter's MediaQuery or view padding, especially for distinguishing between landscape left and landscape right orientations. The `CameralyController` automatically uses this system to ensure photos and videos are captured with the correct orientation.
 
 ## Initialization
 

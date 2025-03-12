@@ -1,4 +1,5 @@
 import 'package:cameraly/cameraly.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -60,7 +61,7 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
     super.dispose();
   }
 
-  /// Tests the orientation detection from both methods: view padding and method channel
+  /// Tests the orientation detection using the platform method channel
   Future<void> _testOrientationDetection() async {
     if (!_isInitialized) return;
 
@@ -69,41 +70,24 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
     });
 
     try {
-      // Get raw rotation value first for debugging
+      // Get raw rotation value for debugging
       final int rawRotation = await OrientationChannel.getRawRotationValue();
 
       // Get orientation from platform channel
       final DeviceOrientation channelOrientation = await OrientationChannel.getPlatformOrientation();
 
-      // Get device dimensions for comparison
+      // Get device dimensions
       final size = MediaQuery.of(context).size;
       final isLandscape = size.width > size.height;
 
-      // Get padding for the old method
-      final padding = MediaQuery.of(context).viewPadding;
-      final insets = MediaQuery.of(context).viewInsets;
-
-      // Check if it's landscape left using the old method
-      final isLandscapeLeftOldMethod = padding.right > padding.left || insets.right > insets.left;
-
-      // Determine orientation using old method
-      DeviceOrientation oldMethodOrientation;
-      if (isLandscape) {
-        oldMethodOrientation = isLandscapeLeftOldMethod ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
-      } else {
-        oldMethodOrientation = DeviceOrientation.portraitUp;
-      }
-
-      // Update state with both results
+      // Update state with the results
       setState(() {
         _orientationInfo = '''
 Orientation Info:
 • Raw Rotation: $rawRotation
-• Method Channel: ${channelOrientation.toString().split('.').last}
-• Padding Method: ${oldMethodOrientation.toString().split('.').last}
+• Device Orientation: ${channelOrientation.toString().split('.').last}
 • Is Landscape: $isLandscape
-• Device Size: ${size.width.toInt()}x${size.height.toInt()}
-• Padding (L:${padding.left.toInt()}, R:${padding.right.toInt()})
+• Screen Size: ${size.width.toInt()}x${size.height.toInt()}
 ''';
       });
     } catch (e) {
@@ -147,21 +131,22 @@ Orientation Info:
         ),
 
         // Add orientation testing button and info display
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 80,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: GestureDetector(
-              onTap: _testOrientationDetection,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(10)),
-                child: Text(_orientationInfo, style: const TextStyle(color: Colors.white, fontSize: 12), textAlign: TextAlign.center),
+        if (kDebugMode)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 80,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: _testOrientationDetection,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(10)),
+                  child: Text(_orientationInfo, style: const TextStyle(color: Colors.white, fontSize: 12), textAlign: TextAlign.center),
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
