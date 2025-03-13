@@ -48,24 +48,100 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-    _videoController?.dispose();
+    if (_videoController != null) {
+      _videoController!.removeListener(_videoProgressListener);
+      _videoController!.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _initializeVideoController() async {
-    if (_isCurrentFileVideo) {
-      _videoController?.dispose();
-      _videoController = VideoPlayerController.file(
-        File(widget.mediaFiles[_currentIndex].path),
-      );
+    if (!_isCurrentFileVideo) return;
+
+    try {
+      if (_videoController != null) {
+        _videoController!.removeListener(_videoProgressListener);
+        await _videoController!.dispose();
+        _videoController = null;
+      }
+
+      // Get the file path
+      final filePath = widget.mediaFiles[_currentIndex].path;
+
+      // Validate the video file
+      if (!await _isValidVideoFile(filePath)) {
+        debugPrint('Invalid video file: $filePath');
+        if (mounted) setState(() {}); // Trigger rebuild with null controller
+        return;
+      }
+
+      // Create new video controller with valid file
+      _videoController = VideoPlayerController.file(File(filePath));
+
+      // Add listener before initialization to catch all events
+      _videoController!.addListener(_videoProgressListener);
+
+      // Initialize the controller
       await _videoController!.initialize();
-      setState(() {});
+
+      // Only update state if still mounted and file index hasn't changed
+      if (mounted && _currentIndex < widget.mediaFiles.length) {
+        setState(() {
+          // If video was previously playing, auto-play the new video
+          if (_isPlaying) {
+            _videoController!.play();
+          }
+        });
+      }
+    } catch (e) {
+      // Handle initialization errors
+      debugPrint('Error initializing video controller: $e');
+      if (mounted) {
+        setState(() {
+          _videoController = null;
+        });
+      }
     }
   }
 
   bool get _isCurrentFileVideo {
+    if (_currentIndex < 0 || _currentIndex >= widget.mediaFiles.length) return false;
+
     final path = widget.mediaFiles[_currentIndex].path.toLowerCase();
-    return path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi');
+    return _isVideoFile(path);
+  }
+
+  bool _isVideoFile(String path) {
+    return path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi') || path.endsWith('.mkv') || path.endsWith('.webm') || path.endsWith('.wmv');
+  }
+
+  /// Checks if the file exists and is a valid video file
+  Future<bool> _isValidVideoFile(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        debugPrint('Video file does not exist: $path');
+        return false;
+      }
+
+      // Check if it's a video file extension
+      if (!_isVideoFile(path.toLowerCase())) {
+        debugPrint('File is not a recognized video format: $path');
+        return false;
+      }
+
+      // Check file size (files under 100 bytes are likely invalid)
+      final fileStats = await file.stat();
+      if (fileStats.size < 100) {
+        debugPrint('Video file is too small (likely invalid): $path');
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error checking video file: $e');
+      return false;
+    }
   }
 
   void _onPageChanged(int index) {
@@ -111,6 +187,16 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     widget.onShare?.call(file);
   }
 
+  void _videoProgressListener() {
+    if (mounted) setState(() {});
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.toString().padLeft(2, '0');
+    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -144,42 +230,245 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
             itemCount: widget.mediaFiles.length,
             itemBuilder: (context, index) {
               final file = widget.mediaFiles[index];
-              final isVideo = file.path.toLowerCase().endsWith('.mp4') || file.path.toLowerCase().endsWith('.mov') || file.path.toLowerCase().endsWith('.avi');
+              final path = file.path.toLowerCase();
+              final isVideo = path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi');
 
               if (isVideo && index == _currentIndex) {
                 if (_videoController?.value.isInitialized ?? false) {
-                  return GestureDetector(
-                    onTap: _togglePlayPause,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AspectRatio(
-                          aspectRatio: _videoController!.value.aspectRatio,
-                          child: VideoPlayer(_videoController!),
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Video player
+                      GestureDetector(
+                        onTap: _togglePlayPause,
+                        child: Center(
+                          child: AspectRatio(
+                            aspectRatio: _videoController!.value.aspectRatio,
+                            child: VideoPlayer(_videoController!),
+                          ),
                         ),
-                        if (!_isPlaying)
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: const BoxDecoration(
-                              color: Color.fromRGBO(0, 0, 0, 0.5),
-                              shape: BoxShape.circle,
+                      ),
+
+                      // Play/pause button overlay
+                      if (!_isPlaying)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            onTap: _togglePlayPause,
+                            child: Container(
+                              color: Colors.black.withOpacity(0.3),
+                              child: Center(
+                                child: Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: const Icon(
+                                    Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 50,
+                                  ),
+                                ),
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.play_arrow,
-                              color: Colors.white,
-                              size: 50,
+                          ),
+                        ),
+
+                      // Video progress bar and controls at the bottom
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.7),
+                              ],
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Progress slider
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Row(
+                                  children: [
+                                    // Current position
+                                    Text(
+                                      _formatDuration(_videoController!.value.position),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+
+                                    // Progress slider
+                                    Expanded(
+                                      child: SliderTheme(
+                                        data: const SliderThemeData(
+                                          trackHeight: 2,
+                                          thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
+                                          overlayShape: RoundSliderOverlayShape(overlayRadius: 12),
+                                          thumbColor: Colors.white,
+                                          activeTrackColor: Colors.white,
+                                          inactiveTrackColor: Colors.white24,
+                                          overlayColor: Colors.white30,
+                                        ),
+                                        child: Slider(
+                                          value: _videoController!.value.position.inMilliseconds.toDouble(),
+                                          min: 0,
+                                          max: _videoController!.value.duration.inMilliseconds.toDouble(),
+                                          onChanged: (value) {
+                                            final newPosition = Duration(milliseconds: value.toInt());
+                                            _videoController!.seekTo(newPosition);
+                                          },
+                                        ),
+                                      ),
+                                    ),
+
+                                    // Total duration
+                                    Text(
+                                      _formatDuration(_videoController!.value.duration),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Controls
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // Rewind button
+                                  IconButton(
+                                    icon: const Icon(Icons.replay_10, color: Colors.white),
+                                    onPressed: () {
+                                      final newPosition = _videoController!.value.position - const Duration(seconds: 10);
+                                      _videoController!.seekTo(newPosition);
+                                    },
+                                  ),
+
+                                  // Play/pause button
+                                  IconButton(
+                                    icon: Icon(
+                                      _isPlaying ? Icons.pause : Icons.play_arrow,
+                                      color: Colors.white,
+                                      size: 36,
+                                    ),
+                                    onPressed: _togglePlayPause,
+                                  ),
+
+                                  // Forward button
+                                  IconButton(
+                                    icon: const Icon(Icons.forward_10, color: Colors.white),
+                                    onPressed: () {
+                                      final newPosition = _videoController!.value.position + const Duration(seconds: 10);
+                                      _videoController!.seekTo(newPosition);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                } else {
+                  // Video controller failed to initialize or is still loading
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: Colors.white),
+                        const SizedBox(height: 16),
+                        Text(
+                          _videoController == null ? 'Error loading video' : 'Preparing video...',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        if (_videoController == null)
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: TextButton.icon(
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Try Again'),
+                              onPressed: () {
+                                debugPrint('Retrying video initialization');
+                                _initializeVideoController();
+                              },
                             ),
                           ),
                       ],
                     ),
                   );
-                } else {
-                  return const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  );
                 }
+              } else if (isVideo) {
+                // Video thumbnail for videos that aren't currently playing
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Basic video thumbnail with error handling
+                    Image.file(
+                      File(file.path),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.black,
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.videocam_outlined,
+                                  color: Colors.white70,
+                                  size: 64,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Video will play when selected',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                    // Play button overlay to indicate it's a video
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow,
+                          color: Colors.white,
+                          size: 40,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
               } else {
+                // Regular image viewer
                 return InteractiveViewer(
                   minScale: 0.5,
                   maxScale: 4.0,

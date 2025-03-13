@@ -448,6 +448,37 @@ class CameralyMediaStack extends StatelessWidget {
             );
           },
         ),
+
+        // Gradient overlay for better visibility of icons
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                Colors.black.withOpacity(0.7),
+              ],
+            ),
+          ),
+        ),
+
+        // Play button overlay in center
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            child: const Icon(
+              Icons.play_arrow,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -602,74 +633,28 @@ class CameralyGalleryView extends StatelessWidget {
                   );
                 },
               ),
-
-        // Video indicator
-        if (isVideo)
-          Positioned(
-            right: 8,
-            bottom: 8,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(153),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Icon(
-                Icons.videocam,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-          ),
       ],
     );
   }
 
   void _showMediaPreview(BuildContext context, XFile file, int index) {
-    final path = file.path;
-    final isVideo = path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi');
-
+    // Use the existing MediaViewerScreen for all media types
+    // This provides consistent UI and proper video playback
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.delete, color: Colors.white),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _showDeleteDialog(context, file);
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.share, color: Colors.white),
-                onPressed: () {
-                  // Implement share functionality
-                },
-              ),
-            ],
-          ),
-          body: Center(
-            child: isVideo
-                ? const Center(
-                    child: Icon(
-                      Icons.play_circle_outline,
-                      size: 80,
-                      color: Colors.white,
-                    ),
-                  )
-                : Image.file(
-                    File(path),
-                    fit: BoxFit.contain,
-                  ),
-          ),
+        builder: (context) => MediaViewerScreen(
+          mediaFiles: mediaManager.media,
+          initialIndex: index,
+          onDelete: (file) {
+            mediaManager.removeMedia(file);
+            if (onDelete != null) {
+              onDelete!(file);
+            }
+          },
+          // Optional share callback can be added here if needed
+          onShare: (file) {
+            // Implement share functionality
+          },
         ),
       ),
     );
@@ -758,6 +743,37 @@ class CameralyGalleryView extends StatelessWidget {
               ),
             );
           },
+        ),
+
+        // Gradient overlay for better visibility of icons
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                Colors.black.withOpacity(0.7),
+              ],
+            ),
+          ),
+        ),
+
+        // Play button overlay in center
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            child: const Icon(
+              Icons.play_arrow,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
         ),
       ],
     );
