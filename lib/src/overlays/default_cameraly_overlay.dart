@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -466,6 +467,23 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     // Register for lifecycle events
     WidgetsBinding.instance.addObserver(this);
+
+    // Debug logging for lifecycle management
+    debugPrint('🎥 DefaultCameralyOverlay initState complete, registered as lifecycle observer');
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_handleControllerChanged);
+
+    // Unregister from lifecycle events
+    WidgetsBinding.instance.removeObserver(this);
+
+    _recordingTimer?.cancel();
+    _recordingLimitTimer?.cancel();
+
+    debugPrint('🎥 DefaultCameralyOverlay dispose complete, unregistered as lifecycle observer');
+    super.dispose();
   }
 
   @override
@@ -507,15 +525,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   @override
-  void dispose() {
-    _controller?.removeListener(_handleControllerChanged);
-    WidgetsBinding.instance.removeObserver(this);
-    _recordingTimer?.cancel();
-    _recordingLimitTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
   void didChangeMetrics() {
     // This will be called when the screen rotates
     if (mounted) {
@@ -524,6 +533,183 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       });
     }
     super.didChangeMetrics();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('🎥 App lifecycle state changed: $state');
+
+    // Basic state detection and logging
+    switch (state) {
+      case AppLifecycleState.inactive:
+        // App is partially obscured (e.g., in app switcher)
+        debugPrint('🎥 App inactive: camera may need to pause');
+
+        // Check if recording and stop/discard if necessary
+        if (_controller != null && _controller!.value.isRecordingVideo) {
+          debugPrint('🎥 Recording in progress while app going inactive - stopping and discarding');
+          _stopAndDiscardRecording();
+        } else {
+          _pauseCamera();
+        }
+        break;
+
+      case AppLifecycleState.paused:
+        // App is completely hidden, in background
+        debugPrint('🎥 App paused: camera should be paused');
+        _pauseCamera();
+        break;
+
+      case AppLifecycleState.resumed:
+        // App is visible again - resume camera
+        debugPrint('🎥 App resumed: camera should be resumed');
+        // Call _resumeCamera asynchronously
+        _resumeCamera().then((_) {
+          debugPrint('🎥 Camera resume completed');
+        }).catchError((error) {
+          debugPrint('🎥 Error resuming camera: $error');
+        });
+        break;
+
+      case AppLifecycleState.detached:
+        // App is being terminated
+        debugPrint('🎥 App detached: cleaning up camera resources');
+        // No need to pause here as the app is being terminated
+        break;
+
+      default:
+        // Handle any new lifecycle states that might be added in future Flutter versions
+        debugPrint('🎥 Unhandled lifecycle state: $state');
+        break;
+    }
+
+    super.didChangeAppLifecycleState(state);
+  }
+
+  /// Pauses the camera preview when the app is not visible
+  void _pauseCamera() {
+    // Validate controller exists and is initialized
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('🎥 Cannot pause camera: Controller is null or not initialized');
+      return;
+    }
+
+    try {
+      if (_controller!.cameraController != null) {
+        // Save current flash mode and torch state for later restoration
+        if (!_isFrontCamera) {
+          // Only save if using back camera (front doesn't support flash)
+          debugPrint('🎥 Saving flash state - mode: $_flashMode, torch: $_torchEnabled');
+        }
+
+        debugPrint('🎥 Pausing camera preview');
+        _controller!.cameraController!.pausePreview();
+
+        // Update UI if needed
+        if (mounted) {
+          setState(() {
+            // Update any UI elements that need to reflect paused state
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('🎥 Error pausing camera: $e');
+    }
+  }
+
+  /// Resumes the camera preview when the app becomes visible again
+  Future<void> _resumeCamera() async {
+    // Validate controller exists and is initialized
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('🎥 Cannot resume camera: Controller is null or not initialized');
+      return;
+    }
+
+    try {
+      if (_controller!.cameraController != null) {
+        debugPrint('🎥 Resuming camera preview');
+        _controller!.cameraController!.resumePreview();
+
+        // Restore flash mode and torch settings
+        if (!_isFrontCamera) {
+          if (_isVideoMode) {
+            // For video mode, first set flash off then enable torch if it was on
+            debugPrint('🎥 Restoring video mode torch state: $_torchEnabled');
+            await _controller!.setFlashMode(FlashMode.off);
+            if (_torchEnabled) {
+              await _controller!.setFlashMode(FlashMode.torch);
+            }
+          } else {
+            // For photo mode, just restore the flash mode
+            debugPrint('🎥 Restoring photo mode flash mode: $_flashMode');
+            await _controller!.setFlashMode(_flashMode);
+          }
+        }
+
+        debugPrint('🎥 Camera resumed with flash mode: $_flashMode, torch: $_torchEnabled');
+      }
+    } catch (e) {
+      debugPrint('🎥 Error resuming camera: $e');
+    }
+  }
+
+  /// Stops recording and discards the footage if recording is in progress
+  /// This is used when the app goes to background while recording
+  Future<void> _stopAndDiscardRecording() async {
+    // Check if we're currently recording
+    if (_controller == null || _controller!.cameraController == null || !_controller!.value.isRecordingVideo) {
+      debugPrint('🎥 Not recording, nothing to discard');
+      return;
+    }
+
+    debugPrint('🎥 App lost focus while recording, stopping and discarding recording');
+
+    try {
+      // Stop recording and get the file
+      final XFile videoFile = await _controller!.stopVideoRecording();
+
+      // Turn off torch if it was enabled
+      if (_torchEnabled && !_isFrontCamera) {
+        debugPrint('🎥 Turning off torch after stopping recording');
+        await _controller!.setFlashMode(FlashMode.off);
+        setState(() {
+          _torchEnabled = false;
+        });
+      }
+
+      // If we have a file, delete it
+      try {
+        // Get the file path
+        final String filePath = videoFile.path;
+        debugPrint('🎥 Discarding interrupted recording: $filePath');
+
+        // Delete the file
+        final File file = File(filePath);
+        if (await file.exists()) {
+          await file.delete();
+          debugPrint('🎥 Successfully deleted interrupted recording');
+        }
+      } catch (e) {
+        debugPrint('🎥 Error deleting interrupted recording: $e');
+      }
+
+      // Update UI state
+      setState(() {
+        _isRecording = false;
+      });
+
+      // Show a notification to the user that recording was interrupted
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recording interrupted and discarded'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('🎥 Error stopping recording: $e');
+    }
   }
 
   Future<void> _initializeValues() async {
@@ -971,6 +1157,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         // Let the controller update our recording state through its value listener
         // Don't manually set _isRecording = false here
         final file = await _controller?.stopVideoRecording();
+
+        // Turn off torch after stopping recording if it was enabled
+        if (_torchEnabled && !_isFrontCamera) {
+          debugPrint('📹 Turning off torch after stopping recording');
+          await _controller?.setFlashMode(FlashMode.off);
+          setState(() {
+            _torchEnabled = false;
+            // Notify torch state change
+            _notifyCameraStateChanged();
+          });
+        }
 
         // Only process the file if it's not null
         if (file != null) {
