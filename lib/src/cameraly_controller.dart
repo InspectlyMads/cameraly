@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
 import 'cameraly_value.dart';
 import 'types/camera_mode.dart';
@@ -429,10 +430,15 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
     try {
       final file = await _controller!.stopVideoRecording();
-      value = value.copyWith(isRecordingVideo: false, lastRecordedVideo: file);
+
+      // Process the file to use a proper extension instead of .temp
+      // and generate a thumbnail for it
+      final processedFile = await _processVideoFile(file);
+
+      value = value.copyWith(isRecordingVideo: false, lastRecordedVideo: processedFile);
       // Add the recorded video to the media manager
-      _mediaManager.addMedia(file);
-      return file;
+      _mediaManager.addMedia(processedFile);
+      return processedFile;
     } on CameraException catch (e) {
       value = value.copyWith(error: e.description);
       rethrow;
@@ -440,6 +446,62 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       value = value.copyWith(error: e.toString());
       rethrow;
     }
+  }
+
+  /// Processes the recorded video file to use a proper extension.
+  /// This converts .temp files (from CameraX plugin) to .mp4 and generates a thumbnail
+  Future<XFile> _processVideoFile(XFile originalFile) async {
+    final String originalPath = originalFile.path;
+    XFile processedFile = originalFile;
+
+    // Check if the file has a .temp extension
+    if (originalPath.toLowerCase().endsWith('.temp')) {
+      try {
+        // Create a new path with .mp4 extension
+        final String newPath = originalPath.replaceAll(RegExp(r'\.temp$', caseSensitive: false), '.mp4');
+
+        // Rename the file
+        final File tempFile = File(originalPath);
+        final File newFile = tempFile.renameSync(newPath);
+
+        // Create a new XFile with the updated path
+        processedFile = XFile(newFile.path, mimeType: 'video/mp4');
+      } catch (e) {
+        // If renaming fails, return the original file
+        debugPrint('Error renaming video file: $e');
+        processedFile = originalFile;
+      }
+    }
+
+    // Generate a thumbnail for the video
+    try {
+      // Determine the thumbnail path (same as video but with .jpg extension)
+      final String thumbnailPath = processedFile.path.replaceAll(RegExp(r'\.(mp4|mov|avi|temp)$', caseSensitive: false), '.jpg');
+
+      // Generate the thumbnail
+      debugPrint('Generating thumbnail for video: ${processedFile.path}');
+      final String? generatedThumbnailPath = await vt.VideoThumbnail.thumbnailFile(
+        video: processedFile.path,
+        thumbnailPath: thumbnailPath,
+        imageFormat: vt.ImageFormat.JPEG,
+        maxHeight: 200,
+        quality: 75,
+      );
+
+      if (generatedThumbnailPath != null) {
+        debugPrint('Thumbnail generated successfully: $generatedThumbnailPath');
+
+        // Store the thumbnail path in the media manager for later use
+        _mediaManager.setThumbnailForVideo(processedFile.path, generatedThumbnailPath);
+      } else {
+        debugPrint('Failed to generate thumbnail');
+      }
+    } catch (e) {
+      debugPrint('Error generating video thumbnail: $e');
+    }
+
+    // Return the processed file
+    return processedFile;
   }
 
   /// Pauses video recording.

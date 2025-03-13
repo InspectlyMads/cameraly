@@ -29,6 +29,9 @@ class CameralyMediaManager extends ChangeNotifier {
   /// Callback when media is removed.
   final Function(XFile)? onMediaRemoved;
 
+  /// Map of video paths to corresponding thumbnail paths.
+  final Map<String, String> _videoThumbnails = {};
+
   /// Gets the list of captured media files.
   List<XFile> get media => List.unmodifiable(_media);
 
@@ -40,6 +43,22 @@ class CameralyMediaManager extends ChangeNotifier {
 
   /// Gets whether there are any captured media files.
   bool get isNotEmpty => _media.isNotEmpty;
+
+  /// Associates a thumbnail path with a video path.
+  void setThumbnailForVideo(String videoPath, String thumbnailPath) {
+    _videoThumbnails[videoPath] = thumbnailPath;
+    // No need to call notifyListeners() here as this doesn't affect the UI directly
+  }
+
+  /// Gets the thumbnail path for a video, if available.
+  String? getThumbnailForVideo(String videoPath) {
+    return _videoThumbnails[videoPath];
+  }
+
+  /// Checks if a video has a thumbnail.
+  bool hasVideoThumbnail(String videoPath) {
+    return _videoThumbnails.containsKey(videoPath);
+  }
 
   /// Adds a media file to the manager.
   ///
@@ -60,6 +79,10 @@ class CameralyMediaManager extends ChangeNotifier {
   void removeMedia(XFile file) {
     final removed = _media.remove(file);
     if (removed) {
+      // Remove any associated thumbnail
+      if (hasVideoThumbnail(file.path)) {
+        _videoThumbnails.remove(file.path);
+      }
       onMediaRemoved?.call(file);
       notifyListeners();
     }
@@ -69,6 +92,10 @@ class CameralyMediaManager extends ChangeNotifier {
   void removeMediaAt(int index) {
     if (index >= 0 && index < _media.length) {
       final file = _media.removeAt(index);
+      // Remove any associated thumbnail
+      if (hasVideoThumbnail(file.path)) {
+        _videoThumbnails.remove(file.path);
+      }
       onMediaRemoved?.call(file);
       notifyListeners();
     }
@@ -77,6 +104,7 @@ class CameralyMediaManager extends ChangeNotifier {
   /// Clears all media files from the manager.
   void clearMedia() {
     _media.clear();
+    _videoThumbnails.clear();
     notifyListeners();
   }
 
@@ -413,41 +441,24 @@ class CameralyMediaStack extends StatelessWidget {
 
   // Dedicated widget for video thumbnails
   Widget _buildVideoThumbnail(String path) {
+    // Check if we have a thumbnail for this video
+    final thumbnailPath = mediaManager.hasVideoThumbnail(path) ? mediaManager.getThumbnailForVideo(path) : null;
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Try to load the first frame as a thumbnail
-        Image.file(
-          File(path),
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            // Fallback video thumbnail UI when image loading fails
-            return Container(
-              color: Colors.black,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.videocam,
-                      color: Colors.white.withOpacity(0.8),
-                      size: 28,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'VIDEO',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+        // Try to load the thumbnail if available, otherwise try to load the first frame
+        if (thumbnailPath != null)
+          Image.file(
+            File(thumbnailPath),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback to trying the video file itself
+              return _buildVideoThumbnailFallback(path);
+            },
+          )
+        else
+          _buildVideoThumbnailFallback(path),
 
         // Gradient overlay for better visibility of icons
         Container(
@@ -480,6 +491,41 @@ class CameralyMediaStack extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  // Fallback widget when dedicated thumbnail is not available
+  Widget _buildVideoThumbnailFallback(String path) {
+    return Image.file(
+      File(path),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback video thumbnail UI when image loading fails
+        return Container(
+          color: Colors.black,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.videocam,
+                  color: Colors.white.withOpacity(0.8),
+                  size: 28,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'VIDEO',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -637,6 +683,94 @@ class CameralyGalleryView extends StatelessWidget {
     );
   }
 
+  Widget _buildVideoThumbnail(String path) {
+    // Check if we have a thumbnail for this video
+    final thumbnailPath = mediaManager.hasVideoThumbnail(path) ? mediaManager.getThumbnailForVideo(path) : null;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Try to load the thumbnail if available, otherwise try to load the first frame
+        if (thumbnailPath != null)
+          Image.file(
+            File(thumbnailPath),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback to trying the video file itself
+              return _buildVideoThumbnailFallback(path);
+            },
+          )
+        else
+          _buildVideoThumbnailFallback(path),
+
+        // Gradient overlay for better visibility of icons
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                Colors.black.withOpacity(0.7),
+              ],
+            ),
+          ),
+        ),
+
+        // Play button overlay in center
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            child: const Icon(
+              Icons.play_arrow,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVideoThumbnailFallback(String path) {
+    return Image.file(
+      File(path),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback video thumbnail UI when image loading fails
+        return Container(
+          color: Colors.black,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.videocam,
+                  color: Colors.white.withOpacity(0.8),
+                  size: 28,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'VIDEO',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showMediaPreview(BuildContext context, XFile file, int index) {
     // Use the existing MediaViewerScreen for all media types
     // This provides consistent UI and proper video playback
@@ -645,6 +779,7 @@ class CameralyGalleryView extends StatelessWidget {
         builder: (context) => MediaViewerScreen(
           mediaFiles: mediaManager.media,
           initialIndex: index,
+          mediaManager: mediaManager,
           onDelete: (file) {
             mediaManager.removeMedia(file);
             if (onDelete != null) {
@@ -704,78 +839,6 @@ class CameralyGalleryView extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  // Dedicated widget for video thumbnails
-  Widget _buildVideoThumbnail(String path) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Try to load the first frame as a thumbnail
-        Image.file(
-          File(path),
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            // Fallback video thumbnail UI when image loading fails
-            return Container(
-              color: Colors.black,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.videocam,
-                      color: Colors.white.withOpacity(0.8),
-                      size: 28,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'VIDEO',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-
-        // Gradient overlay for better visibility of icons
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                Colors.black.withOpacity(0.7),
-              ],
-            ),
-          ),
-        ),
-
-        // Play button overlay in center
-        Center(
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.5),
-            ),
-            child: const Icon(
-              Icons.play_arrow,
-              color: Colors.white,
-              size: 18,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

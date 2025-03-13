@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
 import '../cameraly_controller.dart';
 import '../types/camera_mode.dart';
@@ -417,7 +418,7 @@ class DefaultCameralyOverlayScope extends InheritedWidget {
   }
 }
 
-class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with WidgetsBindingObserver {
+class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with WidgetsBindingObserver, TickerProviderStateMixin {
   // Changed from late to nullable
   CameralyController? _controller;
   bool _isFrontCamera = false;
@@ -437,6 +438,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Duration? _maxVideoDuration;
   bool _hasControllerFromProvider = false;
 
+  // Animation controller for zoom
+  late AnimationController _zoomAnimationController;
+  Animation<double>? _zoomAnimation;
+
   /// Whether to show the mode toggle button.
   /// This is determined by the camera mode - only shown when mode is [CameraMode.both].
   bool get effectiveShowModeToggle => _controller?.settings.cameraMode == CameraMode.both;
@@ -444,6 +449,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   @override
   void initState() {
     super.initState();
+
+    // Initialize zoom animation controller
+    _zoomAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _zoomAnimationController.addListener(_handleZoomAnimation);
 
     // Initialize video duration limit settings
     _hasVideoDurationLimit = widget.maxVideoDuration != null;
@@ -481,6 +494,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     _recordingTimer?.cancel();
     _recordingLimitTimer?.cancel();
+
+    _zoomAnimationController.removeListener(_handleZoomAnimation);
+    _zoomAnimationController.dispose();
 
     debugPrint('🎥 DefaultCameralyOverlay dispose complete, unregistered as lifecycle observer');
     super.dispose();
@@ -765,11 +781,39 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
-  Future<void> _setZoomLevel(double zoom) async {
+  void _handleZoomAnimation() {
+    if (_zoomAnimation != null) {
+      _controller?.setZoomLevel(_zoomAnimation!.value);
+    }
+  }
+
+  Future<void> _setZoomLevel(double targetZoom) async {
+    if (_controller == null) return;
+
     try {
-      await _controller?.setZoomLevel(zoom);
+      // If an animation is already running, stop it
+      if (_zoomAnimationController.isAnimating) {
+        _zoomAnimationController.stop();
+      }
+
+      // Create a new tween from current zoom to target zoom
+      _zoomAnimation = Tween<double>(
+        begin: _currentZoom,
+        end: targetZoom,
+      ).animate(CurvedAnimation(
+        parent: _zoomAnimationController,
+        curve: Curves.easeInOut,
+      ));
+
+      // Reset animation controller
+      _zoomAnimationController.reset();
+
+      // Start the animation
+      await _zoomAnimationController.forward();
+
+      // Update current zoom after animation completes
       setState(() {
-        _currentZoom = zoom;
+        _currentZoom = targetZoom;
       });
     } catch (e) {
       debugPrint('Error setting zoom level: $e');
@@ -789,13 +833,43 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: GestureDetector(
-              onTap: () => _setZoomLevel(zoom),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: isSelected ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(16)),
-                child: Text(zoomText, style: TextStyle(color: isSelected ? Colors.black : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 12)),
-              ),
+            child: TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 150),
+              tween: Tween<double>(begin: 1.0, end: isSelected ? 1.15 : 1.0),
+              curve: Curves.easeOutBack,
+              builder: (context, scale, child) {
+                return Transform.scale(
+                  scale: scale,
+                  child: GestureDetector(
+                    onTap: () => _setZoomLevel(zoom),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  spreadRadius: 0.5,
+                                )
+                              ]
+                            : null,
+                      ),
+                      child: Text(
+                        zoomText,
+                        style: TextStyle(
+                          color: isSelected ? Colors.black : Colors.white,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           );
         }).toList(),
@@ -1248,8 +1322,27 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Future<void> _openMediaGallery() async {
     try {
-      if (widget.multiImageSelect) {
-        // Pick multiple images from device gallery
+      // Check if we're in video-only mode
+      final isVideoOnlyMode = _controller?.settings.cameraMode == CameraMode.videoOnly;
+
+      if (isVideoOnlyMode) {
+        // In video-only mode, we only pick videos
+        final XFile? pickedVideo = await _imagePicker.pickVideo(source: ImageSource.gallery);
+
+        if (pickedVideo != null && widget.controller?.mediaManager != null) {
+          // Process the video file to generate a thumbnail
+          final processedVideo = await _processVideoFile(pickedVideo);
+
+          // Add the video to the media manager
+          widget.controller!.mediaManager.addMedia(processedVideo);
+
+          // Call the onCapture callback if provided
+          if (widget.onCapture != null) {
+            widget.onCapture!(processedVideo);
+          }
+        }
+      } else if (widget.multiImageSelect && !isVideoOnlyMode) {
+        // Pick multiple images from device gallery (not in video-only mode)
         final List<XFile> pickedFiles = await _imagePicker.pickMultiImage();
 
         // Add each image to the media manager
@@ -1264,7 +1357,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           }
         }
       } else {
-        // Pick a single image from device gallery
+        // Pick a single image from device gallery (not in video-only mode)
         final XFile? pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
 
         if (pickedFile != null && widget.controller?.mediaManager != null) {
@@ -1290,7 +1383,44 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
+  // Helper method to process a video file (similar to the implementation in CameralyController)
+  Future<XFile> _processVideoFile(XFile originalFile) async {
+    final String originalPath = originalFile.path;
+    XFile processedFile = originalFile;
+
+    // Check if we need to generate a thumbnail
+    try {
+      // Determine the thumbnail path (same as video but with .jpg extension)
+      final String thumbnailPath = processedFile.path.replaceAll(RegExp(r'\.(mp4|mov|avi|temp)$', caseSensitive: false), '.jpg');
+
+      // Generate the thumbnail
+      final String? generatedThumbnailPath = await vt.VideoThumbnail.thumbnailFile(
+        video: processedFile.path,
+        thumbnailPath: thumbnailPath,
+        imageFormat: vt.ImageFormat.JPEG,
+        maxHeight: 200,
+        quality: 75,
+      );
+
+      if (generatedThumbnailPath != null && widget.controller?.mediaManager != null) {
+        // Store the thumbnail path in the media manager for later use
+        widget.controller!.mediaManager.setThumbnailForVideo(processedFile.path, generatedThumbnailPath);
+      }
+    } catch (e) {
+      debugPrint('Error generating video thumbnail: $e');
+    }
+
+    // Return the processed file
+    return processedFile;
+  }
+
   Future<void> _openCustomGallery() async {
+    // Don't open gallery when recording
+    if (_isRecording) {
+      debugPrint('📹 Cannot open gallery while recording');
+      return;
+    }
+
     final mediaManager = widget.controller?.mediaManager;
     if (mediaManager == null || mediaManager.count == 0) {
       return;
@@ -1305,7 +1435,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (mediaManager == null) {
         return const SizedBox.shrink();
       }
-      return CameralyMediaStack(mediaManager: mediaManager, onTap: _openCustomGallery, itemSize: 60, maxDisplayItems: 5);
+      return Opacity(
+        opacity: _isRecording ? 0.5 : 1.0, // Reduce opacity when recording
+        child: CameralyMediaStack(
+          mediaManager: mediaManager,
+          onTap: _isRecording ? null : _openCustomGallery, // Disable tap when recording
+          itemSize: 60,
+          maxDisplayItems: 5,
+        ),
+      );
     }
 
     Widget buildPlaceholder() {
@@ -1320,7 +1458,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (widget.centerLeftWidget != null || widget.showMediaStack || widget.showPlaceholders)
+        // Only show media stack if not recording or explicitly force-showing placehoders
+        if ((widget.centerLeftWidget != null) || (widget.showMediaStack && !_isRecording) || widget.showPlaceholders)
           Positioned(
             left: 16,
             top: MediaQuery.of(context).size.height / 2 - 40,
@@ -1795,7 +1934,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               ),
 
             // Camera switch button (shown in top area when customRightButton is provided)
-            if (widget.showSwitchCameraButton && widget.customRightButton != null)
+            if (widget.showSwitchCameraButton && widget.customRightButton != null && !_isRecording)
               Align(alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight, child: CameralyOverlayButton(onTap: _switchCamera, child: const Icon(Icons.switch_camera, color: Colors.white, size: 28))),
           ],
         ),
@@ -2039,9 +2178,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     ? Container(
                         decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                         child: IconButton.filled(
-                          onPressed: _switchCamera,
+                          onPressed: _isRecording ? null : _switchCamera,
                           icon: Icon(Icons.switch_camera, size: isWideScreen ? 32 : 24),
-                          style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48)),
+                          style:
+                              IconButton.styleFrom(backgroundColor: _isRecording ? Colors.white10 : Colors.white24, foregroundColor: _isRecording ? Colors.white38 : Colors.white, minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48)),
                         ),
                       )
                     : const SizedBox.shrink(),

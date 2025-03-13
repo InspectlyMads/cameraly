@@ -4,6 +4,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../utils/media_manager.dart';
+
 /// A screen that displays captured media (photos and videos).
 class MediaViewerScreen extends StatefulWidget {
   /// Creates a new [MediaViewerScreen].
@@ -12,6 +14,7 @@ class MediaViewerScreen extends StatefulWidget {
     this.initialIndex = 0,
     this.onDelete,
     this.onShare,
+    this.mediaManager,
     super.key,
   });
 
@@ -26,6 +29,9 @@ class MediaViewerScreen extends StatefulWidget {
 
   /// Callback when a media file is shared.
   final void Function(XFile file)? onShare;
+
+  /// Optional media manager that can provide thumbnails for videos
+  final CameralyMediaManager? mediaManager;
 
   @override
   State<MediaViewerScreen> createState() => _MediaViewerScreenState();
@@ -418,50 +424,31 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                 return Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Basic video thumbnail with error handling
-                    Image.file(
-                      File(file.path),
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.black,
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.videocam_outlined,
-                                  color: Colors.white70,
-                                  size: 64,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Video will play when selected',
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                    // Try to use the thumbnail from media manager if available
+                    widget.mediaManager != null && widget.mediaManager!.hasVideoThumbnail(file.path) && widget.mediaManager!.getThumbnailForVideo(file.path) != null
+                        ? Image.file(
+                            File(widget.mediaManager!.getThumbnailForVideo(file.path)!),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return _buildVideoThumbnailFallback(file.path);
+                            },
+                          )
+                        : _buildVideoThumbnailFallback(file.path),
 
-                    // Play button overlay to indicate it's a video
+                    // Play button overlay
                     Center(
                       child: Container(
-                        padding: const EdgeInsets.all(16),
+                        width: 80,
+                        height: 80,
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withOpacity(0.6),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
                         ),
                         child: const Icon(
                           Icons.play_arrow,
                           color: Colors.white,
-                          size: 40,
+                          size: 50,
                         ),
                       ),
                     ),
@@ -529,6 +516,32 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVideoThumbnailFallback(String path) {
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.videocam_outlined,
+              color: Colors.white70,
+              size: 64,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Video will play when selected',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
