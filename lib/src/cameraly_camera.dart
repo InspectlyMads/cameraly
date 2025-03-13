@@ -79,6 +79,10 @@ class CameraPreviewSettings {
     this.focusMode = FocusMode.auto,
     this.deviceOrientation = DeviceOrientation.portraitUp,
     this.multiImageSelect = true,
+
+    // Haptic feedback settings
+    this.useHapticFeedbackOnCustomButtons = true,
+    this.customButtonHapticFeedbackType = HapticFeedbackType.light,
   }) :
         // Force enableAudio to false when in photoOnly mode
         enableAudio = cameraMode == CameraMode.photoOnly ? false : enableAudio;
@@ -235,6 +239,20 @@ class CameraPreviewSettings {
   /// Whether to allow multiple image selection in the gallery picker.
   final bool multiImageSelect;
 
+  /// Whether to use haptic feedback when standard buttons are tapped.
+  /// This applies to the built-in buttons like gallery, camera switch, flash, etc.
+  final bool useHapticFeedbackOnCustomButtons;
+
+  /// The type of haptic feedback to provide for buttons.
+  ///
+  /// Available types:
+  /// - light: Light impact feedback
+  /// - medium: Medium impact feedback
+  /// - heavy: Heavy impact feedback
+  /// - selection: Selection click feedback
+  /// - vibrate: Vibration feedback
+  final HapticFeedbackType customButtonHapticFeedbackType;
+
   /// Converts this settings object to a [CaptureSettings] object.
   ///
   /// This is used internally by [CameralyCamera] to configure the [CameralyController].
@@ -287,6 +305,8 @@ class CameraPreviewSettings {
     bool? multiImageSelect,
     Widget? customBackButton,
     Widget Function(BuildContext, CameralyOverlayState)? backButtonBuilder,
+    bool? useHapticFeedbackOnCustomButtons,
+    HapticFeedbackType? customButtonHapticFeedbackType,
   }) {
     final newCameraMode = cameraMode ?? this.cameraMode;
     // If new camera mode is photoOnly, force enableAudio to false
@@ -329,6 +349,8 @@ class CameraPreviewSettings {
       focusMode: focusMode ?? this.focusMode,
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
       multiImageSelect: multiImageSelect ?? this.multiImageSelect,
+      useHapticFeedbackOnCustomButtons: useHapticFeedbackOnCustomButtons ?? this.useHapticFeedbackOnCustomButtons,
+      customButtonHapticFeedbackType: customButtonHapticFeedbackType ?? this.customButtonHapticFeedbackType,
     );
   }
 }
@@ -577,6 +599,8 @@ class _CameralyCameraState extends State<CameralyCamera> {
       onCapture: widget.settings.onCapture,
       onClose: widget.settings.onClose,
       multiImageSelect: widget.settings.multiImageSelect,
+      useHapticFeedbackOnCustomButtons: widget.settings.useHapticFeedbackOnCustomButtons,
+      customButtonHapticFeedbackType: widget.settings.customButtonHapticFeedbackType,
 
       // Handle controller changed event by re-initializing our controller
       onControllerChanged: (newController) {

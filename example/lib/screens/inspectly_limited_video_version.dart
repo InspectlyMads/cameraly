@@ -1,5 +1,6 @@
 import 'package:cameraly/cameraly.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// A screen that demonstrates the Inspectly-styled video camera with a time limit
 /// Uses the enhanced permission system and simplified API
@@ -50,12 +51,15 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
           // Theme customization
           theme: const CameralyOverlayTheme(primaryColor: Colors.blue, secondaryColor: Colors.red, backgroundColor: Colors.black87, opacity: 0.8, buttonSize: 72.0, iconSize: 32.0),
 
-          // Add custom done button
+          // Add custom done button with haptic feedback
           customRightButton: SizedBox(
             height: 56, // Explicit height to ensure consistent sizing
             width: 56, // Explicit width to ensure consistent sizing
             child: FloatingActionButton(
               onPressed: () {
+                // Add haptic feedback to improve the user experience
+                HapticFeedback.mediumImpact();
+
                 debugPrint('Done button pressed with ${_capturedMedia.length} videos');
                 Navigator.of(context).pop(_capturedMedia);
               },

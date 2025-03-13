@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -242,7 +243,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
         // Get the camera preview's aspect ratio
-        final previewRatio = _controller!.cameraController!.value.aspectRatio;
+        final previewRatio = _controller!.getAdjustedAspectRatio();
 
         // Calculate preview dimensions based on the container size and aspect ratio
         final previewAspectRatio = isLandscape ? previewRatio : 1.0 / previewRatio;
@@ -356,12 +357,35 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     }
   }
 
+  double getPreviewRatio() {
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return 1.0;
+    }
+
+    // Use the new method to get the corrected aspect ratio
+    final previewRatio = _controller!.getAdjustedAspectRatio();
+
+    // Additional aspect ratio correction for specific orientations
+    final mediaQueryData = MediaQuery.of(context);
+    final deviceOrientation = mediaQueryData.orientation;
+
+    // For landscape orientation on tablets, we might need additional adjustments
+    final view = PlatformDispatcher.instance.views.first;
+    final isTablet = view.physicalSize.shortestSide > 900;
+
+    // Log the adjustments we're making for debugging
+    debugPrint('📏 Camera aspect ratio: raw=${_controller!.cameraController?.value.aspectRatio}, '
+        'adjusted=$previewRatio, isTablet=$isTablet, orientation=$deviceOrientation');
+
+    return previewRatio;
+  }
+
   Widget _buildCameraPreview(CameralyValue value, BoxConstraints constraints) {
     // Get the current orientation
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-
     // Get the camera's natural aspect ratio
-    final cameraAspectRatio = _controller!.cameraController?.value.aspectRatio ?? 1.0;
+
+    final cameraAspectRatio = getPreviewRatio();
 
     // In portrait mode, we need to invert the aspect ratio
     // This is because the camera sensor is naturally in landscape orientation

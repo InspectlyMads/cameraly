@@ -27,6 +27,8 @@ class CameralyOverlayButton extends StatelessWidget {
     this.size = 40.0,
     this.borderColor = const Color.fromARGB(77, 255, 255, 255),
     this.borderWidth = 1.0,
+    this.useHapticFeedback = false,
+    this.hapticFeedbackType = HapticFeedbackType.light,
     super.key,
   });
 
@@ -51,13 +53,60 @@ class CameralyOverlayButton extends StatelessWidget {
   /// The width of the button's border.
   final double borderWidth;
 
+  /// Whether to use haptic feedback when the button is tapped.
+  final bool useHapticFeedback;
+
+  /// The type of haptic feedback to provide.
+  final HapticFeedbackType hapticFeedbackType;
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: onTap != null
+          ? () {
+              if (useHapticFeedback) {
+                switch (hapticFeedbackType) {
+                  case HapticFeedbackType.light:
+                    HapticFeedback.lightImpact();
+                    break;
+                  case HapticFeedbackType.medium:
+                    HapticFeedback.mediumImpact();
+                    break;
+                  case HapticFeedbackType.heavy:
+                    HapticFeedback.heavyImpact();
+                    break;
+                  case HapticFeedbackType.selection:
+                    HapticFeedback.selectionClick();
+                    break;
+                  case HapticFeedbackType.vibrate:
+                    HapticFeedback.vibrate();
+                    break;
+                }
+              }
+              onTap!();
+            }
+          : null,
       child: Container(margin: margin, width: size, height: size, decoration: BoxDecoration(color: backgroundColor, shape: BoxShape.circle, border: Border.all(color: borderColor, width: borderWidth)), child: child),
     );
   }
+}
+
+/// Enum defining the types of haptic feedback available.
+enum HapticFeedbackType {
+  /// Light impact feedback
+  light,
+
+  /// Medium impact feedback
+  medium,
+
+  /// Heavy impact feedback
+  heavy,
+
+  /// Selection click feedback
+  selection,
+
+  /// Vibration feedback
+  vibrate,
 }
 
 /// A default overlay for the camera preview with standard controls.
@@ -158,6 +207,8 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.showCaptureButton = true,
     this.onError,
     this.multiImageSelect = true,
+    this.useHapticFeedbackOnCustomButtons = true,
+    this.customButtonHapticFeedbackType = HapticFeedbackType.light,
     super.key,
   });
 
@@ -307,6 +358,15 @@ class DefaultCameralyOverlay extends StatefulWidget {
   /// - error: The original error object (if available)
   /// - isRecoverable: Whether the error is potentially recoverable
   final Function(String source, String message, {Object? error, bool isRecoverable})? onError;
+
+  /// Whether to use haptic feedback when custom buttons are tapped.
+  /// Note: This applies to the built-in buttons like the gallery and camera switch buttons.
+  /// Custom buttons provided via customLeftButton or customRightButton need to implement
+  /// their own haptic feedback.
+  final bool useHapticFeedbackOnCustomButtons;
+
+  /// The type of haptic feedback to provide for custom buttons.
+  final HapticFeedbackType customButtonHapticFeedbackType;
 
   @override
   State<DefaultCameralyOverlay> createState() => _DefaultCameralyOverlayState();
@@ -827,6 +887,24 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     if (_controller == null) return;
 
     try {
+      // Provide different haptic feedback based on the magnitude of zoom change
+      if (widget.useHapticFeedbackOnCustomButtons) {
+        // Calculate the zoom change magnitude
+        final zoomChangeMagnitude = (_currentZoom - targetZoom).abs();
+
+        // Provide appropriate haptic feedback based on zoom change magnitude
+        if (zoomChangeMagnitude > 2.0) {
+          // For large zoom changes (e.g., 1x to 5x), use heavy impact
+          HapticFeedback.heavyImpact();
+        } else if (zoomChangeMagnitude > 0.5) {
+          // For medium zoom changes (e.g., 1x to 2x), use medium impact
+          HapticFeedback.mediumImpact();
+        } else {
+          // For small zoom changes, just use selection click feedback
+          // We've already provided this in the onTap handler, so no need to duplicate
+        }
+      }
+
       // If an animation is already running, stop it
       if (_zoomAnimationController.isAnimating) {
         _zoomAnimationController.stop();
@@ -865,47 +943,74 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         mainAxisSize: MainAxisSize.min,
         children: _availableZoomLevels.map((zoom) {
           final isSelected = (_currentZoom - zoom).abs() < 0.1;
-          final zoomText = zoom == 1.0 ? '1x' : '${zoom}x';
+
+          // Format zoom text: only show "x" suffix on selected button
+          String zoomText;
+          if (isSelected) {
+            // Remove .0 for integer values even when selected
+            zoomText = zoom % 1 == 0 ? '${zoom.toInt()}x' : '${zoom}x';
+          } else {
+            // For non-selected buttons, just show the number without "x" suffix
+            // Remove .0 for integer values
+            zoomText = zoom % 1 == 0 ? '${zoom.toInt()}' : '$zoom';
+          }
 
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: TweenAnimationBuilder<double>(
-              duration: const Duration(milliseconds: 150),
-              tween: Tween<double>(begin: 1.0, end: isSelected ? 1.15 : 1.0),
-              curve: Curves.easeOutBack,
-              builder: (context, scale, child) {
-                return Transform.scale(
-                  scale: scale,
-                  child: GestureDetector(
-                    onTap: () => _setZoomLevel(zoom),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: Colors.white.withOpacity(0.3),
-                                  blurRadius: 4,
-                                  spreadRadius: 0.5,
-                                )
-                              ]
-                            : null,
-                      ),
-                      child: Text(
-                        zoomText,
-                        style: TextStyle(
-                          color: isSelected ? Colors.black : Colors.white,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 12,
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  // Provide haptic feedback when zoom level is changed
+                  if (widget.useHapticFeedbackOnCustomButtons) {
+                    HapticFeedback.selectionClick();
+                  }
+                  _setZoomLevel(zoom);
+                },
+                // Use a circular border radius to match design
+                borderRadius: BorderRadius.circular(16),
+                // Add splash color for visual feedback
+                splashColor: Colors.white.withOpacity(0.3),
+                highlightColor: Colors.white.withOpacity(0.1),
+                child: TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 150),
+                  tween: Tween<double>(begin: 1.0, end: isSelected ? 1.15 : 1.0),
+                  curve: Curves.easeOutBack,
+                  builder: (context, scale, child) {
+                    return Transform.scale(
+                      scale: scale,
+                      child: Container(
+                        // Increase padding for larger hit target
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.white.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    spreadRadius: 0.5,
+                                  )
+                                ]
+                              : null,
+                        ),
+                        child: Center(
+                          child: Text(
+                            zoomText,
+                            style: TextStyle(
+                              color: isSelected ? Colors.black : Colors.white,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 14, // Slightly larger text
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                );
-              },
+                    );
+                  },
+                ),
+              ),
             ),
           );
         }).toList(),
@@ -1471,7 +1576,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       return;
     }
 
-    Navigator.of(context).push(MaterialPageRoute(builder: (context) => CameralyGalleryView(mediaManager: mediaManager, onDelete: (file) => mediaManager.removeMedia(file), backgroundColor: Colors.black, appBarColor: Colors.black)));
+    // Pause camera before showing gallery
+    _pauseCamera();
+
+    // Use Navigator.push to get a Future we can act on when gallery is closed
+    await Navigator.of(context).push(MaterialPageRoute(builder: (context) => CameralyGalleryView(mediaManager: mediaManager, onDelete: (file) => mediaManager.removeMedia(file), backgroundColor: Colors.black, appBarColor: Colors.black)));
+
+    // Resume camera after returning from gallery
+    debugPrint('🎥 Returning from gallery - resuming camera');
+    await _resumeCamera();
   }
 
   Widget _buildCenterArea({required bool isLandscape, required CameralyOverlayTheme theme}) {
@@ -2027,7 +2140,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               decoration: BoxDecoration(color: const Color.fromRGBO(0, 0, 0, 0.4), borderRadius: BorderRadius.circular(30)),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Material(
                     color: Colors.transparent,
@@ -2111,6 +2223,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                                 backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
                                 size: 56,
                                 margin: EdgeInsets.zero, // Remove the default top margin
+                                useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
+                                hapticFeedbackType: widget.customButtonHapticFeedbackType,
                                 child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
                               )
                             : const SizedBox.shrink(),
@@ -2216,7 +2330,31 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     ? Container(
                         decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                         child: IconButton.filled(
-                          onPressed: _isRecording ? null : _openMediaGallery, // Disable during recording
+                          onPressed: _isRecording
+                              ? null
+                              : () {
+                                  if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
+                                    // Apply the appropriate haptic feedback type
+                                    switch (widget.customButtonHapticFeedbackType) {
+                                      case HapticFeedbackType.light:
+                                        HapticFeedback.lightImpact();
+                                        break;
+                                      case HapticFeedbackType.medium:
+                                        HapticFeedback.mediumImpact();
+                                        break;
+                                      case HapticFeedbackType.heavy:
+                                        HapticFeedback.heavyImpact();
+                                        break;
+                                      case HapticFeedbackType.selection:
+                                        HapticFeedback.selectionClick();
+                                        break;
+                                      case HapticFeedbackType.vibrate:
+                                        HapticFeedback.vibrate();
+                                        break;
+                                    }
+                                  }
+                                  _openMediaGallery();
+                                },
                           icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
                           style: IconButton.styleFrom(
                             backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
@@ -2241,7 +2379,31 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     ? Container(
                         decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                         child: IconButton.filled(
-                          onPressed: _isRecording ? null : _switchCamera,
+                          onPressed: _isRecording
+                              ? null
+                              : () {
+                                  if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
+                                    // Apply the appropriate haptic feedback type
+                                    switch (widget.customButtonHapticFeedbackType) {
+                                      case HapticFeedbackType.light:
+                                        HapticFeedback.lightImpact();
+                                        break;
+                                      case HapticFeedbackType.medium:
+                                        HapticFeedback.mediumImpact();
+                                        break;
+                                      case HapticFeedbackType.heavy:
+                                        HapticFeedback.heavyImpact();
+                                        break;
+                                      case HapticFeedbackType.selection:
+                                        HapticFeedback.selectionClick();
+                                        break;
+                                      case HapticFeedbackType.vibrate:
+                                        HapticFeedback.vibrate();
+                                        break;
+                                    }
+                                  }
+                                  _switchCamera();
+                                },
                           icon: Icon(Icons.switch_camera, size: isWideScreen ? 32 : 24),
                           style:
                               IconButton.styleFrom(backgroundColor: _isRecording ? Colors.white10 : Colors.white24, foregroundColor: _isRecording ? Colors.white38 : Colors.white, minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48)),

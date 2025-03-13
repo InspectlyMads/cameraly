@@ -384,25 +384,6 @@ class CameralyMediaStack extends StatelessWidget {
             ),
           ),
 
-        // Video play icon
-        if (isVideo)
-          Positioned.fill(
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-            ),
-          ),
-
         // Video label indicator
         if (isVideo)
           Positioned(
@@ -470,23 +451,6 @@ class CameralyMediaStack extends StatelessWidget {
                 Colors.transparent,
                 Colors.black.withOpacity(0.7),
               ],
-            ),
-          ),
-        ),
-
-        // Play button overlay in center
-        Center(
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.5),
-            ),
-            child: const Icon(
-              Icons.play_arrow,
-              color: Colors.white,
-              size: 18,
             ),
           ),
         ),
@@ -713,23 +677,6 @@ class CameralyGalleryView extends StatelessWidget {
                 Colors.transparent,
                 Colors.black.withOpacity(0.7),
               ],
-            ),
-          ),
-        ),
-
-        // Play button overlay in center
-        Center(
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.5),
-            ),
-            child: const Icon(
-              Icons.play_arrow,
-              color: Colors.white,
-              size: 18,
             ),
           ),
         ),

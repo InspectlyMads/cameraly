@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -1056,5 +1057,26 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       debugPrint('📱 Is Landscape Left (by padding): $isLandscapeLeft');
       debugPrint('📱 Detected Orientation (by padding): ${isLandscapeLeft ? "Landscape LEFT" : "Landscape RIGHT"}');
     }
+  }
+
+  /// Gets the actual aspect ratio, correcting for known platform issues.
+  /// iPads often report 16:9 when they should be 4:3.
+  double getAdjustedAspectRatio() {
+    // Get the reported aspect ratio from the camera controller
+    final reportedRatio = cameraController?.value.aspectRatio ?? 1.0;
+
+    // Check if this is likely an iPad or tablet device using updated Flutter APIs
+    final view = PlatformDispatcher.instance.views.first;
+    final size = view.physicalSize;
+    final isLikelyTablet = size.shortestSide > 900;
+
+    // Check if the reported aspect ratio is suspiciously close to 16:9 (1.77)
+    // when we expect 4:3 (1.33) for most tablet cameras
+    if (isLikelyTablet && (reportedRatio > 1.7 && reportedRatio < 1.8)) {
+      debugPrint('📱 Detected tablet device with incorrect aspect ratio (${reportedRatio.toStringAsFixed(2)}), correcting to 4:3');
+      return 4 / 3; // Return the corrected aspect ratio for tablets (4:3)
+    }
+
+    return reportedRatio;
   }
 }
