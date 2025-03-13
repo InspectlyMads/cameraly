@@ -741,13 +741,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       final minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
       final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
       return '$hours:$minutes:$seconds';
-    }
-    else if (duration.inMinutes > 0) {
+    } else if (duration.inMinutes > 0) {
       final minutes = duration.inMinutes;
       final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
       return '$minutes:$seconds';
-    }
-    else {
+    } else {
       return '00:${duration.inSeconds.toString().padLeft(2, '0')}';
     }
   }
@@ -944,8 +942,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
         // Only process the file if it's not null
         if (file != null) {
-          // Add to the controller's media manager
-          _controller?.mediaManager.addMedia(file);
+          // The file is already added to the media manager in CameralyController.stopVideoRecording()
+          // So we don't need to add it again here
 
           // Call the callback if provided
           if (widget.onCapture != null) {
@@ -1121,8 +1119,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         // Don't manually update _isRecording here
         _controller?.stopVideoRecording().then((file) {
           debugPrint('📹 Recording stopped successfully');
-          // Add to the controller's media manager
-          _controller?.mediaManager.addMedia(file);
+          // File is already added to the media manager in CameralyController.stopVideoRecording()
+          // So we don't need to add it again here
 
           // Call the callback if provided
           if (widget.onCapture != null) {
@@ -1355,6 +1353,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                 ),
               ),
+            ),
     );
   }
 

@@ -321,30 +321,133 @@ class CameralyMediaStack extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Image thumbnail
-        Image.file(
-          File(path),
-          fit: BoxFit.cover,
-        ),
+        // Image thumbnail with error handling
+        isVideo
+            ? _buildVideoThumbnail(path)
+            : Image.file(
+                File(path),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey.shade900,
+                    child: const Center(
+                      child: Icon(
+                        Icons.image_not_supported,
+                        color: Colors.white70,
+                        size: 24,
+                      ),
+                    ),
+                  );
+                },
+              ),
 
-        // Video indicator
+        // Video indicator overlay gradient
+        if (isVideo)
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.5),
+                ],
+              ),
+            ),
+          ),
+
+        // Video play icon
+        if (isVideo)
+          Positioned.fill(
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+            ),
+          ),
+
+        // Video label indicator
         if (isVideo)
           Positioned(
             right: 4,
             bottom: 4,
             child: Container(
-              padding: const EdgeInsets.all(4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.black.withAlpha(153),
+                color: Colors.black.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Icon(
-                Icons.videocam,
-                color: Colors.white,
-                size: 12,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.videocam,
+                    color: Colors.white,
+                    size: 10,
+                  ),
+                  SizedBox(width: 2),
+                  Text(
+                    'VIDEO',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  // Dedicated widget for video thumbnails
+  Widget _buildVideoThumbnail(String path) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Try to load the first frame as a thumbnail
+        Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback video thumbnail UI when image loading fails
+            return Container(
+              color: Colors.black,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.videocam,
+                      color: Colors.white.withOpacity(0.8),
+                      size: 28,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'VIDEO',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ],
     );
   }
@@ -480,11 +583,25 @@ class CameralyGalleryView extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Image thumbnail
-        Image.file(
-          File(path),
-          fit: BoxFit.cover,
-        ),
+        // Media thumbnail with error handling
+        isVideo
+            ? _buildVideoThumbnail(path)
+            : Image.file(
+                File(path),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey.shade900,
+                    child: const Center(
+                      child: Icon(
+                        Icons.image_not_supported,
+                        color: Colors.white70,
+                        size: 24,
+                      ),
+                    ),
+                  );
+                },
+              ),
 
         // Video indicator
         if (isVideo)
@@ -602,6 +719,47 @@ class CameralyGalleryView extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  // Dedicated widget for video thumbnails
+  Widget _buildVideoThumbnail(String path) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Try to load the first frame as a thumbnail
+        Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback video thumbnail UI when image loading fails
+            return Container(
+              color: Colors.black,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.videocam,
+                      color: Colors.white.withOpacity(0.8),
+                      size: 28,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'VIDEO',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
