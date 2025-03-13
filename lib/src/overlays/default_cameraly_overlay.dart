@@ -820,12 +820,18 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       debugPrint('🎥 Current _isFrontCamera: $_isFrontCamera');
       debugPrint('🎥 Current controller.value.isFrontCamera: ${_controller?.value.isFrontCamera}');
 
+      // Remove listener from old controller to prevent callbacks during transition
+      _controller?.removeListener(_handleControllerChanged);
+
       // Switch to the new camera
       debugPrint('🎥 Attempting to switch camera from ${_isFrontCamera ? 'front' : 'back'} to ${_isFrontCamera ? 'back' : 'front'}');
       final newController = await _controller?.switchCamera();
 
       if (newController == null) {
         debugPrint('🎥 No alternative camera found');
+        // Re-add listener to old controller since we're keeping it
+        _controller?.addListener(_handleControllerChanged);
+
         // Call error callback instead of showing snackbar
         if (widget.onError != null) {
           final message = cameras.length > 1 ? 'Failed to switch camera - please try again' : 'This device only has one camera';
@@ -898,6 +904,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           _notifyCameraStateChanged();
         });
 
+        // Add listener to new controller AFTER state update
+        _controller?.addListener(_handleControllerChanged);
+
         // Initialize zoom levels for the new camera
         debugPrint('🎥 Initializing zoom levels');
         await _initializeZoomLevels();
@@ -918,6 +927,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       }
     } catch (e) {
       debugPrint('🎥 Error switching camera: $e');
+      // Make sure we re-add the listener if there was an error
+      if (_controller != null && !_controller!.hasListeners) {
+        _controller!.addListener(_handleControllerChanged);
+      }
+
       // Call error callback instead of showing snackbar
       if (widget.onError != null) {
         widget.onError!('camera_switch', 'Failed to switch camera: ${e.toString().split('\n').first}');
@@ -926,6 +940,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _handleCapture() async {
+    // Verify controller is available and initialized before proceeding
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('📹 Cannot capture: Camera controller is null or not initialized');
+      if (widget.onError != null) {
+        widget.onError!('capture', 'Camera not ready yet - please try again');
+      }
+      return;
+    }
+
     if (_isVideoMode) {
       await _toggleRecording();
     } else {
@@ -934,6 +957,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _toggleRecording() async {
+    // Double-check controller is available
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('📹 Cannot toggle recording: Camera controller is null or not initialized');
+      if (widget.onError != null) {
+        widget.onError!('recording', 'Camera not ready yet - please try again');
+      }
+      return;
+    }
+
     try {
       if (_isRecording) {
         // Let the controller update our recording state through its value listener
@@ -982,6 +1014,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Future<void> _takePicture() async {
+    // Double-check controller is available
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('📹 Cannot take picture: Camera controller is null or not initialized');
+      if (widget.onError != null) {
+        widget.onError!('capture', 'Camera not ready yet - please try again');
+      }
+      return;
+    }
+
     try {
       // Ensure flash mode is set correctly before taking the picture
       if (!_isFrontCamera) {
@@ -1334,8 +1375,19 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final double size = isLandscape ? (isWideScreen ? 100 : 80) : 90;
     final double innerSize = isLandscape ? (isWideScreen ? 80 : 64) : 70;
 
+    // Ensure the button is always responsive even during camera transitions
     return GestureDetector(
-      onTap: _handleCapture,
+      onTap: () {
+        // Verify controller is available before proceeding
+        if (_controller == null || !_controller!.value.isInitialized) {
+          debugPrint('📹 Cannot capture: Camera controller is null or not initialized');
+          if (widget.onError != null) {
+            widget.onError!('capture', 'Camera not ready yet - please try again');
+          }
+          return;
+        }
+        _handleCapture();
+      },
       child: _isRecording
           ? _buildRecordingCaptureButton(size: size)
           : Container(
