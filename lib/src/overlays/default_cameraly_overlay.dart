@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
@@ -437,6 +438,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   bool _hasVideoDurationLimit = false;
   Duration? _maxVideoDuration;
   bool _hasControllerFromProvider = false;
+  // Flag to track orientation changes in progress
+  bool _orientationChangeInProgress = false;
 
   // Animation controller for zoom
   late AnimationController _zoomAnimationController;
@@ -543,9 +546,35 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   @override
   void didChangeMetrics() {
     // This will be called when the screen rotates
-    if (mounted) {
-      setState(() {
-        // This empty setState will trigger a rebuild when the orientation changes
+    if (mounted && !_orientationChangeInProgress) {
+      debugPrint('🎥 Screen metrics changed (likely orientation change)');
+
+      // Set flag to prevent multiple calls during the same orientation change
+      _orientationChangeInProgress = true;
+
+      // First pause the camera to prevent issues during orientation change
+      _pauseCamera();
+
+      // Then resume the camera after a short delay to allow UI to stabilize
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          debugPrint('🎥 Resuming camera after orientation change');
+          _resumeCamera().then((_) {
+            debugPrint('🎥 Camera resumed after orientation change');
+            // Reset the flag after successful resume
+            _orientationChangeInProgress = false;
+          }).catchError((error) {
+            debugPrint('🎥 Error resuming camera after orientation change: $error');
+            // Reset the flag even if there's an error
+            _orientationChangeInProgress = false;
+          });
+
+          // Trigger a UI rebuild with setState
+          setState(() {});
+        } else {
+          // Reset the flag if widget is no longer mounted
+          _orientationChangeInProgress = false;
+        }
       });
     }
     super.didChangeMetrics();
@@ -554,6 +583,13 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('🎥 App lifecycle state changed: $state');
+
+    // If we're in the middle of an orientation change, don't interrupt that process
+    if (_orientationChangeInProgress) {
+      debugPrint('🎥 Ignoring lifecycle state change during orientation change');
+      super.didChangeAppLifecycleState(state);
+      return;
+    }
 
     // Basic state detection and logging
     switch (state) {
@@ -1018,6 +1054,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final newMode = modes[nextIndex];
 
     try {
+      // Provide haptic feedback when flash mode is changed
+      HapticFeedback.selectionClick();
+
       await _controller?.setFlashMode(newMode);
       setState(() {
         _flashMode = newMode;
@@ -1052,6 +1091,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
 
     try {
+      // Provide haptic feedback when switching camera
+      HapticFeedback.mediumImpact();
+
       // Notify that camera is switching (this could be done with a different callback if needed)
       debugPrint('🎥 Switching camera...');
 
@@ -1208,6 +1250,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       }
       return;
     }
+
+    // Provide haptic feedback when capture button is pressed
+    HapticFeedback.mediumImpact();
 
     if (_isVideoMode) {
       await _toggleRecording();
@@ -1492,6 +1537,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     _recordingLimitTimer = Timer(_maxVideoDuration!, () {
       debugPrint('📹 Max recording duration reached, stopping recording');
       if (_isRecording) {
+        // Provide strong haptic feedback when max duration is reached
+        HapticFeedback.heavyImpact();
+
         // Use the controller to stop recording
         // Don't manually update _isRecording here
         _controller?.stopVideoRecording().then((file) {
@@ -1792,6 +1840,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Future<void> _toggleTorch() async {
     try {
+      // Provide haptic feedback when torch is toggled
+      HapticFeedback.selectionClick();
+
       final newTorchState = !_torchEnabled;
       await _controller?.setFlashMode(newTorchState ? FlashMode.torch : FlashMode.off);
       setState(() {
@@ -1982,6 +2033,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () => setState(() {
+                        // Provide haptic feedback when switching to photo mode
+                        HapticFeedback.lightImpact();
+
                         _isVideoMode = false;
                         if (!_isFrontCamera) {
                           _controller?.setFlashMode(_flashMode);
@@ -2009,6 +2063,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () => setState(() {
+                        // Provide haptic feedback when switching to video mode
+                        HapticFeedback.lightImpact();
+
                         _isVideoMode = true;
                         _controller?.setFlashMode(FlashMode.off);
                         _torchEnabled = false;
@@ -2112,6 +2169,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 children: [
                   TextButton(
                     onPressed: () => setState(() {
+                      // Provide haptic feedback when switching to photo mode
+                      HapticFeedback.lightImpact();
+
                       _isVideoMode = false;
                       if (!_isFrontCamera) {
                         _controller?.setFlashMode(_flashMode);
@@ -2125,6 +2185,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   const SizedBox(height: 4),
                   TextButton(
                     onPressed: () => setState(() {
+                      // Provide haptic feedback when switching to video mode
+                      HapticFeedback.lightImpact();
+
                       _isVideoMode = true;
                       _controller?.setFlashMode(FlashMode.off);
                       _torchEnabled = false;
