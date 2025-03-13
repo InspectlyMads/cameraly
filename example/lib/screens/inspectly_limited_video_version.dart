@@ -18,7 +18,18 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
   static const int _maxDurationSeconds = 15;
 
   @override
+  void initState() {
+    super.initState();
+    // Log the max duration to verify it's being set correctly
+    debugPrint('📹 Setting up InspectlyLimitedVideoScreen with max duration: $_maxDurationSeconds seconds');
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Create the duration object here for better debugging
+    final maxDuration = Duration(seconds: _maxDurationSeconds);
+    debugPrint('📹 Building camera with duration limit: $maxDuration');
+
     return Scaffold(
       body: CameralyCamera(
         settings: CameraPreviewSettings(
@@ -28,7 +39,7 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
           flashMode: FlashMode.auto,
           enableAudio: true, // Enable audio for video recording
           // Video specific settings
-          videoDurationLimit: Duration(seconds: _maxDurationSeconds),
+          videoDurationLimit: maxDuration,
 
           // UI configuration
           showSwitchCameraButton: true,
@@ -54,14 +65,6 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
             ),
           ),
 
-          // Add duration indicator at the top
-          topLeftWidget: Container(
-            margin: const EdgeInsets.only(top: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-            child: Text('Maximum Duration: $_maxDurationSeconds seconds', style: const TextStyle(color: Colors.white)),
-          ),
-
           // Loading text
           loadingText: 'Initializing Inspectly video camera...',
 
@@ -71,6 +74,17 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
             setState(() {
               _capturedMedia.add(file);
             });
+          },
+
+          // Add a callback to verify when recording reaches max duration
+          // The CameraPreviewSettings doesn't have onMaxDurationReached callback directly
+          // Instead we can add a listener within onInitialized
+          onInitialized: (controller) {
+            debugPrint('📹 Camera initialized with settings: ${controller.settings}');
+            debugPrint('📹 Has video duration limit: ${controller.settings.maxVideoDuration != null}');
+            if (controller.settings.maxVideoDuration != null) {
+              debugPrint('📹 Video duration limit: ${controller.settings.maxVideoDuration}');
+            }
           },
         ),
       ),

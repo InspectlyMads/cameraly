@@ -577,6 +577,7 @@ class _CameralyCameraState extends State<CameralyCamera> {
       onCapture: widget.settings.onCapture,
       onClose: widget.settings.onClose,
       multiImageSelect: widget.settings.multiImageSelect,
+
       // Handle controller changed event by re-initializing our controller
       onControllerChanged: (newController) {
         setState(() {

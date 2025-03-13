@@ -59,6 +59,12 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
               _capturedMedia.add(file);
             });
           },
+          onError: (source, message, {error, isRecoverable = false}) {
+            debugPrint('❌ Camera error ($source): $message');
+            if (error != null) {
+              debugPrint('❌ Error details: $error');
+            }
+          },
         ),
       ),
     );
