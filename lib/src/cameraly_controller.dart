@@ -1074,7 +1074,10 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     // when we expect 4:3 (1.33) for most tablet cameras
     if (isLikelyTablet && (reportedRatio > 1.7 && reportedRatio < 1.8)) {
       debugPrint('📱 Detected tablet device with incorrect aspect ratio (${reportedRatio.toStringAsFixed(2)}), correcting to 4:3');
-      return 4 / 3; // Return the corrected aspect ratio for tablets (4:3)
+      //return 4 / 3; // Return the corrected aspect ratio for tablets (4:3)
+      //Current the camera package is not working correctly with tablets
+      //So we will return the reported ratio
+      return reportedRatio; //This return 16:9 for tablets even though it should be 4:3. Changeing thi,s make the ui look correct but the capture is still 16:9
     }
 
     return reportedRatio;
