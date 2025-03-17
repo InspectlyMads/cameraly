@@ -241,10 +241,27 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       return;
     }
 
+    // Check if the orientation actually changed
+    if (value.deviceOrientation == newOrientation) {
+      debugPrint('🧭 Orientation unchanged, skipping update');
+      return;
+    }
+
     debugPrint('🧭 Setting orientation: $newOrientation');
 
-    // Apply the orientation change to the camera
-    await setDeviceOrientation(newOrientation);
+    // Update the value first to trigger UI updates
+    value = value.copyWith(deviceOrientation: newOrientation);
+
+    // For Android, apply the orientation change with a small timeout to avoid locking
+    if (Platform.isAndroid) {
+      try {
+        // Use a small delay before locking orientation to avoid freezing
+        await Future.delayed(const Duration(milliseconds: 100));
+        await setDeviceOrientation(newOrientation);
+      } catch (e) {
+        debugPrint('❌ Error setting device orientation: $e');
+      }
+    }
   }
 
   /// Updates the value notifier based on the underlying camera controller's value.
@@ -987,11 +1004,21 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
 
     try {
-      // Update the value first to trigger UI updates
-      value = value.copyWith(deviceOrientation: orientation);
+      // Only update if the orientation has changed
+      if (value.deviceOrientation != orientation) {
+        value = value.copyWith(deviceOrientation: orientation);
+      }
 
-      // Then set the orientation on the camera controller
-      await _controller!.lockCaptureOrientation(orientation);
+      // On some Android devices, lockCaptureOrientation can cause preview freezing
+      // Try with a timeout to prevent UI blocking
+      await _controller!.lockCaptureOrientation(orientation).timeout(
+        const Duration(milliseconds: 500),
+        onTimeout: () {
+          debugPrint('⚠️ Orientation lock timed out, continuing anyway');
+          return;
+        },
+      );
+
       debugPrint('🔒 Locked capture orientation to: $orientation');
     } catch (e) {
       debugPrint('❌ Error setting device orientation: $e');

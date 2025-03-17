@@ -146,6 +146,8 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   Offset? _focusPoint;
   bool _showFocusCircle = false;
   Timer? _focusTimer;
+  bool _isChangingOrientation = false;
+  Timer? _orientationDebounceTimer;
 
   @override
   void initState() {
@@ -181,6 +183,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     }
     WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
+    _orientationDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -210,8 +213,14 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
   @override
   void didChangeMetrics() {
-    // Handle orientation changes
+    // Handle orientation changes with a small delay to allow the system to settle
     if (mounted && _controller != null) {
+      // Cancel any ongoing orientation change timer
+      _orientationDebounceTimer?.cancel();
+
+      // Mark that we're in the middle of an orientation change
+      _isChangingOrientation = true;
+
       // Use a post-frame callback to ensure the context is valid
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Only call handleOrientationChange if the controller is initialized
@@ -219,11 +228,15 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           // Print the current orientation for debugging
           _controller!.printCurrentOrientation(context);
 
-          // The controller now handles orientation changes directly in its didChangeMetrics
-          // We just need to force a rebuild to update the UI
-          if (mounted) {
-            setState(() {});
-          }
+          // Add a small delay to let the system stabilize after orientation change
+          _orientationDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              setState(() {
+                // Reset the orientation change flag when we're done
+                _isChangingOrientation = false;
+              });
+            }
+          });
         }
       });
     }
@@ -418,13 +431,19 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     debugPrint('🎥 Should mirror: $shouldMirror');
     debugPrint('🎥 scaleX will be: ${shouldMirror ? -1.0 : 1.0}');
 
+    // Generate a unique key based on orientation to force recreation when orientation changes
+    final previewKey = ValueKey('camera_preview_${value.deviceOrientation}_$isLandscape');
+
     // Use the standard preview with the correct aspect ratio for the current orientation
     return AspectRatio(
       aspectRatio: previewRatio,
       child: Transform.scale(
         scaleX: shouldMirror ? -1.0 : 1.0, // Flip based on platform-specific logic
         scaleY: 1.0,
-        child: CameraPreview(_controller!.cameraController!),
+        child: Container(
+          key: previewKey,
+          child: CameraPreview(_controller!.cameraController!),
+        ),
       ),
     );
   }
@@ -460,104 +479,106 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       child: ValueListenableBuilder<CameralyValue>(
         valueListenable: _controller!,
         builder: (context, value, child) {
-          // Handle initialization state
-          if (!value.isInitialized) {
-            // Use custom loading builder if provided, otherwise use default
-            return widget.loadingBuilder != null
-                ? widget.loadingBuilder!(context, value)
-                : Container(
-                    color: Colors.black,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(color: Colors.white),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Initializing camera...',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-          }
+          // Add temporary overlay during orientation change to prevent visible freezing
+          Widget previewWidget = _buildOrientationAwarePreview(value);
 
-          // If camera is initialized, show the preview
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              // Black background
-              Container(color: Colors.black),
-
-              // Camera preview with orientation handling and gesture detection
-              Center(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Build the preview widget
-                    final previewWidget = _buildCameraPreview(value, constraints);
-
-                    // Wrap only the preview in GestureDetector
-                    return GestureDetector(
-                      onTapDown: _handleTap,
-                      onScaleStart: _handleScaleStart,
-                      onScaleUpdate: _handleScaleUpdate,
-                      child: previewWidget,
-                    );
-                  },
-                ),
-              ),
-
-              // Show the overlay
-              if (widget.overlay != null) widget.overlay!,
-
-              // Show focus circle when tapping - enhanced visibility
-              if (_showFocusCircle && _focusPoint != null)
-                Positioned(
-                  left: _focusPoint!.dx - 25,
-                  top: _focusPoint!.dy - 25,
-                  child: TweenAnimationBuilder<double>(
-                    duration: const Duration(milliseconds: 300),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    builder: (context, value, child) => Transform.scale(
-                      scale: 2.5 - (1.5 * value),
-                      child: Opacity(
-                        opacity: value,
-                        child: Container(
-                          height: 50,
-                          width: 50,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white, width: 2),
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.2),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Error display
-              if (value.error != null)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    color: Colors.black54,
-                    padding: const EdgeInsets.all(8),
-                    child: Text(
-                      value.error!,
-                      style: const TextStyle(color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          );
+          return previewWidget;
         },
       ),
     );
+  }
+
+  Widget _buildOrientationAwarePreview(CameralyValue value) {
+    // Handle initialization state
+    if (!value.isInitialized) {
+      // Use custom loading builder if provided, otherwise use default
+      return widget.loadingBuilder != null
+          ? widget.loadingBuilder!(context, value)
+          : Container(
+              color: Colors.black,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(color: Colors.white),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Initializing camera...',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            );
+    }
+
+    // If camera is initialized, show the preview with orientation change handling
+    Widget cameraStack = Stack(
+      fit: StackFit.expand,
+      children: [
+        // Black background
+        Container(color: Colors.black),
+
+        // Camera preview with orientation handling and gesture detection
+        Center(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Build the preview widget
+              final previewWidget = _buildCameraPreview(value, constraints);
+
+              // Wrap only the preview in GestureDetector
+              return GestureDetector(
+                onTapDown: _handleTap,
+                onScaleStart: _handleScaleStart,
+                onScaleUpdate: _handleScaleUpdate,
+                child: previewWidget,
+              );
+            },
+          ),
+        ),
+
+        // Show focus circle when active
+        if (_showFocusCircle && _focusPoint != null)
+          Positioned(
+            left: _focusPoint!.dx - 40,
+            top: _focusPoint!.dy - 40,
+            child: Container(
+              height: 80,
+              width: 80,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 2),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+
+        // Add an overlay during orientation changes to prevent visible freezing
+        if (_isChangingOrientation)
+          Container(
+            color: Colors.black.withOpacity(0.2),
+            child: const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          ),
+      ],
+    );
+
+    // Use the custom overlay if provided, otherwise return the standard camera stack
+    if (widget.overlay != null) {
+      // Use Stack to position the overlay on top of the camera preview
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Camera stack as the base layer
+          cameraStack,
+
+          // Overlay as the top layer
+          widget.overlay!,
+        ],
+      );
+    } else {
+      return cameraStack;
+    }
   }
 }
