@@ -135,6 +135,32 @@ enum HapticFeedbackType {
 /// This makes it easy to customize the camera interface without worrying about
 /// button positioning or visibility.
 ///
+/// ## Button State Management
+///
+/// The camera controls automatically respond to the camera's state:
+///
+/// - During recording, certain buttons are disabled
+/// - When the file picker is active (during gallery imports), all buttons are disabled
+/// - Custom buttons can also respond to these states via the builder pattern
+///
+/// When using custom button builders, you can check the `isFilePickerActive` state
+/// to disable your buttons while the file picker is working:
+///
+/// ```dart
+/// customRightButtonBuilder: (context, state) {
+///   // Disable button while picker is active
+///   if (state.isFilePickerActive) {
+///     return const Opacity(opacity: 0.5, child: SizedBox(width: 56, height: 56));
+///   }
+///
+///   return FloatingActionButton(
+///     onPressed: () => Navigator.of(context).pop(),
+///     backgroundColor: Colors.white,
+///     child: const Icon(Icons.check),
+///   );
+/// }
+/// ```
+///
 /// ## Example Usage
 ///
 /// ```dart
@@ -476,7 +502,15 @@ class DefaultCameralyOverlay extends StatefulWidget {
 /// Represents the current state of the camera overlay.
 class CameralyOverlayState {
   /// Creates a new camera overlay state.
-  const CameralyOverlayState({required this.isRecording, required this.isVideoMode, required this.isFrontCamera, required this.flashMode, required this.torchEnabled, required this.recordingDuration});
+  const CameralyOverlayState({
+    required this.isRecording,
+    required this.isVideoMode,
+    required this.isFrontCamera,
+    required this.flashMode,
+    required this.torchEnabled,
+    required this.recordingDuration,
+    this.isFilePickerActive = false,
+  });
 
   /// Whether the camera is currently recording video.
   final bool isRecording;
@@ -496,8 +530,19 @@ class CameralyOverlayState {
   /// The current recording duration (zero if not recording).
   final Duration recordingDuration;
 
+  /// Whether a file picker is currently active and processing files.
+  final bool isFilePickerActive;
+
   /// Creates a copy of this state with the specified fields replaced.
-  CameralyOverlayState copyWith({bool? isRecording, bool? isVideoMode, bool? isFrontCamera, FlashMode? flashMode, bool? torchEnabled, Duration? recordingDuration}) {
+  CameralyOverlayState copyWith({
+    bool? isRecording,
+    bool? isVideoMode,
+    bool? isFrontCamera,
+    FlashMode? flashMode,
+    bool? torchEnabled,
+    Duration? recordingDuration,
+    bool? isFilePickerActive,
+  }) {
     return CameralyOverlayState(
       isRecording: isRecording ?? this.isRecording,
       isVideoMode: isVideoMode ?? this.isVideoMode,
@@ -505,6 +550,7 @@ class CameralyOverlayState {
       flashMode: flashMode ?? this.flashMode,
       torchEnabled: torchEnabled ?? this.torchEnabled,
       recordingDuration: recordingDuration ?? this.recordingDuration,
+      isFilePickerActive: isFilePickerActive ?? this.isFilePickerActive,
     );
   }
 }
@@ -531,6 +577,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   bool _isFrontCamera = false;
   bool _isVideoMode = false;
   bool _isRecording = false;
+  bool _isFilePickerActive = false; // Track when file picker is active
   FlashMode _flashMode = FlashMode.auto;
   bool _torchEnabled = false;
   double _currentZoom = 1.0;
@@ -1508,6 +1555,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Future<void> _openMediaGallery() async {
     try {
+      // Set flag to indicate file picker is active
+      setState(() {
+        _isFilePickerActive = true;
+        _notifyCameraStateChanged(); // Notify state change
+      });
+
       // Initial haptic feedback when method is called
       HapticFeedback.selectionClick();
 
@@ -1517,74 +1570,114 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (isVideoOnlyMode) {
         final XFile? pickedVideo = await _imagePicker.pickVideo(source: ImageSource.gallery);
 
-        // Immediate feedback when returning from picker
-        HapticFeedback.lightImpact();
+        // Start continuous haptic feedback IMMEDIATELY when returning from picker
+        final loadingHapticTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+          HapticFeedback.selectionClick();
+        });
 
-        if (pickedVideo != null && widget.controller?.mediaManager != null) {
-          // Process the video file to generate a thumbnail
-          final processedVideo = await _processVideoFile(pickedVideo);
+        try {
+          // Immediate feedback when returning from picker
+          HapticFeedback.lightImpact();
 
-          // Add the video to the media manager
-          widget.controller!.mediaManager.addMedia(processedVideo);
+          if (pickedVideo != null && widget.controller?.mediaManager != null) {
+            // Process the video file to generate a thumbnail
+            final processedVideo = await _processVideoFile(pickedVideo);
 
-          // Call the onCapture callback if provided
-          if (widget.onCapture != null) {
-            widget.onCapture!(processedVideo);
+            // Add the video to the media manager
+            widget.controller!.mediaManager.addMedia(processedVideo);
+
+            // Call the onCapture callback if provided
+            if (widget.onCapture != null) {
+              widget.onCapture!(processedVideo);
+            }
+
+            // Completion feedback
+            loadingHapticTimer.cancel();
+            HapticFeedback.mediumImpact();
           }
-
-          // Completion feedback
-          HapticFeedback.mediumImpact();
+        } finally {
+          loadingHapticTimer.cancel();
         }
       } else if (widget.multiImageSelect && !isVideoOnlyMode) {
         // Pick multiple images from device gallery (not in video-only mode)
         final List<XFile> pickedFiles = await _imagePicker.pickMultiImage();
 
-        // Immediate feedback when returning from picker, regardless of selection result
-        HapticFeedback.lightImpact();
+        // Start continuous haptic feedback IMMEDIATELY when returning from picker
+        // This is the critical moment when the user has tapped "Add" in the OS gallery
+        final loadingHapticTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+          HapticFeedback.selectionClick();
+        });
 
-        // Add each image to the media manager
-        if (pickedFiles.isNotEmpty && widget.controller?.mediaManager != null) {
-          // Short delay to allow initial loading message to be seen
-          await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          // Immediate feedback when returning from picker, regardless of selection result
+          HapticFeedback.lightImpact();
 
-          // Process files with slight delay between them to allow UI updates
-          for (int i = 0; i < pickedFiles.length; i++) {
-            final file = pickedFiles[i];
-            widget.controller!.mediaManager.addMedia(file);
+          // Add each image to the media manager
+          if (pickedFiles.isNotEmpty && widget.controller?.mediaManager != null) {
+            // Short delay to allow UI to update
+            await Future.delayed(const Duration(milliseconds: 300));
 
-            // Call the onCapture callback for each file if provided
-            if (widget.onCapture != null) {
-              widget.onCapture!(file);
+            // Process files with slight delay between them to allow UI updates
+            for (int i = 0; i < pickedFiles.length; i++) {
+              final file = pickedFiles[i];
+              widget.controller!.mediaManager.addMedia(file);
+
+              // Call the onCapture callback for each file if provided
+              if (widget.onCapture != null) {
+                widget.onCapture!(file);
+              }
+
+              // For large imports, provide haptic feedback for progress
+              if (pickedFiles.length > 5 && i > 0 && i % 5 == 0) {
+                HapticFeedback.lightImpact();
+              }
+
+              // Small delay between processing files to prevent UI freezing
+              if (pickedFiles.length > 10 && i < pickedFiles.length - 1) {
+                await Future.delayed(const Duration(milliseconds: 5));
+              }
             }
 
-            // Small delay between processing files to prevent UI freezing
-            if (pickedFiles.length > 10 && i < pickedFiles.length - 1) {
-              await Future.delayed(const Duration(milliseconds: 5));
-            }
+            // Completion haptic feedback
+            loadingHapticTimer.cancel();
+            HapticFeedback.heavyImpact();
           }
-
-          HapticFeedback.heavyImpact();
+        } finally {
+          // Ensure timer is always cancelled to prevent memory leaks
+          loadingHapticTimer.cancel();
         }
       } else {
         // Pick a single image from device gallery (not in video-only mode)
         final XFile? pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
 
-        // Immediate feedback when returning from picker
-        HapticFeedback.lightImpact();
+        // Start continuous haptic feedback IMMEDIATELY when returning from picker
+        final loadingHapticTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+          HapticFeedback.selectionClick();
+        });
 
-        if (pickedFile != null && widget.controller?.mediaManager != null) {
-          // Brief delay to show loading state
-          await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          // Immediate feedback when returning from picker
+          HapticFeedback.lightImpact();
 
-          // Add the image to the media manager
-          widget.controller!.mediaManager.addMedia(pickedFile);
+          if (pickedFile != null && widget.controller?.mediaManager != null) {
+            // Brief delay to allow UI to update
+            await Future.delayed(const Duration(milliseconds: 300));
 
-          // Call the onCapture callback if provided
-          if (widget.onCapture != null) {
-            widget.onCapture!(pickedFile);
+            // Add the image to the media manager
+            widget.controller!.mediaManager.addMedia(pickedFile);
+
+            // Call the onCapture callback if provided
+            if (widget.onCapture != null) {
+              widget.onCapture!(pickedFile);
+            }
+
+            // Completion feedback
+            loadingHapticTimer.cancel();
+            HapticFeedback.mediumImpact();
           }
-
-          HapticFeedback.mediumImpact();
+        } finally {
+          // Ensure timer is always cancelled
+          loadingHapticTimer.cancel();
         }
       }
 
@@ -1599,6 +1692,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       // Call error callback if provided
       if (widget.onError != null) {
         widget.onError!('gallery', 'Error opening gallery: $e', error: e, isRecoverable: true);
+      }
+    } finally {
+      // Reset file picker active flag when complete (whether successful or error)
+      if (mounted) {
+        setState(() {
+          _isFilePickerActive = false;
+          _notifyCameraStateChanged(); // Notify state change
+        });
       }
     }
   }
@@ -1704,7 +1805,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   /// Notifies the parent widget about camera state changes.
   void _notifyCameraStateChanged() {
     if (widget.onCameraStateChanged != null) {
-      final state = CameralyOverlayState(isRecording: _isRecording, isVideoMode: _isVideoMode, isFrontCamera: _isFrontCamera, flashMode: _flashMode, torchEnabled: _torchEnabled, recordingDuration: _recordingDuration);
+      final state = CameralyOverlayState(
+        isRecording: _isRecording,
+        isVideoMode: _isVideoMode,
+        isFrontCamera: _isFrontCamera,
+        flashMode: _flashMode,
+        torchEnabled: _torchEnabled,
+        recordingDuration: _recordingDuration,
+        isFilePickerActive: _isFilePickerActive,
+      );
       widget.onCameraStateChanged!(state);
     }
   }
@@ -1758,6 +1867,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final size = MediaQuery.of(context).size;
     final padding = MediaQuery.of(context).padding;
 
+    // Get the current overlay state for back button builder
+    final overlayState = CameralyOverlayState(
+      isRecording: _isRecording,
+      isVideoMode: _isVideoMode,
+      isFrontCamera: _isFrontCamera,
+      flashMode: _flashMode,
+      torchEnabled: _torchEnabled,
+      recordingDuration: _recordingDuration,
+      isFilePickerActive: _isFilePickerActive,
+    );
+
     // Wrap the result with DefaultCameralyOverlayScope to expose the state
     return DefaultCameralyOverlayScope(
       state: this,
@@ -1772,8 +1892,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               child: Align(
                 alignment: Alignment.topLeft,
                 child: widget.backButtonBuilder != null
-                    ? widget.backButtonBuilder!(
-                        context, CameralyOverlayState(isRecording: _isRecording, isVideoMode: _isVideoMode, isFrontCamera: _isFrontCamera, flashMode: _flashMode, torchEnabled: _torchEnabled, recordingDuration: _recordingDuration))
+                    ? widget.backButtonBuilder!(context, overlayState)
                     : widget.customBackButton ??
                         CameralyOverlayButton(
                           size: 40,
@@ -1781,8 +1900,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                           borderColor: const Color.fromARGB(179, 255, 255, 255),
                           borderWidth: 1.0,
                           margin: EdgeInsets.zero,
-                          onTap: () => Navigator.pop(context),
-                          child: const Icon(Icons.arrow_back, color: Colors.white),
+                          onTap: _isFilePickerActive ? null : () => Navigator.pop(context),
+                          child: Icon(Icons.arrow_back, color: _isFilePickerActive ? Colors.white60 : Colors.white),
                         ),
               ),
             ),
@@ -1941,6 +2060,81 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Widget _buildAnimatedCaptureButton({bool isLandscape = false, bool isWideScreen = false}) {
     final double size = isLandscape ? (isWideScreen ? 100 : 80) : 90;
     final double innerSize = isLandscape ? (isWideScreen ? 80 : 64) : 70;
+
+    // Show a loading indicator when file picker is active
+    if (_isFilePickerActive) {
+      return Stack(
+        children: [
+          // Pulsing loading indicator
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.8, end: 1.0),
+            duration: const Duration(milliseconds: 800),
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: value,
+                child: Container(
+                  height: size,
+                  width: size,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.5 * value),
+                      width: 5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.2 * value),
+                        blurRadius: 8 * value,
+                        spreadRadius: 2 * value,
+                      ),
+                    ],
+                    color: Colors.transparent,
+                  ),
+                  child: Center(
+                    child: SizedBox(
+                      width: innerSize * 0.7,
+                      height: innerSize * 0.7,
+                      child: const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        strokeWidth: 3,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+            onEnd: () {
+              if (mounted) setState(() {}); // Restart animation
+            },
+          ),
+
+          // Optional status text for multi-file imports
+          if (widget.multiImageSelect)
+            Positioned(
+              bottom: -20,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Importing...',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
 
     // Ensure the button is always responsive even during camera transitions
     return GestureDetector(
@@ -2134,6 +2328,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       flashMode: _flashMode,
       torchEnabled: _torchEnabled,
       recordingDuration: _recordingDuration,
+      isFilePickerActive: _isFilePickerActive,
     );
 
     return SizedBox(
@@ -2174,12 +2369,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             if (widget.showGalleryButton && (widget.customLeftButton != null || widget.customLeftButtonBuilder != null))
               Align(
                 alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: CameralyOverlayButton(onTap: _isRecording ? null : _openMediaGallery, child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 28)),
+                child: CameralyOverlayButton(onTap: (_isRecording || _isFilePickerActive) ? null : _openMediaGallery, child: Icon(Icons.photo_library, color: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white, size: 28)),
               ),
 
             // Camera switch button (shown in top area when customRightButton or customRightButtonBuilder is provided)
             if (widget.showSwitchCameraButton && (widget.customRightButton != null || widget.customRightButtonBuilder != null) && !_isRecording)
-              Align(alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight, child: CameralyOverlayButton(onTap: _switchCamera, child: const Icon(Icons.switch_camera, color: Colors.white, size: 28))),
+              Align(
+                  alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
+                  child: CameralyOverlayButton(onTap: _isFilePickerActive ? null : _switchCamera, child: Icon(Icons.switch_camera, color: _isFilePickerActive ? Colors.white60 : Colors.white, size: 28))),
           ],
         ),
       ),
@@ -2211,6 +2408,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       flashMode: _flashMode,
       torchEnabled: _torchEnabled,
       recordingDuration: _recordingDuration,
+      isFilePickerActive: _isFilePickerActive,
     );
 
     return Padding(
@@ -2234,17 +2432,19 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () => setState(() {
-                        // Provide haptic feedback when switching to photo mode
-                        HapticFeedback.lightImpact();
+                      onTap: _isFilePickerActive
+                          ? null
+                          : () => setState(() {
+                                // Provide haptic feedback when switching to photo mode
+                                HapticFeedback.lightImpact();
 
-                        _isVideoMode = false;
-                        if (!_isFrontCamera) {
-                          _controller?.setFlashMode(_flashMode);
-                        }
-                        _torchEnabled = false;
-                        _notifyCameraStateChanged();
-                      }),
+                                _isVideoMode = false;
+                                if (!_isFrontCamera) {
+                                  _controller?.setFlashMode(_flashMode);
+                                }
+                                _torchEnabled = false;
+                                _notifyCameraStateChanged();
+                              }),
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2252,9 +2452,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.photo_camera, color: !_isVideoMode ? Colors.white : Colors.white60, size: 20),
+                            Icon(Icons.photo_camera, color: (_isFilePickerActive || !_isVideoMode) ? Colors.white60 : Colors.white, size: 20),
                             const SizedBox(width: 8),
-                            Text('Photo', style: TextStyle(color: !_isVideoMode ? Colors.white : Colors.white60, fontWeight: !_isVideoMode ? FontWeight.bold : FontWeight.normal)),
+                            Text('Photo', style: TextStyle(color: (_isFilePickerActive || !_isVideoMode) ? Colors.white60 : Colors.white, fontWeight: !_isVideoMode ? FontWeight.bold : FontWeight.normal)),
                           ],
                         ),
                       ),
@@ -2264,15 +2464,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () => setState(() {
-                        // Provide haptic feedback when switching to video mode
-                        HapticFeedback.lightImpact();
+                      onTap: _isFilePickerActive
+                          ? null
+                          : () => setState(() {
+                                // Provide haptic feedback when switching to video mode
+                                HapticFeedback.lightImpact();
 
-                        _isVideoMode = true;
-                        _controller?.setFlashMode(FlashMode.off);
-                        _torchEnabled = false;
-                        _notifyCameraStateChanged();
-                      }),
+                                _isVideoMode = true;
+                                _controller?.setFlashMode(FlashMode.off);
+                                _torchEnabled = false;
+                                _notifyCameraStateChanged();
+                              }),
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2280,9 +2482,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.videocam, color: _isVideoMode ? Colors.white : Colors.white60, size: 20),
+                            Icon(Icons.videocam, color: (_isFilePickerActive || _isVideoMode) ? Colors.white60 : Colors.white, size: 20),
                             const SizedBox(width: 8),
-                            Text('Video', style: TextStyle(color: _isVideoMode ? Colors.white : Colors.white60, fontWeight: _isVideoMode ? FontWeight.bold : FontWeight.normal)),
+                            Text('Video', style: TextStyle(color: (_isFilePickerActive || _isVideoMode) ? Colors.white60 : Colors.white, fontWeight: _isVideoMode ? FontWeight.bold : FontWeight.normal)),
                           ],
                         ),
                       ),
@@ -2307,18 +2509,33 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   children: [
                     // Use the customLeftButtonBuilder if provided, otherwise fallback to customLeftButton
                     if (widget.customLeftButtonBuilder != null)
-                      widget.customLeftButtonBuilder!(context, overlayState)
+                      _isFilePickerActive
+                          // If file picker is active, render a disabled version of the button
+                          ? Opacity(
+                              opacity: 0.5,
+                              child: IgnorePointer(
+                                child: widget.customLeftButtonBuilder!(context, overlayState),
+                              ),
+                            )
+                          : widget.customLeftButtonBuilder!(context, overlayState)
                     else if (widget.customLeftButton != null)
-                      widget.customLeftButton!
+                      _isFilePickerActive
+                          ? Opacity(
+                              opacity: 0.5,
+                              child: IgnorePointer(
+                                child: widget.customLeftButton!,
+                              ),
+                            )
+                          : widget.customLeftButton!
                     else if (widget.showGalleryButton && widget.customLeftButton == null)
                       CameralyOverlayButton(
-                        onTap: _isRecording ? null : _openMediaGallery,
-                        backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
+                        onTap: (_isRecording || _isFilePickerActive) ? null : _openMediaGallery,
+                        backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
                         size: 56,
                         margin: EdgeInsets.zero, // Remove the default top margin
                         useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
                         hapticFeedbackType: widget.customButtonHapticFeedbackType,
-                        child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
+                        child: Icon(Icons.photo_library, color: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white, size: 30),
                       )
                     else
                       const SizedBox.shrink(),
@@ -2338,17 +2555,31 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   children: [
                     // Use the customRightButtonBuilder if provided, otherwise fallback to customRightButton
                     if (widget.customRightButtonBuilder != null)
-                      widget.customRightButtonBuilder!(context, overlayState)
+                      _isFilePickerActive
+                          ? Opacity(
+                              opacity: 0.5,
+                              child: IgnorePointer(
+                                child: widget.customRightButtonBuilder!(context, overlayState),
+                              ),
+                            )
+                          : widget.customRightButtonBuilder!(context, overlayState)
                     else if (widget.customRightButton != null)
-                      widget.customRightButton!
+                      _isFilePickerActive
+                          ? Opacity(
+                              opacity: 0.5,
+                              child: IgnorePointer(
+                                child: widget.customRightButton!,
+                              ),
+                            )
+                          : widget.customRightButton!
                     else if (widget.showSwitchCameraButton)
                       Container(
                         decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
                         child: IconButton.filled(
-                          onPressed: _switchCamera,
+                          onPressed: _isFilePickerActive ? null : _switchCamera,
                           icon: const Icon(Icons.switch_camera),
                           iconSize: 30,
-                          style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, padding: const EdgeInsets.all(12)),
+                          style: IconButton.styleFrom(backgroundColor: _isFilePickerActive ? Colors.grey.withOpacity(0.3) : Colors.white24, foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white, padding: const EdgeInsets.all(12)),
                         ),
                       )
                     else
@@ -2373,6 +2604,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       flashMode: _flashMode,
       torchEnabled: _torchEnabled,
       recordingDuration: _recordingDuration,
+      isFilePickerActive: _isFilePickerActive,
     );
 
     return Padding(
@@ -2390,33 +2622,49 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextButton(
-                    onPressed: () => setState(() {
-                      // Provide haptic feedback when switching to photo mode
-                      HapticFeedback.lightImpact();
+                    onPressed: _isFilePickerActive
+                        ? null
+                        : () => setState(() {
+                              // Provide haptic feedback when switching to photo mode
+                              HapticFeedback.lightImpact();
 
-                      _isVideoMode = false;
-                      if (!_isFrontCamera) {
-                        _controller?.setFlashMode(_flashMode);
-                      }
-                      _torchEnabled = false;
-                      _notifyCameraStateChanged();
-                    }),
-                    style: TextButton.styleFrom(foregroundColor: !_isVideoMode ? Colors.white : Colors.white60, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                    child: const Text('Photo', style: TextStyle(fontSize: 12)),
+                              _isVideoMode = false;
+                              if (!_isFrontCamera) {
+                                _controller?.setFlashMode(_flashMode);
+                              }
+                              _torchEnabled = false;
+                              _notifyCameraStateChanged();
+                            }),
+                    style: TextButton.styleFrom(
+                      foregroundColor: !_isVideoMode ? Colors.white : Colors.white60,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      disabledForegroundColor: Colors.white38,
+                    ),
+                    child: Text('Photo', style: TextStyle(fontSize: 12, color: _isFilePickerActive ? Colors.white38 : (!_isVideoMode ? Colors.white : Colors.white60))),
                   ),
                   const SizedBox(height: 4),
                   TextButton(
-                    onPressed: () => setState(() {
-                      // Provide haptic feedback when switching to video mode
-                      HapticFeedback.lightImpact();
+                    onPressed: _isFilePickerActive
+                        ? null
+                        : () => setState(() {
+                              // Provide haptic feedback when switching to video mode
+                              HapticFeedback.lightImpact();
 
-                      _isVideoMode = true;
-                      _controller?.setFlashMode(FlashMode.off);
-                      _torchEnabled = false;
-                      _notifyCameraStateChanged();
-                    }),
-                    style: TextButton.styleFrom(foregroundColor: _isVideoMode ? Colors.white : Colors.white60, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                    child: const Text('Video', style: TextStyle(fontSize: 12)),
+                              _isVideoMode = true;
+                              _controller?.setFlashMode(FlashMode.off);
+                              _torchEnabled = false;
+                              _notifyCameraStateChanged();
+                            }),
+                    style: TextButton.styleFrom(
+                      foregroundColor: _isVideoMode ? Colors.white : Colors.white60,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      disabledForegroundColor: Colors.white38,
+                    ),
+                    child: Text('Video', style: TextStyle(fontSize: 12, color: _isFilePickerActive ? Colors.white38 : (_isVideoMode ? Colors.white : Colors.white60))),
                   ),
                 ],
               ),
@@ -2433,13 +2681,28 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             width: isWideScreen ? 64 : 56,
             height: isWideScreen ? 64 : 56,
             child: widget.customLeftButtonBuilder != null
-                ? widget.customLeftButtonBuilder!(context, overlayState)
-                : widget.customLeftButton ??
-                    (widget.showGalleryButton
+                ? _isFilePickerActive
+                    ? Opacity(
+                        opacity: 0.5,
+                        child: IgnorePointer(
+                          child: widget.customLeftButtonBuilder!(context, overlayState),
+                        ),
+                      )
+                    : widget.customLeftButtonBuilder!(context, overlayState)
+                : widget.customLeftButton != null
+                    ? _isFilePickerActive
+                        ? Opacity(
+                            opacity: 0.5,
+                            child: IgnorePointer(
+                              child: widget.customLeftButton!,
+                            ),
+                          )
+                        : widget.customLeftButton!
+                    : (widget.showGalleryButton
                         ? Container(
                             decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                             child: IconButton.filled(
-                              onPressed: _isRecording
+                              onPressed: (_isRecording || _isFilePickerActive)
                                   ? null
                                   : () {
                                       if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
@@ -2466,9 +2729,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                                     },
                               icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
                               style: IconButton.styleFrom(
-                                backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
-                                foregroundColor: _isRecording ? Colors.white60 : Colors.white,
+                                backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
+                                foregroundColor: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white,
                                 minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                                disabledForegroundColor: Colors.white38,
                               ),
                             ),
                           )
@@ -2483,18 +2747,34 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             width: isWideScreen ? 64 : 56,
             height: isWideScreen ? 64 : 56,
             child: widget.customRightButtonBuilder != null
-                ? widget.customRightButtonBuilder!(context, overlayState)
-                : widget.customRightButton ??
-                    (widget.showSwitchCameraButton && !_isRecording
+                ? _isFilePickerActive
+                    ? Opacity(
+                        opacity: 0.5,
+                        child: IgnorePointer(
+                          child: widget.customRightButtonBuilder!(context, overlayState),
+                        ),
+                      )
+                    : widget.customRightButtonBuilder!(context, overlayState)
+                : widget.customRightButton != null
+                    ? _isFilePickerActive
+                        ? Opacity(
+                            opacity: 0.5,
+                            child: IgnorePointer(
+                              child: widget.customRightButton!,
+                            ),
+                          )
+                        : widget.customRightButton!
+                    : (widget.showSwitchCameraButton && !_isRecording
                         ? Container(
                             decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
                             child: IconButton.filled(
-                              onPressed: _switchCamera,
+                              onPressed: _isFilePickerActive ? null : _switchCamera,
                               icon: const Icon(Icons.switch_camera),
                               style: IconButton.styleFrom(
-                                backgroundColor: Colors.white24,
-                                foregroundColor: Colors.white,
+                                backgroundColor: _isFilePickerActive ? Colors.grey.withOpacity(0.3) : Colors.white24,
+                                foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white,
                                 minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                                disabledForegroundColor: Colors.white38,
                               ),
                             ),
                           )
