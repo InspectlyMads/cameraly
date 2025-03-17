@@ -855,16 +855,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       setState(() {
         _isRecording = false;
       });
-
-      // Show a notification to the user that recording was interrupted
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Recording interrupted and discarded'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
     } catch (e) {
       debugPrint('🎥 Error stopping recording: $e');
     }
@@ -1518,12 +1508,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   Future<void> _openMediaGallery() async {
     try {
+      // Initial haptic feedback when method is called
+      HapticFeedback.selectionClick();
+
       // Check if we're in video-only mode
       final isVideoOnlyMode = _controller?.settings.cameraMode == CameraMode.videoOnly;
 
       if (isVideoOnlyMode) {
-        // In video-only mode, we only pick videos
         final XFile? pickedVideo = await _imagePicker.pickVideo(source: ImageSource.gallery);
+
+        // Immediate feedback when returning from picker
+        HapticFeedback.lightImpact();
 
         if (pickedVideo != null && widget.controller?.mediaManager != null) {
           // Process the video file to generate a thumbnail
@@ -1536,27 +1531,51 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           if (widget.onCapture != null) {
             widget.onCapture!(processedVideo);
           }
+
+          // Completion feedback
+          HapticFeedback.mediumImpact();
         }
       } else if (widget.multiImageSelect && !isVideoOnlyMode) {
         // Pick multiple images from device gallery (not in video-only mode)
         final List<XFile> pickedFiles = await _imagePicker.pickMultiImage();
 
+        // Immediate feedback when returning from picker, regardless of selection result
+        HapticFeedback.lightImpact();
+
         // Add each image to the media manager
         if (pickedFiles.isNotEmpty && widget.controller?.mediaManager != null) {
-          for (final file in pickedFiles) {
+          // Short delay to allow initial loading message to be seen
+          await Future.delayed(const Duration(milliseconds: 300));
+
+          // Process files with slight delay between them to allow UI updates
+          for (int i = 0; i < pickedFiles.length; i++) {
+            final file = pickedFiles[i];
             widget.controller!.mediaManager.addMedia(file);
 
             // Call the onCapture callback for each file if provided
             if (widget.onCapture != null) {
               widget.onCapture!(file);
             }
+
+            // Small delay between processing files to prevent UI freezing
+            if (pickedFiles.length > 10 && i < pickedFiles.length - 1) {
+              await Future.delayed(const Duration(milliseconds: 5));
+            }
           }
+
+          HapticFeedback.heavyImpact();
         }
       } else {
         // Pick a single image from device gallery (not in video-only mode)
         final XFile? pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
 
+        // Immediate feedback when returning from picker
+        HapticFeedback.lightImpact();
+
         if (pickedFile != null && widget.controller?.mediaManager != null) {
+          // Brief delay to show loading state
+          await Future.delayed(const Duration(milliseconds: 300));
+
           // Add the image to the media manager
           widget.controller!.mediaManager.addMedia(pickedFile);
 
@@ -1564,6 +1583,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           if (widget.onCapture != null) {
             widget.onCapture!(pickedFile);
           }
+
+          HapticFeedback.mediumImpact();
         }
       }
 
@@ -1572,6 +1593,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         widget.onGalleryTap!();
       }
     } catch (e) {
+      // Haptic feedback for error
+      HapticFeedback.vibrate();
+
       // Call error callback if provided
       if (widget.onError != null) {
         widget.onError!('gallery', 'Error opening gallery: $e', error: e, isRecoverable: true);
