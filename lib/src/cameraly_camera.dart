@@ -53,6 +53,8 @@ class CameraPreviewSettings {
     // Custom position widgets
     this.customRightButton,
     this.customLeftButton,
+    this.customRightButtonBuilder,
+    this.customLeftButtonBuilder,
     this.topLeftWidget,
     this.centerLeftWidget,
     this.bottomOverlayWidget,
@@ -138,10 +140,58 @@ class CameraPreviewSettings {
   final String loadingText;
 
   /// Custom widget to display in the right button position.
+  ///
+  /// Note: If [customRightButtonBuilder] is provided, it takes precedence over this.
   final Widget? customRightButton;
 
   /// Custom widget to display in the left button position.
+  ///
+  /// Note: If [customLeftButtonBuilder] is provided, it takes precedence over this.
   final Widget? customLeftButton;
+
+  /// Builder for a dynamic right button that can change based on camera state.
+  ///
+  /// This provides access to the context and the current camera overlay state,
+  /// allowing for conditional rendering based on camera status (recording, video mode, etc).
+  ///
+  /// Example:
+  /// ```dart
+  /// customRightButtonBuilder: (context, state) {
+  ///   // Disable button while recording
+  ///   if (state.isRecording) {
+  ///     return const SizedBox.shrink();
+  ///   }
+  ///   return FloatingActionButton(
+  ///     onPressed: () => Navigator.of(context).pop(),
+  ///     child: const Icon(Icons.check),
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// Note: This takes precedence over [customRightButton] if both are provided.
+  final Widget Function(BuildContext context, CameralyOverlayState state)? customRightButtonBuilder;
+
+  /// Builder for a dynamic left button that can change based on camera state.
+  ///
+  /// This provides access to the context and the current camera overlay state,
+  /// allowing for conditional rendering based on camera status (recording, video mode, etc).
+  ///
+  /// Example:
+  /// ```dart
+  /// customLeftButtonBuilder: (context, state) {
+  ///   // Hide button while recording
+  ///   if (state.isRecording) {
+  ///     return const SizedBox.shrink();
+  ///   }
+  ///   return FloatingActionButton(
+  ///     onPressed: () => doSomething(),
+  ///     child: const Icon(Icons.settings),
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// Note: This takes precedence over [customLeftButton] if both are provided.
+  final Widget Function(BuildContext context, CameralyOverlayState state)? customLeftButtonBuilder;
 
   /// Widget to display in the top-left corner of the overlay.
   final Widget? topLeftWidget;
@@ -331,6 +381,8 @@ class CameraPreviewSettings {
       loadingText: loadingText ?? this.loadingText,
       customRightButton: customRightButton ?? this.customRightButton,
       customLeftButton: customLeftButton ?? this.customLeftButton,
+      customRightButtonBuilder: customRightButtonBuilder ?? customRightButtonBuilder,
+      customLeftButtonBuilder: customLeftButtonBuilder ?? customLeftButtonBuilder,
       topLeftWidget: topLeftWidget ?? this.topLeftWidget,
       centerLeftWidget: centerLeftWidget ?? this.centerLeftWidget,
       bottomOverlayWidget: bottomOverlayWidget ?? this.bottomOverlayWidget,
@@ -593,6 +645,8 @@ class _CameralyCameraState extends State<CameralyCamera> {
       maxVideoDuration: widget.settings.videoDurationLimit,
       customLeftButton: widget.settings.customLeftButton,
       customRightButton: widget.settings.customRightButton,
+      customRightButtonBuilder: widget.settings.customRightButtonBuilder,
+      customLeftButtonBuilder: widget.settings.customLeftButtonBuilder,
       topLeftWidget: widget.settings.topLeftWidget,
       centerLeftWidget: widget.settings.centerLeftWidget,
       bottomOverlayWidget: widget.settings.bottomOverlayWidget,

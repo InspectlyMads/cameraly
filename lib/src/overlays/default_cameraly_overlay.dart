@@ -203,6 +203,8 @@ class DefaultCameralyOverlay extends StatefulWidget {
     this.showMediaStack = true,
     this.customLeftButton,
     this.customRightButton,
+    this.customLeftButtonBuilder,
+    this.customRightButtonBuilder,
     this.centerLeftWidget,
     this.showCaptureButton = true,
     this.onError,
@@ -340,6 +342,50 @@ class DefaultCameralyOverlay extends StatefulWidget {
 
   /// Custom button to display on the right side.
   final Widget? customRightButton;
+
+  /// Builder for a dynamic left button that can change based on camera state.
+  ///
+  /// This provides access to the context and the current camera overlay state,
+  /// allowing for conditional rendering based on camera status (recording, video mode, etc).
+  ///
+  /// Example:
+  /// ```dart
+  /// customLeftButtonBuilder: (context, state) {
+  ///   // Hide button while recording
+  ///   if (state.isRecording) {
+  ///     return const SizedBox.shrink();
+  ///   }
+  ///   return FloatingActionButton(
+  ///     onPressed: () => doSomething(),
+  ///     child: const Icon(Icons.settings),
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// Note: This takes precedence over [customLeftButton] if both are provided.
+  final Widget Function(BuildContext context, CameralyOverlayState state)? customLeftButtonBuilder;
+
+  /// Builder for a dynamic right button that can change based on camera state.
+  ///
+  /// This provides access to the context and the current camera overlay state,
+  /// allowing for conditional rendering based on camera status (recording, video mode, etc).
+  ///
+  /// Example:
+  /// ```dart
+  /// customRightButtonBuilder: (context, state) {
+  ///   // Disable button while recording
+  ///   if (state.isRecording) {
+  ///     return const SizedBox.shrink();
+  ///   }
+  ///   return FloatingActionButton(
+  ///     onPressed: () => Navigator.of(context).pop(),
+  ///     child: const Icon(Icons.check),
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// Note: This takes precedence over [customRightButton] if both are provided.
+  final Widget Function(BuildContext context, CameralyOverlayState state)? customRightButtonBuilder;
 
   /// Widget to display in the center-left area.
   final Widget? centerLeftWidget;
@@ -2056,6 +2102,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Widget _buildTopArea({required bool isLandscape}) {
+    // Get the current overlay state for button builders
+    final overlayState = CameralyOverlayState(
+      isRecording: _isRecording,
+      isVideoMode: _isVideoMode,
+      isFrontCamera: _isFrontCamera,
+      flashMode: _flashMode,
+      torchEnabled: _torchEnabled,
+      recordingDuration: _recordingDuration,
+    );
+
     return SizedBox(
       width: isLandscape ? 80 : double.infinity,
       child: Padding(
@@ -2090,15 +2146,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 child: CameralyOverlayButton(onTap: _toggleTorch, child: Icon(_torchEnabled ? Icons.flashlight_on : Icons.flashlight_off, color: _torchEnabled ? Colors.white : Colors.white60)),
               ),
 
-            // Gallery button (shown in top area when customLeftButton is provided)
-            if (widget.showGalleryButton && widget.customLeftButton != null)
+            // Gallery button (shown in top area when customLeftButton or customLeftButtonBuilder is provided)
+            if (widget.showGalleryButton && (widget.customLeftButton != null || widget.customLeftButtonBuilder != null))
               Align(
                 alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
                 child: CameralyOverlayButton(onTap: _isRecording ? null : _openMediaGallery, child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 28)),
               ),
 
-            // Camera switch button (shown in top area when customRightButton is provided)
-            if (widget.showSwitchCameraButton && widget.customRightButton != null && !_isRecording)
+            // Camera switch button (shown in top area when customRightButton or customRightButtonBuilder is provided)
+            if (widget.showSwitchCameraButton && (widget.customRightButton != null || widget.customRightButtonBuilder != null) && !_isRecording)
               Align(alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight, child: CameralyOverlayButton(onTap: _switchCamera, child: const Icon(Icons.switch_camera, color: Colors.white, size: 28))),
           ],
         ),
@@ -2123,6 +2179,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Widget _buildPortraitControls() {
+    // Get the current overlay state for button builders
+    final overlayState = CameralyOverlayState(
+      isRecording: _isRecording,
+      isVideoMode: _isVideoMode,
+      isFrontCamera: _isFrontCamera,
+      flashMode: _flashMode,
+      torchEnabled: _torchEnabled,
+      recordingDuration: _recordingDuration,
+    );
+
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 20, left: 20, right: 20, top: 20),
       child: Column(
@@ -2215,19 +2281,23 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start, // Align to top
                   children: [
-                    widget.customLeftButton != null
-                        ? widget.customLeftButton!
-                        : widget.showGalleryButton && widget.customLeftButton == null
-                            ? CameralyOverlayButton(
-                                onTap: _isRecording ? null : _openMediaGallery,
-                                backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
-                                size: 56,
-                                margin: EdgeInsets.zero, // Remove the default top margin
-                                useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
-                                hapticFeedbackType: widget.customButtonHapticFeedbackType,
-                                child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
-                              )
-                            : const SizedBox.shrink(),
+                    // Use the customLeftButtonBuilder if provided, otherwise fallback to customLeftButton
+                    if (widget.customLeftButtonBuilder != null)
+                      widget.customLeftButtonBuilder!(context, overlayState)
+                    else if (widget.customLeftButton != null)
+                      widget.customLeftButton!
+                    else if (widget.showGalleryButton && widget.customLeftButton == null)
+                      CameralyOverlayButton(
+                        onTap: _isRecording ? null : _openMediaGallery,
+                        backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
+                        size: 56,
+                        margin: EdgeInsets.zero, // Remove the default top margin
+                        useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
+                        hapticFeedbackType: widget.customButtonHapticFeedbackType,
+                        child: Icon(Icons.photo_library, color: _isRecording ? Colors.white60 : Colors.white, size: 30),
+                      )
+                    else
+                      const SizedBox.shrink(),
                   ],
                 ),
               ),
@@ -2242,19 +2312,23 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start, // Align to top
                   children: [
-                    widget.customRightButton != null
-                        ? widget.customRightButton!
-                        : widget.showSwitchCameraButton
-                            ? Container(
-                                decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
-                                child: IconButton.filled(
-                                  onPressed: _switchCamera,
-                                  icon: const Icon(Icons.switch_camera),
-                                  iconSize: 30,
-                                  style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, padding: const EdgeInsets.all(12)),
-                                ),
-                              )
-                            : const SizedBox.shrink(),
+                    // Use the customRightButtonBuilder if provided, otherwise fallback to customRightButton
+                    if (widget.customRightButtonBuilder != null)
+                      widget.customRightButtonBuilder!(context, overlayState)
+                    else if (widget.customRightButton != null)
+                      widget.customRightButton!
+                    else if (widget.showSwitchCameraButton)
+                      Container(
+                        decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
+                        child: IconButton.filled(
+                          onPressed: _switchCamera,
+                          icon: const Icon(Icons.switch_camera),
+                          iconSize: 30,
+                          style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, padding: const EdgeInsets.all(12)),
+                        ),
+                      )
+                    else
+                      const SizedBox.shrink(),
                   ],
                 ),
               ),
@@ -2267,6 +2341,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Widget _buildLandscapeControls(bool isWideScreen) {
+    // Get the current overlay state for button builders
+    final overlayState = CameralyOverlayState(
+      isRecording: _isRecording,
+      isVideoMode: _isVideoMode,
+      isFrontCamera: _isFrontCamera,
+      flashMode: _flashMode,
+      torchEnabled: _torchEnabled,
+      recordingDuration: _recordingDuration,
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       child: Column(
@@ -2324,46 +2408,47 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           SizedBox(
             width: isWideScreen ? 64 : 56,
             height: isWideScreen ? 64 : 56,
-            child: widget.customLeftButton != null
-                ? widget.customLeftButton!
-                : widget.showGalleryButton && widget.customLeftButton == null
-                    ? Container(
-                        decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                        child: IconButton.filled(
-                          onPressed: _isRecording
-                              ? null
-                              : () {
-                                  if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
-                                    // Apply the appropriate haptic feedback type
-                                    switch (widget.customButtonHapticFeedbackType) {
-                                      case HapticFeedbackType.light:
-                                        HapticFeedback.lightImpact();
-                                        break;
-                                      case HapticFeedbackType.medium:
-                                        HapticFeedback.mediumImpact();
-                                        break;
-                                      case HapticFeedbackType.heavy:
-                                        HapticFeedback.heavyImpact();
-                                        break;
-                                      case HapticFeedbackType.selection:
-                                        HapticFeedback.selectionClick();
-                                        break;
-                                      case HapticFeedbackType.vibrate:
-                                        HapticFeedback.vibrate();
-                                        break;
-                                    }
-                                  }
-                                  _openMediaGallery();
-                                },
-                          icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
-                          style: IconButton.styleFrom(
-                            backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
-                            foregroundColor: _isRecording ? Colors.white60 : Colors.white,
-                            minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
-                          ),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+            child: widget.customLeftButtonBuilder != null
+                ? widget.customLeftButtonBuilder!(context, overlayState)
+                : widget.customLeftButton ??
+                    (widget.showGalleryButton
+                        ? Container(
+                            decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
+                            child: IconButton.filled(
+                              onPressed: _isRecording
+                                  ? null
+                                  : () {
+                                      if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
+                                        // Apply the appropriate haptic feedback type
+                                        switch (widget.customButtonHapticFeedbackType) {
+                                          case HapticFeedbackType.light:
+                                            HapticFeedback.lightImpact();
+                                            break;
+                                          case HapticFeedbackType.medium:
+                                            HapticFeedback.mediumImpact();
+                                            break;
+                                          case HapticFeedbackType.heavy:
+                                            HapticFeedback.heavyImpact();
+                                            break;
+                                          case HapticFeedbackType.selection:
+                                            HapticFeedback.selectionClick();
+                                            break;
+                                          case HapticFeedbackType.vibrate:
+                                            HapticFeedback.vibrate();
+                                            break;
+                                        }
+                                      }
+                                      _openMediaGallery();
+                                    },
+                              icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
+                              style: IconButton.styleFrom(
+                                backgroundColor: _isRecording ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
+                                foregroundColor: _isRecording ? Colors.white60 : Colors.white,
+                                minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink()),
           ),
 
           // Spacing between buttons
@@ -2373,43 +2458,23 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           SizedBox(
             width: isWideScreen ? 64 : 56,
             height: isWideScreen ? 64 : 56,
-            child: widget.customRightButton != null
-                ? widget.customRightButton!
-                : widget.showSwitchCameraButton
-                    ? Container(
-                        decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                        child: IconButton.filled(
-                          onPressed: _isRecording
-                              ? null
-                              : () {
-                                  if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
-                                    // Apply the appropriate haptic feedback type
-                                    switch (widget.customButtonHapticFeedbackType) {
-                                      case HapticFeedbackType.light:
-                                        HapticFeedback.lightImpact();
-                                        break;
-                                      case HapticFeedbackType.medium:
-                                        HapticFeedback.mediumImpact();
-                                        break;
-                                      case HapticFeedbackType.heavy:
-                                        HapticFeedback.heavyImpact();
-                                        break;
-                                      case HapticFeedbackType.selection:
-                                        HapticFeedback.selectionClick();
-                                        break;
-                                      case HapticFeedbackType.vibrate:
-                                        HapticFeedback.vibrate();
-                                        break;
-                                    }
-                                  }
-                                  _switchCamera();
-                                },
-                          icon: Icon(Icons.switch_camera, size: isWideScreen ? 32 : 24),
-                          style:
-                              IconButton.styleFrom(backgroundColor: _isRecording ? Colors.white10 : Colors.white24, foregroundColor: _isRecording ? Colors.white38 : Colors.white, minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48)),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+            child: widget.customRightButtonBuilder != null
+                ? widget.customRightButtonBuilder!(context, overlayState)
+                : widget.customRightButton ??
+                    (widget.showSwitchCameraButton && !_isRecording
+                        ? Container(
+                            decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
+                            child: IconButton.filled(
+                              onPressed: _switchCamera,
+                              icon: const Icon(Icons.switch_camera),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.white24,
+                                foregroundColor: Colors.white,
+                                minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink()),
           ),
         ],
       ),

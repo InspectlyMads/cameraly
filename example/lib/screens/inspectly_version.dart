@@ -34,20 +34,28 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
           // Keep all photos (no limit)
           maxMediaItems: 9999,
 
-          // Add custom done button
-          customRightButton: SizedBox(
-            height: 56, // Explicit height to ensure consistent sizing
-            width: 56, // Explicit width to ensure consistent sizing
-            child: FloatingActionButton(
-              onPressed: () {
-                debugPrint('Done button pressed with ${_capturedMedia.length} photos');
-                Navigator.of(context).pop(_capturedMedia);
-              },
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black87,
-              child: const Icon(Icons.check),
-            ),
-          ),
+          // Add custom done button that can be disabled during recording
+          customRightButtonBuilder: (context, state) {
+            // Disable button while recording
+            final bool isDisabled = state.isRecording;
+
+            return SizedBox(
+              height: 56, // Explicit height to ensure consistent sizing
+              width: 56, // Explicit width to ensure consistent sizing
+              child: FloatingActionButton(
+                onPressed:
+                    isDisabled
+                        ? null
+                        : () {
+                          debugPrint('Done button pressed with ${_capturedMedia.length} photos');
+                          Navigator.of(context).pop(_capturedMedia);
+                        },
+                backgroundColor: isDisabled ? Colors.grey : Colors.white,
+                foregroundColor: Colors.black87,
+                child: const Icon(Icons.check),
+              ),
+            );
+          },
 
           // Loading text
           loadingText: 'Initializing Inspectly camera...',
