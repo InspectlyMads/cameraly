@@ -224,15 +224,67 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       // Use a post-frame callback to ensure the context is valid
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Only call handleOrientationChange if the controller is initialized
-        if (_controller!.value.isInitialized) {
+        if (mounted && _controller != null && _controller!.value.isInitialized) {
           // Print the current orientation for debugging
           _controller!.printCurrentOrientation(context);
 
-          // Add a small delay to let the system stabilize after orientation change
-          _orientationDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+          // For Android, explicitly pause the camera preview during orientation change
+          if (Platform.isAndroid && _controller!.cameraController != null) {
+            // Pause camera preview first
+            try {
+              debugPrint('🎥 Pausing Android camera during orientation change');
+              _controller!.cameraController!.pausePreview();
+            } catch (e) {
+              debugPrint('🎥 Error pausing camera preview: $e');
+            }
+
+            // Add a longer delay for Android to ensure system has fully stabilized
+            // This is critical for orientation changes
+            _orientationDebounceTimer = Timer(const Duration(milliseconds: 800), () {
+              if (mounted) {
+                debugPrint('🎥 Starting aggressive camera recovery after orientation change');
+
+                // Show a loading indicator while recovering the camera
+                setState(() {
+                  // This will keep showing the loading overlay from _isChangingOrientation = true
+                });
+
+                // Use our more aggressive camera recovery method
+                _controller!.handleCameraResume().then((_) {
+                  // Only reset orientation change flag when recovery is complete
+                  if (mounted) {
+                    setState(() {
+                      _isChangingOrientation = false;
+                      debugPrint('🎥 Camera recovery complete, resetting UI');
+                    });
+                  }
+                }).catchError((error) {
+                  debugPrint('🎥 Camera recovery error: $error');
+                  // Reset orientation change flag even on error
+                  if (mounted) {
+                    setState(() {
+                      _isChangingOrientation = false;
+                    });
+                  }
+                });
+              }
+            });
+          } else {
+            // For iOS, just use a timer without explicit pause/resume (works fine)
+            _orientationDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                setState(() {
+                  // Reset the orientation change flag when we're done
+                  _isChangingOrientation = false;
+                });
+              }
+            });
+          }
+        } else {
+          // If controller isn't initialized, just reset the flag after a delay
+          _orientationDebounceTimer = Timer(const Duration(milliseconds: 500), () {
             if (mounted) {
               setState(() {
-                // Reset the orientation change flag when we're done
                 _isChangingOrientation = false;
               });
             }
@@ -349,6 +401,9 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   }
 
   void _handleScaleStart(ScaleStartDetails details) {
+    // Check for null controller before proceeding
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
     // Store the initial scale value to use as a reference point
     _controller!.value = _controller!.value.copyWith(
       initialZoomLevel: _controller!.value.zoomLevel,
@@ -356,6 +411,9 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   }
 
   void _handleScaleUpdate(ScaleUpdateDetails details) {
+    // Check for null controller before proceeding
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
     if (widget.onScale != null) {
       // Call the user's onScale callback if provided
       widget.onScale!(details.scale);
@@ -394,6 +452,20 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   }
 
   Widget _buildCameraPreview(CameralyValue value, BoxConstraints constraints) {
+    // First check if controller and camera controller are valid
+    if (_controller == null || _controller!.cameraController == null) {
+      // Return a placeholder if controller is null or not fully initialized
+      return Container(
+        color: Colors.black,
+        child: const Center(
+          child: Text(
+            'Camera initializing...',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
     // Get the current orientation
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     // Get the camera's natural aspect ratio
@@ -442,7 +514,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         scaleY: 1.0,
         child: Container(
           key: previewKey,
-          child: CameraPreview(_controller!.cameraController!),
+          child: _controller!.cameraController != null ? CameraPreview(_controller!.cameraController!) : Container(color: Colors.black), // Fallback if controller becomes null
         ),
       ),
     );
@@ -524,14 +596,26 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         Center(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              // Build the preview widget
+              // Only build the camera preview if controller is valid
+              // This prevents null checks in rotation transitions
+              if (_controller == null || _controller!.cameraController == null) {
+                // Return a placeholder during transitions
+                return Container(
+                  color: Colors.black,
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                );
+              }
+
+              // Build the preview widget with null-safety
               final previewWidget = _buildCameraPreview(value, constraints);
 
-              // Wrap only the preview in GestureDetector
+              // Wrap only the preview in GestureDetector with null checks for handlers
               return GestureDetector(
-                onTapDown: _handleTap,
-                onScaleStart: _handleScaleStart,
-                onScaleUpdate: _handleScaleUpdate,
+                onTapDown: _controller != null ? _handleTap : null,
+                onScaleStart: _controller != null ? _handleScaleStart : null,
+                onScaleUpdate: _controller != null ? _handleScaleUpdate : null,
                 child: previewWidget,
               );
             },

@@ -203,63 +203,60 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
   /// Handles device orientation changes.
   ///
-  /// This method is called when the device orientation changes and
-  /// uses the platform-specific method channel to get the exact device orientation.
+  /// This method is called when the device orientation changes and updates
+  /// the camera preview to match the new orientation.
   Future<void> handleDeviceOrientationChange() async {
-    if (!value.isInitialized || _controller == null) {
-      debugPrint('⚠️ Cannot handle orientation change: camera not initialized');
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('📸 Cannot handle orientation change: Controller not ready');
       return;
     }
 
-    // Get the current device orientation from the platform
-    final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
-    final size = platformDispatcher.views.first.physicalSize;
+    final newOrientation = await _getDeviceOrientation();
 
-    // Determine orientation based on physical dimensions
-    final isLandscape = size.width > size.height;
+    debugPrint('📸 Handling device orientation change: $newOrientation');
 
-    // Print orientation information
-    debugPrint('📱 DEVICE ORIENTATION CHANGED:');
-    debugPrint('📐 Physical Size: $size');
-    debugPrint('📱 Is Landscape: $isLandscape');
-    debugPrint('🧭 Previous Orientation: ${value.deviceOrientation}');
-
-    // Get device orientation from platform channel
-    DeviceOrientation newOrientation;
-
-    try {
-      // Get the raw rotation value from the platform
-      final int rawRotation = await OrientationChannel.getRawRotationValue();
-      debugPrint('🧭 Raw rotation value: $rawRotation');
-
-      // Get the mapped orientation
-      newOrientation = await OrientationChannel.getPlatformOrientation();
-      debugPrint('🧭 Detected orientation: $newOrientation');
-    } catch (e) {
-      // If method channel fails, keep the current orientation
-      debugPrint('⚠️ Error getting rotation: $e, keeping current orientation');
-      return;
-    }
-
-    // Check if the orientation actually changed
-    if (value.deviceOrientation == newOrientation) {
-      debugPrint('🧭 Orientation unchanged, skipping update');
-      return;
-    }
-
-    debugPrint('🧭 Setting orientation: $newOrientation');
-
-    // Update the value first to trigger UI updates
+    // First update our local value
     value = value.copyWith(deviceOrientation: newOrientation);
 
-    // For Android, apply the orientation change with a small timeout to avoid locking
+    // Check again if controller is still valid before proceeding
+    if (_controller == null) {
+      debugPrint('📸 Controller became null during orientation change');
+      return;
+    }
+
+    // On Android, handle the orientation change explicitly
     if (Platform.isAndroid) {
       try {
         // Use a small delay before locking orientation to avoid freezing
         await Future.delayed(const Duration(milliseconds: 100));
+
+        // Check again for null controller after delay
+        if (_controller == null) {
+          debugPrint('📸 Controller became null during orientation change delay');
+          return;
+        }
+
+        await setDeviceOrientation(newOrientation);
+
+        // Force camera resume to fix freezing issues on Android
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        // Verify controller is still valid before attempting resume
+        if (_controller == null) {
+          debugPrint('📸 Controller became null before camera resume');
+          return;
+        }
+
+        await handleCameraResume();
+      } catch (e) {
+        debugPrint('❌ Error setting device orientation on Android: $e');
+      }
+    } else {
+      // For iOS, just set the orientation
+      try {
         await setDeviceOrientation(newOrientation);
       } catch (e) {
-        debugPrint('❌ Error setting device orientation: $e');
+        debugPrint('❌ Error setting device orientation on iOS: $e');
       }
     }
   }
@@ -1108,5 +1105,190 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
 
     return reportedRatio;
+  }
+
+  /// Handles camera resume with a complete controller recreation for Android
+  /// This is a more aggressive approach to fix freezing issues on orientation changes
+  Future<void> handleCameraResume() async {
+    if (!value.isInitialized || _controller == null) return;
+
+    try {
+      debugPrint('📸 Explicit camera resume requested');
+
+      // For Android, completely recreate the controller as a more aggressive fix
+      if (Platform.isAndroid) {
+        debugPrint('📸 Using aggressive camera recovery for Android');
+
+        // Save current state
+        final currentFlashMode = value.flashMode;
+        final currentZoomLevel = value.zoomLevel;
+        final currentFocusMode = value.focusMode;
+        final currentExposureMode = value.exposureMode;
+        final currentOrientation = value.deviceOrientation;
+        final wasRecording = value.isRecordingVideo;
+
+        // Stop recording if necessary
+        if (wasRecording) {
+          try {
+            await stopVideoRecording();
+          } catch (e) {
+            debugPrint('📸 Error stopping recording during recovery: $e');
+          }
+        }
+
+        debugPrint('📸 Disposing old camera controller');
+        // Dispose the old controller
+        final oldController = _controller;
+        _controller = null;
+
+        try {
+          await oldController?.dispose();
+        } catch (e) {
+          debugPrint('📸 Error disposing old controller: $e');
+        }
+
+        // Create new controller with same settings
+        debugPrint('📸 Creating new camera controller');
+        final newController = CameraController(
+          _description,
+          _settings.resolution,
+          enableAudio: _settings.enableAudio,
+          imageFormatGroup: ImageFormatGroup.jpeg,
+        );
+
+        try {
+          // Initialize the new controller
+          debugPrint('📸 Initializing new camera controller');
+          await newController.initialize();
+
+          // Assign the new controller
+          _controller = newController;
+
+          // CRITICAL: Explicitly set orientation first
+          try {
+            debugPrint('📸 Setting device orientation to: $currentOrientation');
+            await _controller!.lockCaptureOrientation(currentOrientation);
+          } catch (e) {
+            debugPrint('📸 Error setting orientation: $e');
+          }
+
+          // Add a small pause to let the orientation change apply
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Restore previous state
+          debugPrint('📸 Restoring camera parameters');
+          if (currentFlashMode != FlashMode.off) {
+            try {
+              await _controller!.setFlashMode(currentFlashMode);
+            } catch (e) {
+              debugPrint('📸 Error restoring flash mode: $e');
+            }
+          }
+
+          try {
+            await _controller!.setExposureMode(currentExposureMode);
+            await _controller!.setFocusMode(currentFocusMode);
+          } catch (e) {
+            debugPrint('📸 Error restoring focus/exposure: $e');
+          }
+
+          if (currentZoomLevel > 1.0) {
+            try {
+              await _controller!.setZoomLevel(currentZoomLevel);
+            } catch (e) {
+              debugPrint('📸 Error restoring zoom: $e');
+            }
+          }
+
+          // Restore recording state if needed (usually not recommended after controller recreation)
+          if (wasRecording && _settings.cameraMode != CameraMode.photoOnly) {
+            debugPrint('📸 Restoring recording state');
+            try {
+              await startVideoRecording();
+            } catch (e) {
+              debugPrint('📸 Error restoring recording: $e');
+            }
+          }
+
+          // Update our value to reflect the new controller
+          _updateValueFromController();
+
+          // Force explicit value update to ensure orientation is correct
+          value = value.copyWith(
+            deviceOrientation: currentOrientation,
+            isInitialized: true,
+            error: null,
+          );
+
+          // Force update the UI
+          notifyListeners();
+
+          debugPrint('📸 Camera recovered successfully');
+        } catch (e) {
+          debugPrint('📸 Failed to recover camera: $e');
+
+          // Try a simpler recovery as fallback
+          try {
+            if (_controller != null) {
+              _controller!.resumePreview();
+              debugPrint('📸 Fallback to simple resumePreview');
+            }
+          } catch (e2) {
+            debugPrint('📸 Even simple resumePreview failed: $e2');
+          }
+        }
+      } else {
+        // For iOS, simple resumePreview works fine
+        if (_controller != null) {
+          _controller!.resumePreview();
+          debugPrint('📸 iOS camera resumed with simple resumePreview');
+        }
+      }
+    } catch (e) {
+      debugPrint('📸 Error in handleCameraResume: $e');
+    }
+  }
+
+  /// Gets the current device orientation from the platform
+  Future<DeviceOrientation> _getDeviceOrientation() async {
+    try {
+      // Get the current device orientation from the platform
+      final platformDispatcher = WidgetsBinding.instance.platformDispatcher;
+      final size = platformDispatcher.views.first.physicalSize;
+
+      // Determine orientation based on physical dimensions
+      final isLandscape = size.width > size.height;
+
+      // Print orientation information
+      debugPrint('📱 DEVICE ORIENTATION CHANGED:');
+      debugPrint('📐 Physical Size: $size');
+      debugPrint('📱 Is Landscape: $isLandscape');
+      debugPrint('🧭 Previous Orientation: ${value.deviceOrientation}');
+
+      // Get device orientation from platform channel if available
+      DeviceOrientation newOrientation;
+
+      try {
+        // Try to get orientation from platform-specific method channel
+        // This should be defined in the OrientationChannel class
+        newOrientation = await OrientationChannel.getPlatformOrientation();
+        debugPrint('🧭 Detected orientation: $newOrientation');
+      } catch (e) {
+        // If method channel fails, use a simple landscape/portrait detection
+        debugPrint('⚠️ Error getting rotation: $e, using fallback orientation detection');
+        newOrientation = isLandscape ? DeviceOrientation.landscapeRight : DeviceOrientation.portraitUp;
+      }
+
+      // Check if the orientation actually changed
+      if (value.deviceOrientation == newOrientation) {
+        debugPrint('🧭 Orientation unchanged, skipping update');
+      }
+
+      return newOrientation;
+    } catch (e) {
+      debugPrint('⚠️ Error determining device orientation: $e');
+      // Return current orientation as fallback
+      return value.deviceOrientation;
+    }
   }
 }

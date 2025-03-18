@@ -708,22 +708,48 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       // First pause the camera to prevent issues during orientation change
       _pauseCamera();
 
-      // Then resume the camera after a short delay to allow UI to stabilize
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          debugPrint('🎥 Resuming camera after orientation change');
-          _resumeCamera().then((_) {
-            debugPrint('🎥 Camera resumed after orientation change');
-            // Reset the flag after successful resume
-            _orientationChangeInProgress = false;
+      // Use longer delay for Android to ensure UI fully stabilizes
+      // Android needs more time to handle orientation changes properly
+      final delay = Platform.isAndroid ? const Duration(milliseconds: 800) : const Duration(milliseconds: 300);
+
+      // Then recover the camera after a delay to allow UI to stabilize
+      Future.delayed(delay, () {
+        if (mounted && _controller != null) {
+          debugPrint('🎥 Starting camera recovery after orientation change');
+
+          // Use the controller's aggressive recovery method
+          _controller!.handleCameraResume().then((_) {
+            if (mounted) {
+              debugPrint('🎥 Camera recovered after orientation change');
+
+              // Reset the orientation change flag
+              _orientationChangeInProgress = false;
+
+              // Refresh the UI
+              setState(() {});
+
+              // Update buttons and UI state
+              _updateButtonStates();
+            }
           }).catchError((error) {
-            debugPrint('🎥 Error resuming camera after orientation change: $error');
+            debugPrint('🎥 Error recovering camera after orientation change: $error');
+
             // Reset the flag even if there's an error
             _orientationChangeInProgress = false;
-          });
 
-          // Trigger a UI rebuild with setState
-          setState(() {});
+            // Try one more time with a simple approach
+            if (mounted && _controller != null && _controller!.cameraController != null) {
+              try {
+                _controller!.cameraController!.resumePreview();
+                debugPrint('🎥 Attempted simple resumePreview as fallback');
+              } catch (e) {
+                debugPrint('🎥 Fallback resumePreview also failed: $e');
+              }
+
+              // Update UI regardless
+              setState(() {});
+            }
+          });
         } else {
           // Reset the flag if widget is no longer mounted
           _orientationChangeInProgress = false;
@@ -833,7 +859,36 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     try {
       if (_controller!.cameraController != null) {
         debugPrint('🎥 Resuming camera preview');
-        _controller!.cameraController!.resumePreview();
+
+        // On Android, add retry mechanism
+        if (Platform.isAndroid) {
+          try {
+            _controller!.cameraController!.resumePreview();
+            debugPrint('🎥 Android camera preview resumed successfully');
+          } catch (e) {
+            debugPrint('🎥 First attempt to resume Android camera failed: $e');
+
+            // Wait a moment and try again
+            await Future.delayed(const Duration(milliseconds: 200));
+            if (!mounted) return;
+
+            try {
+              _controller!.cameraController!.resumePreview();
+              debugPrint('🎥 Android camera preview resumed on second attempt');
+            } catch (e2) {
+              debugPrint('🎥 Second attempt to resume Android camera failed: $e2');
+              // One more try with a different approach
+              await Future.delayed(const Duration(milliseconds: 300));
+              if (!mounted) return;
+
+              // If all else failed, try forcing a UI update
+              setState(() {});
+            }
+          }
+        } else {
+          // For iOS, the normal resume works fine
+          _controller!.cameraController!.resumePreview();
+        }
 
         // Restore flash mode and torch settings
         if (!_isFrontCamera) {
@@ -855,6 +910,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       }
     } catch (e) {
       debugPrint('🎥 Error resuming camera: $e');
+      // Force a rebuild to help with recovery
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -2783,5 +2842,44 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         ],
       ),
     );
+  }
+
+  /// Updates the state of UI buttons based on current camera state
+  void _updateButtonStates() {
+    if (_controller == null || !mounted) return;
+
+    // Update flash button state
+    _updateFlashButtonState();
+
+    // Update recording indicator if needed
+    if (_controller!.value.isRecordingVideo != _isRecording) {
+      setState(() {
+        _isRecording = _controller!.value.isRecordingVideo;
+      });
+    }
+
+    // Update video mode state if needed
+    final bool cameraReady = _controller!.value.isInitialized && !_controller!.value.isRecordingVideo;
+
+    // Refresh UI state if camera is ready
+    if (cameraReady) {
+      // No need to check any specific condition - just ensure UI state is fresh
+      setState(() {
+        // This empty setState forces a UI rebuild
+      });
+    }
+  }
+
+  /// Updates the flash button state based on current flash mode
+  void _updateFlashButtonState() {
+    if (_controller == null || !mounted) return;
+
+    // Update flash mode from controller if needed
+    if (_controller!.value.flashMode != _flashMode) {
+      setState(() {
+        _flashMode = _controller!.value.flashMode;
+        _torchEnabled = _flashMode == FlashMode.torch;
+      });
+    }
   }
 }

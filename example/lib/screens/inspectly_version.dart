@@ -16,63 +16,65 @@ class _InspectlyVersionScreenState extends State<InspectlyVersionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: CameralyCamera(
-        settings: CameraPreviewSettings(
-          // Camera settings - photo only mode
-          cameraMode: CameraMode.photoOnly,
-          resolution: ResolutionPreset.high,
-          flashMode: FlashMode.auto,
-          enableAudio: false,
+    return SafeArea(
+      child: Scaffold(
+        body: CameralyCamera(
+          settings: CameraPreviewSettings(
+            // Camera settings - photo only mode
+            cameraMode: CameraMode.photoOnly,
+            resolution: ResolutionPreset.high,
+            flashMode: FlashMode.auto,
+            enableAudio: false,
 
-          // UI configuration
-          showSwitchCameraButton: true,
-          showFlashButton: true,
-          showMediaStack: true,
-          showCaptureButton: true,
+            // UI configuration
+            showSwitchCameraButton: true,
+            showFlashButton: true,
+            showMediaStack: true,
+            showCaptureButton: true,
 
-          // Keep all photos (no limit)
-          maxMediaItems: 9999,
+            // Keep all photos (no limit)
+            maxMediaItems: 9999,
 
-          // Add custom done button that can be disabled during recording
-          customRightButtonBuilder: (context, state) {
-            // Disable button while recording
-            final bool isDisabled = state.isRecording;
+            // Add custom done button that can be disabled during recording
+            customRightButtonBuilder: (context, state) {
+              // Disable button while recording
+              final bool isDisabled = state.isRecording;
 
-            return SizedBox(
-              height: 56, // Explicit height to ensure consistent sizing
-              width: 56, // Explicit width to ensure consistent sizing
-              child: FloatingActionButton(
-                onPressed:
-                    isDisabled
-                        ? null
-                        : () {
-                          debugPrint('Done button pressed with ${_capturedMedia.length} photos');
-                          Navigator.of(context).pop(_capturedMedia);
-                        },
-                backgroundColor: isDisabled ? Colors.grey : Colors.white,
-                foregroundColor: Colors.black87,
-                child: const Icon(Icons.check),
-              ),
-            );
-          },
+              return SizedBox(
+                height: 56, // Explicit height to ensure consistent sizing
+                width: 56, // Explicit width to ensure consistent sizing
+                child: FloatingActionButton(
+                  onPressed:
+                      isDisabled
+                          ? null
+                          : () {
+                            debugPrint('Done button pressed with ${_capturedMedia.length} photos');
+                            Navigator.of(context).pop(_capturedMedia);
+                          },
+                  backgroundColor: isDisabled ? Colors.grey : Colors.white,
+                  foregroundColor: Colors.black87,
+                  child: const Icon(Icons.check),
+                ),
+              );
+            },
 
-          // Loading text
-          loadingText: 'Initializing Inspectly camera...',
+            // Loading text
+            loadingText: 'Initializing Inspectly camera...',
 
-          // Capture callback to store media
-          onCapture: (file) {
-            debugPrint('Captured: ${file.path}');
-            setState(() {
-              _capturedMedia.add(file);
-            });
-          },
-          onError: (source, message, {error, isRecoverable = false}) {
-            debugPrint('❌ Camera error ($source): $message');
-            if (error != null) {
-              debugPrint('❌ Error details: $error');
-            }
-          },
+            // Capture callback to store media
+            onCapture: (file) {
+              debugPrint('Captured: ${file.path}');
+              setState(() {
+                _capturedMedia.add(file);
+              });
+            },
+            onError: (source, message, {error, isRecoverable = false}) {
+              debugPrint('❌ Camera error ($source): $message');
+              if (error != null) {
+                debugPrint('❌ Error details: $error');
+              }
+            },
+          ),
         ),
       ),
     );
