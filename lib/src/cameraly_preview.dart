@@ -148,6 +148,8 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   Timer? _focusTimer;
   bool _isChangingOrientation = false;
   Timer? _orientationDebounceTimer;
+  // Add a flag to track initial stabilization
+  bool _isInitializing = true;
 
   @override
   void initState() {
@@ -155,6 +157,30 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     _controller = widget.controller;
     _setupController();
     WidgetsBinding.instance.addObserver(this);
+
+    // Platform-specific initialization handling
+    if (Platform.isAndroid) {
+      // On Android, we always skip the loading screen
+      // The camera preview is shown immediately with CameralyCamera handling transitions
+      _isInitializing = false;
+    } else {
+      // On iOS and other platforms, use the standard initialization approach
+      // Skip loading screen if controller is already initialized
+      if (_controller != null && _controller!.value.isInitialized) {
+        // Already initialized, set flag to false immediately
+        _isInitializing = false;
+      } else {
+        // Only show loading screen when controller needs initialization
+        // Set a timer to smoothly transition from initializing state
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            setState(() {
+              _isInitializing = false;
+            });
+          }
+        });
+      }
+    }
   }
 
   void _setupController() {
@@ -170,6 +196,11 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
           // Force an orientation update
           _controller!.handleDeviceOrientationChange();
+
+          // If controller is already initialized, exit initialization state
+          setState(() {
+            _isInitializing = false;
+          });
         }
       });
     }
@@ -219,6 +250,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       _orientationDebounceTimer?.cancel();
 
       // Mark that we're in the middle of an orientation change
+      // but don't trigger a rebuild immediately to prevent flickering
       _isChangingOrientation = true;
 
       // Use a post-frame callback to ensure the context is valid
@@ -238,16 +270,15 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
               debugPrint('🎥 Error pausing camera preview: $e');
             }
 
+            // Now we can trigger a UI update to show the loading state
+            // This will show only one consistent loading screen
+            setState(() {});
+
             // Add a longer delay for Android to ensure system has fully stabilized
             // This is critical for orientation changes
             _orientationDebounceTimer = Timer(const Duration(milliseconds: 800), () {
               if (mounted) {
                 debugPrint('🎥 Starting aggressive camera recovery after orientation change');
-
-                // Show a loading indicator while recovering the camera
-                setState(() {
-                  // This will keep showing the loading overlay from _isChangingOrientation = true
-                });
 
                 // Use our more aggressive camera recovery method
                 _controller!.handleCameraResume().then((_) {
@@ -271,6 +302,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
             });
           } else {
             // For iOS, just use a timer without explicit pause/resume (works fine)
+            setState(() {}); // Show loading indicator consistently
             _orientationDebounceTimer = Timer(const Duration(milliseconds: 300), () {
               if (mounted) {
                 setState(() {
@@ -282,6 +314,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           }
         } else {
           // If controller isn't initialized, just reset the flag after a delay
+          setState(() {}); // Show loading indicator consistently
           _orientationDebounceTimer = Timer(const Duration(milliseconds: 500), () {
             if (mounted) {
               setState(() {
@@ -522,6 +555,27 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
+    // Skip initial loading screen if controller is already initialized
+    if (_isInitializing && (_controller == null || !_controller!.value.isInitialized)) {
+      return Container(
+        color: Colors.black,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 16),
+            Text(
+              'Preparing camera...',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     // Check if controller is null - handle this case first
     if (_controller == null) {
       return widget.uninitializedBuilder != null
@@ -561,8 +615,54 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   }
 
   Widget _buildOrientationAwarePreview(CameralyValue value) {
-    // Handle initialization state
-    if (!value.isInitialized) {
+    // Handle initialization state with a stable transition
+    if ((!value.isInitialized && !value.isChangingController) || _isInitializing) {
+      // On Android, never show a full loading screen during initialization
+      // This prevents the double loading screen effect
+      if (Platform.isAndroid) {
+        // Show camera UI immediately with a loading indicator overlay
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Black background
+            Container(color: Colors.black),
+            // Light loading overlay in the corner to indicate camera is starting
+            Positioned(
+              bottom: 24,
+              right: 24,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white.withOpacity(0.8),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Starting camera...',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
       // Use custom loading builder if provided, otherwise use default
       return widget.loadingBuilder != null
           ? widget.loadingBuilder!(context, value)
@@ -638,9 +738,11 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           ),
 
         // Add an overlay during orientation changes to prevent visible freezing
-        if (_isChangingOrientation)
+        if (_isChangingOrientation || (value.isChangingController && value.isInitialized))
           Container(
-            color: Colors.black.withOpacity(0.2),
+            color: Platform.isAndroid
+                ? Colors.black // Solid overlay on Android
+                : Colors.black.withOpacity(0.2), // Transparent overlay on iOS
             child: const Center(
               child: CircularProgressIndicator(color: Colors.white),
             ),
@@ -663,6 +765,72 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       );
     } else {
       return cameraStack;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Only handle lifecycle changes if controller exists and is initialized
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    // Debug log to track lifecycle transitions
+    debugPrint('🔄 App lifecycle changed to: $state');
+
+    if (state == AppLifecycleState.inactive) {
+      // App is inactive, pause camera to save resources
+      debugPrint('📱 App inactive - pausing camera');
+      // No need to explicitly pause on iOS, it happens automatically
+      if (Platform.isAndroid && _controller!.cameraController != null) {
+        try {
+          _controller!.cameraController!.pausePreview();
+        } catch (e) {
+          debugPrint('📱 Error pausing camera: $e');
+        }
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      // App is resumed, resume camera
+      debugPrint('📱 App resumed - resuming camera');
+
+      if (_controller != null && _controller!.value.isInitialized) {
+        // Use our aggressive camera recovery method for Android
+        if (Platform.isAndroid) {
+          debugPrint('📱 Performing Android camera recovery after resuming');
+          // Show a temporary overlay during recovery
+          setState(() {
+            _isChangingOrientation = true; // Reuse orientation flag to show loading
+          });
+
+          // Give a small delay to allow UI to update before intensive operation
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted) {
+              _controller!.handleCameraResume().then((_) {
+                if (mounted) {
+                  setState(() {
+                    _isChangingOrientation = false;
+                    debugPrint('📱 Camera resumed successfully');
+                  });
+                }
+              }).catchError((error) {
+                debugPrint('📱 Camera resume error: $error');
+                if (mounted) {
+                  setState(() {
+                    _isChangingOrientation = false;
+                  });
+                }
+              });
+            }
+          });
+        } else {
+          // For iOS, just ensure the controller is active
+          try {
+            // On iOS, the native AVCaptureSession will automatically resume
+            // Just force a UI update to ensure everything's in sync
+            setState(() {});
+          } catch (e) {
+            debugPrint('📱 Error resuming iOS camera: $e');
+          }
+        }
+      }
     }
   }
 }

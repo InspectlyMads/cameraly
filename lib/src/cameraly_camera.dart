@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -483,11 +484,9 @@ class _CameralyCameraState extends State<CameralyCamera> {
   }
 
   Future<void> _initializeCamera() async {
-    // Set initial state
-    setState(() {
-      _isInitializing = true;
-      _errorMessage = null;
-    });
+    // Set initial state without triggering a rebuild yet
+    _isInitializing = true;
+    _errorMessage = null;
 
     // Initialize media manager
     _mediaManager = CameralyMediaManager(
@@ -501,12 +500,16 @@ class _CameralyCameraState extends State<CameralyCamera> {
       // Get available cameras
       final cameras = await CameralyController.getAvailableCameras();
       if (cameras.isEmpty) {
-        setState(() {
-          _isInitializing = false;
-          _errorMessage = 'No cameras available on this device';
-        });
+        _errorMessage = 'No cameras available on this device';
 
-        // Call both the deprecated and new error callbacks
+        // Now trigger the rebuild with error state
+        if (mounted) {
+          setState(() {
+            _isInitializing = false;
+          });
+        }
+
+        // Call the error callback
         widget.settings.onError?.call('initialization', 'No cameras available on this device', isRecoverable: false);
         return;
       }
@@ -519,27 +522,49 @@ class _CameralyCameraState extends State<CameralyCamera> {
         mediaManager: _mediaManager,
       );
 
-      try {
-        // Initialize the controller
-        await controller.initialize();
+      // Set controller immediately without rebuild
+      _controller = controller;
 
-        // Only set the controller if we're still mounted
-        if (!mounted) {
-          controller.dispose();
-          return;
+      try {
+        // Platform-specific initialization approach
+        if (Platform.isAndroid) {
+          // On Android, avoid showing loading screen when possible
+          // Initialize in background then directly show camera
+          setState(() {
+            // Set initializing to false immediately to show the camera preview
+            // This prevents the black loading screen flash
+            _isInitializing = false;
+          });
+
+          // Now initialize the controller after showing the UI
+          await controller.initialize();
+
+          // Additional brief stabilization delay without showing loading screen
+          await Future.delayed(const Duration(milliseconds: 100));
+        } else {
+          // For iOS, use the traditional approach - initialize first, then show
+          await controller.initialize();
+
+          // Small delay for UI stability
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Update state only after initialization completes
+          if (mounted) {
+            setState(() {
+              _isInitializing = false;
+            });
+          }
         }
 
-        setState(() {
-          _controller = controller;
-          _isInitializing = false;
-        });
-
         // Call the onInitialized callback if provided
-        widget.settings.onInitialized?.call(controller);
+        if (mounted) {
+          widget.settings.onInitialized?.call(controller);
+        }
       } catch (e) {
         // Handle initialization error
         final errorMsg = 'Failed to initialize camera: ${e.toString()}';
 
+        // Only update state if still mounted
         if (mounted) {
           setState(() {
             _isInitializing = false;
@@ -576,14 +601,28 @@ class _CameralyCameraState extends State<CameralyCamera> {
           children: [
             CircularProgressIndicator(
               color: widget.settings.loadingIndicatorColor,
+              strokeWidth: 4.0,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Text(
               widget.settings.loadingText,
               style: TextStyle(
                 color: widget.settings.loadingTextColor,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
               ),
             ),
+            if (Platform.isAndroid)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  'This may take a moment...',
+                  style: TextStyle(
+                    color: widget.settings.loadingTextColor.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

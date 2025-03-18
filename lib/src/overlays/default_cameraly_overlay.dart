@@ -857,57 +857,61 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
 
     try {
-      if (_controller!.cameraController != null) {
-        debugPrint('🎥 Resuming camera preview');
+      debugPrint('🎥 Resuming camera preview');
 
-        // On Android, add retry mechanism
-        if (Platform.isAndroid) {
+      // On Android, use our more aggressive recovery method for better reliability
+      if (Platform.isAndroid) {
+        try {
+          if (mounted) {
+            setState(() {
+              // Update UI to show loading state
+              _isFilePickerActive = true; // Reuse this flag to indicate camera recovery
+            });
+          }
+
+          // Use the enhanced camera resume method that recreates the controller if needed
+          await _controller!.handleCameraResume();
+
+          debugPrint('🎥 Android camera resumed with aggressive recovery method');
+        } catch (e) {
+          debugPrint('🎥 Error in aggressive Android camera recovery: $e');
+
+          // Fallback to simple resume as a last resort
           try {
             _controller!.cameraController!.resumePreview();
-            debugPrint('🎥 Android camera preview resumed successfully');
-          } catch (e) {
-            debugPrint('🎥 First attempt to resume Android camera failed: $e');
+          } catch (e2) {
+            debugPrint('🎥 Fallback resume also failed: $e2');
+          }
+        } finally {
+          // Always reset UI state
+          if (mounted) {
+            setState(() {
+              _isFilePickerActive = false;
+            });
+          }
+        }
+      } else {
+        // For iOS, the normal resume works fine
+        _controller!.cameraController!.resumePreview();
+      }
 
-            // Wait a moment and try again
-            await Future.delayed(const Duration(milliseconds: 200));
-            if (!mounted) return;
-
-            try {
-              _controller!.cameraController!.resumePreview();
-              debugPrint('🎥 Android camera preview resumed on second attempt');
-            } catch (e2) {
-              debugPrint('🎥 Second attempt to resume Android camera failed: $e2');
-              // One more try with a different approach
-              await Future.delayed(const Duration(milliseconds: 300));
-              if (!mounted) return;
-
-              // If all else failed, try forcing a UI update
-              setState(() {});
-            }
+      // Restore flash mode and torch settings
+      if (!_isFrontCamera) {
+        if (_isVideoMode) {
+          // For video mode, first set flash off then enable torch if it was on
+          debugPrint('🎥 Restoring video mode torch state: $_torchEnabled');
+          await _controller!.setFlashMode(FlashMode.off);
+          if (_torchEnabled) {
+            await _controller!.setFlashMode(FlashMode.torch);
           }
         } else {
-          // For iOS, the normal resume works fine
-          _controller!.cameraController!.resumePreview();
+          // For photo mode, restore the previous flash mode
+          debugPrint('🎥 Restoring photo mode flash: $_flashMode');
+          await _controller!.setFlashMode(_flashMode);
         }
-
-        // Restore flash mode and torch settings
-        if (!_isFrontCamera) {
-          if (_isVideoMode) {
-            // For video mode, first set flash off then enable torch if it was on
-            debugPrint('🎥 Restoring video mode torch state: $_torchEnabled');
-            await _controller!.setFlashMode(FlashMode.off);
-            if (_torchEnabled) {
-              await _controller!.setFlashMode(FlashMode.torch);
-            }
-          } else {
-            // For photo mode, just restore the flash mode
-            debugPrint('🎥 Restoring photo mode flash mode: $_flashMode');
-            await _controller!.setFlashMode(_flashMode);
-          }
-        }
-
-        debugPrint('🎥 Camera resumed with flash mode: $_flashMode, torch: $_torchEnabled');
       }
+
+      debugPrint('🎥 Camera resumed with flash mode: $_flashMode, torch: $_torchEnabled');
     } catch (e) {
       debugPrint('🎥 Error resuming camera: $e');
       // Force a rebuild to help with recovery
@@ -1079,7 +1083,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Widget _buildZoomLevelButtons() {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 4,
+      ),
       decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), borderRadius: BorderRadius.circular(20)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1098,7 +1104,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           }
 
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 0),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
@@ -1116,18 +1122,18 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 highlightColor: Colors.white.withOpacity(0.1),
                 child: TweenAnimationBuilder<double>(
                   duration: const Duration(milliseconds: 150),
-                  tween: Tween<double>(begin: 1.0, end: isSelected ? 1.15 : 1.0),
+                  tween: Tween<double>(begin: 2.0, end: isSelected ? 0.8 : 0.8),
                   curve: Curves.easeOutBack,
                   builder: (context, scale, child) {
                     return Transform.scale(
                       scale: scale,
                       child: Container(
                         // Increase padding for larger hit target
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
                         decoration: BoxDecoration(
-                          color: isSelected ? Colors.white : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
+                          color: isSelected ? Colors.white : Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(24),
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
@@ -1803,18 +1809,45 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     final mediaManager = widget.controller?.mediaManager;
     if (mediaManager == null || mediaManager.count == 0) {
+      debugPrint('📸 No media available to show in gallery');
       return;
     }
 
-    // Pause camera before showing gallery
-    _pauseCamera();
+    // Track when gallery is active to prevent double-taps
+    setState(() {
+      _isFilePickerActive = true;
+    });
 
-    // Use Navigator.push to get a Future we can act on when gallery is closed
-    await Navigator.of(context).push(MaterialPageRoute(builder: (context) => CameralyGalleryView(mediaManager: mediaManager, onDelete: (file) => mediaManager.removeMedia(file), backgroundColor: Colors.black, appBarColor: Colors.black)));
+    try {
+      // Pause camera before showing gallery
+      debugPrint('🎥 Pausing camera before opening gallery');
+      _pauseCamera();
 
-    // Resume camera after returning from gallery
-    debugPrint('🎥 Returning from gallery - resuming camera');
-    await _resumeCamera();
+      // Use Navigator.push to get a Future we can act on when gallery is closed
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => CameralyGalleryView(
+            mediaManager: mediaManager,
+            onDelete: (file) => mediaManager.removeMedia(file),
+            backgroundColor: Colors.black,
+            appBarColor: Colors.black,
+          ),
+        ),
+      );
+
+      // Important: Resume camera immediately after returning from gallery
+      debugPrint('🎥 Returning from gallery - resuming camera');
+      await _resumeCamera();
+    } catch (e) {
+      debugPrint('📸 Error during gallery navigation: $e');
+    } finally {
+      // Always reset the flag when done with gallery
+      if (mounted) {
+        setState(() {
+          _isFilePickerActive = false;
+        });
+      }
+    }
   }
 
   Widget _buildCenterArea({required bool isLandscape, required CameralyOverlayTheme theme}) {

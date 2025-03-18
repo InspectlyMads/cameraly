@@ -158,7 +158,8 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       final bool isFrontCamera = _description.lensDirection == CameraLensDirection.front;
       debugPrint('📸 Is front camera? $isFrontCamera (based on lens direction: ${_description.lensDirection})');
 
-      value = CameralyValue(
+      // Create initialization value but don't notify listeners yet
+      final initialValue = CameralyValue(
         isInitialized: true,
         flashMode: _settings.flashMode,
         exposureMode: _settings.exposureMode,
@@ -169,6 +170,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         zoomLevel: 1.0,
         hasFlashCapability: hasFlashCapability,
       );
+
+      // Temporarily set value without notification
+      value = initialValue;
 
       // Apply initial settings
       // Try to set flash mode, but handle gracefully if it fails
@@ -195,6 +199,12 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       } catch (e) {
         // Ignore zoom errors during initialization
       }
+
+      // Add a small delay to reduce flickering during initialization
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Final value update with notification after delay
+      notifyListeners();
     } on CameraException catch (e) {
       value = value.copyWith(error: 'Failed to initialize camera: ${e.description}');
       rethrow;
@@ -1136,6 +1146,16 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
           }
         }
 
+        // First update value to indicate we're intentionally handling this transition
+        // This prevents the UI from showing a loading state until we're done
+        value = value.copyWith(
+          isChangingController: true,
+        );
+        notifyListeners();
+
+        // Add a small delay before disposal to let any pending operations complete
+        await Future.delayed(const Duration(milliseconds: 50));
+
         debugPrint('📸 Disposing old camera controller');
         // Dispose the old controller
         final oldController = _controller;
@@ -1146,6 +1166,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         } catch (e) {
           debugPrint('📸 Error disposing old controller: $e');
         }
+
+        // Add a small delay to ensure disposal is complete before recreation
+        await Future.delayed(const Duration(milliseconds: 50));
 
         // Create new controller with same settings
         debugPrint('📸 Creating new camera controller');
@@ -1160,6 +1183,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
           // Initialize the new controller
           debugPrint('📸 Initializing new camera controller');
           await newController.initialize();
+
+          // Add a small delay for the controller to fully stabilize
+          await Future.delayed(const Duration(milliseconds: 50));
 
           // Assign the new controller
           _controller = newController;
@@ -1200,15 +1226,8 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
             }
           }
 
-          // Restore recording state if needed (usually not recommended after controller recreation)
-          if (wasRecording && _settings.cameraMode != CameraMode.photoOnly) {
-            debugPrint('📸 Restoring recording state');
-            try {
-              await startVideoRecording();
-            } catch (e) {
-              debugPrint('📸 Error restoring recording: $e');
-            }
-          }
+          // Add one final stabilization delay before notifying listeners
+          await Future.delayed(const Duration(milliseconds: 50));
 
           // Update our value to reflect the new controller
           _updateValueFromController();
@@ -1218,6 +1237,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
             deviceOrientation: currentOrientation,
             isInitialized: true,
             error: null,
+            isChangingController: false, // Important: mark the controller change as complete
           );
 
           // Force update the UI
