@@ -53,7 +53,10 @@ class _PersistentStorageExampleState extends State<PersistentStorageExample> {
     try {
       await _controller.initialize();
       if (mounted) setState(() {});
-    } catch (e) {}
+    } catch (e) {
+      // Log the error but continue execution
+      debugPrint('Failed to initialize camera: $e');
+    }
   }
 
   @override

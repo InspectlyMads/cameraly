@@ -242,7 +242,7 @@ class _DeniedPermissionUI extends StatelessWidget {
                   TextButton(
                     onPressed: () => permissionManager.dismissPermissionUI(),
                     style: TextButton.styleFrom(
-                      foregroundColor: textColor.withOpacity(0.7),
+                      foregroundColor: textColor.withAlpha(179),
                     ),
                     child: const Text('Continue Without Microphone'),
                   ),
@@ -324,7 +324,7 @@ class _PermanentlyDeniedUI extends StatelessWidget {
                   TextButton(
                     onPressed: () => permissionManager.dismissPermissionUI(),
                     style: TextButton.styleFrom(
-                      foregroundColor: textColor.withOpacity(0.7),
+                      foregroundColor: textColor.withAlpha(179),
                     ),
                     child: const Text('Continue Without Microphone'),
                   ),

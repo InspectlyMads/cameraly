@@ -378,7 +378,7 @@ class CameralyMediaStack extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withOpacity(0.5),
+                  Colors.black.withAlpha(128),
                 ],
               ),
             ),
@@ -392,7 +392,7 @@ class CameralyMediaStack extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
+                color: Colors.black.withAlpha(179),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: const Row(
@@ -449,7 +449,7 @@ class CameralyMediaStack extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.transparent,
-                Colors.black.withOpacity(0.7),
+                Colors.black.withAlpha(128),
               ],
             ),
           ),
@@ -473,14 +473,14 @@ class CameralyMediaStack extends StatelessWidget {
               children: [
                 Icon(
                   Icons.videocam,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withAlpha(204),
                   size: 28,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'VIDEO',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withAlpha(230),
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -675,7 +675,7 @@ class CameralyGalleryView extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.transparent,
-                Colors.black.withOpacity(0.7),
+                Colors.black.withAlpha(128),
               ],
             ),
           ),
@@ -698,14 +698,14 @@ class CameralyGalleryView extends StatelessWidget {
               children: [
                 Icon(
                   Icons.videocam,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withAlpha(204),
                   size: 28,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'VIDEO',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withAlpha(230),
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),

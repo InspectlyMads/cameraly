@@ -261,13 +261,13 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                           child: GestureDetector(
                             onTap: _togglePlayPause,
                             child: Container(
-                              color: Colors.black.withOpacity(0.3),
+                              color: Colors.black.withAlpha(77),
                               child: Center(
                                 child: Container(
                                   width: 80,
                                   height: 80,
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.6),
+                                    color: Colors.black.withAlpha(153),
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.white, width: 2),
                                   ),
@@ -295,7 +295,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                               end: Alignment.bottomCenter,
                               colors: [
                                 Colors.transparent,
-                                Colors.black.withOpacity(0.7),
+                                Colors.black.withAlpha(179),
                               ],
                             ),
                           ),
@@ -441,7 +441,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withAlpha(153),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
                         ),

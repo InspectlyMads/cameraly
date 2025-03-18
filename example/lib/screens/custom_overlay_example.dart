@@ -245,7 +245,7 @@ class _CustomOverlayExampleState extends State<CustomOverlayExample> {
                 }
               },
               icon: Icons.arrow_back_ios_new,
-              backgroundColor: Colors.blueAccent.withOpacity(0.7),
+              backgroundColor: Colors.blueAccent.withAlpha(179),
               size: 50,
             );
           },

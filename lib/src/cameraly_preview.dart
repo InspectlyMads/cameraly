@@ -567,7 +567,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
             Text(
               'Preparing camera...',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withAlpha(179),
                 fontSize: 16,
               ),
             ),
@@ -590,7 +590,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
                   Text(
                     'Preparing camera...',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withAlpha(179),
                       fontSize: 16,
                     ),
                   ),
@@ -631,7 +631,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withAlpha(128), // Equivalent to opacity 0.5
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -642,7 +642,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withAlpha(204), // Equivalent to opacity 0.8
                     ),
                   ),
                 ],
@@ -710,7 +710,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           Container(
             color: Platform.isAndroid
                 ? Colors.black // Solid overlay on Android
-                : Colors.black.withOpacity(0.2), // Transparent overlay on iOS
+                : Colors.black.withAlpha(51), // Transparent overlay on iOS (equivalent to opacity 0.2)
             child: const Center(
               child: CircularProgressIndicator(color: Colors.white),
             ),

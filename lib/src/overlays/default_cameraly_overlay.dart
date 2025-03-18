@@ -443,11 +443,11 @@ class DefaultCameralyOverlay extends StatefulWidget {
   @override
   State<DefaultCameralyOverlay> createState() => _DefaultCameralyOverlayState();
 
-  /// Returns the [_DefaultCameralyOverlayState] from the closest [DefaultCameralyOverlay]
+  /// Returns the [State] from the closest [DefaultCameralyOverlay]
   /// ancestor, or null if none exists.
   ///
   /// This allows other widgets to interact with the overlay's state.
-  static _DefaultCameralyOverlayState? of(BuildContext context) {
+  static State<DefaultCameralyOverlay>? of(BuildContext context) {
     final DefaultCameralyOverlayScope? scope = context.dependOnInheritedWidgetOfExactType<DefaultCameralyOverlayScope>();
     return scope?.state;
   }
@@ -476,7 +476,7 @@ class DefaultCameralyOverlay extends StatefulWidget {
   ///     }
   ///   },
   ///   icon: Icons.close,
-  ///   backgroundColor: Colors.red.withOpacity(0.7),
+  ///   backgroundColor: Colors.red.withAlpha(179),
   /// ),
   /// ```
   static Widget createStyledBackButton({
@@ -563,7 +563,7 @@ class DefaultCameralyOverlayScope extends InheritedWidget {
   const DefaultCameralyOverlayScope({required this.state, required super.child, super.key});
 
   /// The state of the [DefaultCameralyOverlay] widget.
-  final _DefaultCameralyOverlayState state;
+  final State<DefaultCameralyOverlay> state;
 
   @override
   bool updateShouldNotify(DefaultCameralyOverlayScope oldWidget) {
@@ -590,7 +590,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Timer? _recordingLimitTimer;
   bool _hasVideoDurationLimit = false;
   Duration? _maxVideoDuration;
-  bool _hasControllerFromProvider = false;
   // Flag to track orientation changes in progress
   bool _orientationChangeInProgress = false;
 
@@ -667,7 +666,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       final controller = CameralyControllerProvider.of(context);
       if (controller != null) {
         _controller = controller;
-        _hasControllerFromProvider = true;
 
         // Set initial front camera status
         _isFrontCamera = _controller!.description.lensDirection == CameraLensDirection.front;
@@ -1086,7 +1084,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       padding: const EdgeInsets.symmetric(
         horizontal: 4,
       ),
-      decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: Colors.black.withAlpha(102), borderRadius: BorderRadius.circular(20)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: _availableZoomLevels.map((zoom) {
@@ -1118,8 +1116,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 // Use a circular border radius to match design
                 borderRadius: BorderRadius.circular(16),
                 // Add splash color for visual feedback
-                splashColor: Colors.white.withOpacity(0.3),
-                highlightColor: Colors.white.withOpacity(0.1),
+                splashColor: Colors.white.withAlpha(77),
+                highlightColor: Colors.white.withAlpha(26),
                 child: TweenAnimationBuilder<double>(
                   duration: const Duration(milliseconds: 150),
                   tween: Tween<double>(begin: 2.0, end: isSelected ? 0.8 : 0.8),
@@ -1132,12 +1130,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
                         decoration: BoxDecoration(
-                          color: isSelected ? Colors.white : Colors.white.withOpacity(0.1),
+                          color: isSelected ? Colors.white : Colors.white.withAlpha(26),
                           borderRadius: BorderRadius.circular(24),
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: Colors.white.withOpacity(0.3),
+                                    color: Colors.white.withAlpha(77),
                                     blurRadius: 4,
                                     spreadRadius: 0.5,
                                   )
@@ -1483,7 +1481,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     } catch (e) {
       debugPrint('🎥 Error switching camera: $e');
       // Make sure we re-add the listener if there was an error
-      if (_controller != null && !_controller!.hasListeners) {
+      // Instead of checking hasListeners directly, we'll just try to add the listener
+      // The addListener method is safe to call multiple times
+      if (_controller != null) {
         _controller!.addListener(_handleControllerChanged);
       }
 
@@ -1771,7 +1771,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
   // Helper method to process a video file (similar to the implementation in CameralyController)
   Future<XFile> _processVideoFile(XFile originalFile) async {
-    final String originalPath = originalFile.path;
     XFile processedFile = originalFile;
 
     // Check if we need to generate a thumbnail
@@ -2025,8 +2024,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final String remainingTime = _hasVideoDurationLimit && _maxVideoDuration != null ? _formatDuration(_maxVideoDuration! - _recordingDuration) : '';
 
     // Different colors/effects based on how close to the limit we are
-    Color pillColor = Colors.black.withOpacity(0.7);
-    Color borderColor = Colors.white.withOpacity(0.2);
+    Color pillColor = Colors.black.withAlpha(179);
+    Color borderColor = Colors.white.withAlpha(51);
     Color textColor = Colors.white;
 
     if (_hasVideoDurationLimit && _maxVideoDuration != null) {
@@ -2036,7 +2035,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         borderColor = Colors.red;
         textColor = Colors.white;
       } else if (progress > 0.75) {
-        pillColor = Colors.orange.withOpacity(0.7);
+        pillColor = Colors.orange.withAlpha(179);
         borderColor = Colors.orange.withOpacity(0.8);
       }
     }
@@ -2048,7 +2047,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: isNearEnd ? Colors.red.withOpacity(0.3) : Colors.black.withOpacity(0.3),
+            color: isNearEnd ? Colors.red.withAlpha(77) : Colors.black.withAlpha(77),
             blurRadius: 8,
             spreadRadius: 2,
           ),
@@ -2074,7 +2073,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: (isNearEnd ? Colors.white : Colors.red).withOpacity(0.6),
+                      color: (isNearEnd ? Colors.white : Colors.red).withAlpha(153),
                       blurRadius: value * 4,
                       spreadRadius: value,
                     ),
@@ -2123,7 +2122,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               margin: const EdgeInsets.only(left: 8),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withAlpha(51),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -2281,7 +2280,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.red.withOpacity(0.3),
+                color: Colors.red.withAlpha(77),
                 blurRadius: 15 * value,
                 spreadRadius: 2 * value,
               ),
@@ -2412,19 +2411,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   Widget _buildTopArea({required bool isLandscape}) {
-    // Get the current overlay state for button builders
-    final overlayState = CameralyOverlayState(
-      isRecording: _isRecording,
-      isVideoMode: _isVideoMode,
-      isFrontCamera: _isFrontCamera,
-      flashMode: _flashMode,
-      torchEnabled: _torchEnabled,
-      recordingDuration: _recordingDuration,
-      isFilePickerActive: _isFilePickerActive,
-    );
+    // Note: We removed the unused state object
 
-    return SizedBox(
-      width: isLandscape ? 80 : double.infinity,
+    return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(top: isLandscape ? 0 : MediaQuery.of(context).padding.top, left: 16, right: 16),
         child: Column(
@@ -2671,7 +2660,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                           onPressed: _isFilePickerActive ? null : _switchCamera,
                           icon: const Icon(Icons.switch_camera),
                           iconSize: 30,
-                          style: IconButton.styleFrom(backgroundColor: _isFilePickerActive ? Colors.grey.withOpacity(0.3) : Colors.white24, foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white, padding: const EdgeInsets.all(12)),
+                          style: IconButton.styleFrom(backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24, foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white, padding: const EdgeInsets.all(12)),
                         ),
                       )
                     else
@@ -2863,7 +2852,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                               onPressed: _isFilePickerActive ? null : _switchCamera,
                               icon: const Icon(Icons.switch_camera),
                               style: IconButton.styleFrom(
-                                backgroundColor: _isFilePickerActive ? Colors.grey.withOpacity(0.3) : Colors.white24,
+                                backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24,
                                 foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white,
                                 minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
                                 disabledForegroundColor: Colors.white38,
@@ -2914,5 +2903,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         _torchEnabled = _flashMode == FlashMode.torch;
       });
     }
+  }
+
+  void _updateUI() {
+    if (mounted) setState(() {});
   }
 }
