@@ -619,70 +619,38 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     if ((!value.isInitialized && !value.isChangingController) || _isInitializing) {
       // On Android, never show a full loading screen during initialization
       // This prevents the double loading screen effect
-      if (Platform.isAndroid) {
-        // Show camera UI immediately with a loading indicator overlay
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            // Black background
-            Container(color: Colors.black),
-            // Light loading overlay in the corner to indicate camera is starting
-            Positioned(
-              bottom: 24,
-              right: 24,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Starting camera...',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
+      // Show camera UI immediately with a loading indicator overlay
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Black background
+          Container(color: Colors.black),
+          // Light loading overlay in the corner to indicate camera is starting
+          Align(
+            alignment: Alignment.center,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ),
-          ],
-        );
-      }
-
-      // Use custom loading builder if provided, otherwise use default
-      return widget.loadingBuilder != null
-          ? widget.loadingBuilder!(context, value)
-          : Container(
-              color: Colors.black,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircularProgressIndicator(color: Colors.white),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Initializing camera...',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 16,
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white.withOpacity(0.8),
                     ),
                   ),
                 ],
               ),
-            );
+            ),
+          ),
+        ],
+      );
     }
 
     // If camera is initialized, show the preview with orientation change handling

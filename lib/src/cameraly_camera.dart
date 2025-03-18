@@ -612,17 +612,6 @@ class _CameralyCameraState extends State<CameralyCamera> {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            if (Platform.isAndroid)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(
-                  'This may take a moment...',
-                  style: TextStyle(
-                    color: widget.settings.loadingTextColor.withOpacity(0.7),
-                    fontSize: 14,
-                  ),
-                ),
-              ),
           ],
         ),
       ),
