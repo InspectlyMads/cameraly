@@ -742,30 +742,6 @@ class CameralyGalleryView extends StatelessWidget {
     );
   }
 
-  void _showDeleteDialog(BuildContext context, XFile file) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Media'),
-        content: const Text('Are you sure you want to delete this item?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              mediaManager.removeMedia(file);
-              onDelete?.call(file);
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showDeleteAllDialog(BuildContext context) {
     showDialog(
       context: context,

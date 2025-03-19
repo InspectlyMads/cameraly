@@ -478,7 +478,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                               Text(
                                 'Unable to display this media',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
+                                  color: Colors.white.withAlpha(204),
                                   fontSize: 16,
                                 ),
                               ),
@@ -536,7 +536,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
             Text(
               'Video will play when selected',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withAlpha(204),
                 fontSize: 16,
               ),
             ),

@@ -1219,38 +1219,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
-  void _handleControllerUpdate() {
-    final value = _controller?.value;
-
-    // Update recording state based on controller's value
-    if (value?.isRecordingVideo != _isRecording) {
-      debugPrint('📹 Recording state changed from controller: ${value?.isRecordingVideo}');
-      setState(() {
-        _isRecording = value?.isRecordingVideo ?? false;
-
-        if (_isRecording) {
-          debugPrint('📹 Starting recording timer from controller update');
-          _startRecordingTimer();
-          // Don't start recording limit timer here, it's started in _toggleRecording()
-        } else {
-          debugPrint('📹 Stopping recording timer from controller update');
-          _stopRecordingTimer();
-          _recordingLimitTimer?.cancel();
-        }
-
-        // Notify state change
-        _notifyCameraStateChanged();
-      });
-    }
-
-    // Update zoom level
-    if (value?.zoomLevel != _currentZoom) {
-      setState(() {
-        _currentZoom = value?.zoomLevel ?? 1.0;
-      });
-    }
-  }
-
   void _startRecordingTimer() {
     // Reset duration and cancel any existing timer
     _recordingDuration = Duration.zero;
@@ -2031,12 +1999,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     if (_hasVideoDurationLimit && _maxVideoDuration != null) {
       final progress = _recordingDuration.inMilliseconds / _maxVideoDuration!.inMilliseconds;
       if (progress > 0.9) {
-        pillColor = Colors.red.withOpacity(0.8);
+        pillColor = Colors.red.withAlpha(204); // equivalent to opacity 0.8
         borderColor = Colors.red;
         textColor = Colors.white;
       } else if (progress > 0.75) {
         pillColor = Colors.orange.withAlpha(179);
-        borderColor = Colors.orange.withOpacity(0.8);
+        borderColor = Colors.orange.withAlpha(204); // equivalent to opacity 0.8
       }
     }
 
@@ -2095,9 +2063,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               Text(
                 _formatDuration(_recordingDuration),
                 style: TextStyle(
-                  color: textColor,
+                  color: textColor.withAlpha(204), // equivalent to opacity 0.8
                   fontSize: 14,
-                  fontWeight: FontWeight.bold,
                   fontFamily: 'monospace',
                   letterSpacing: isNearEnd ? 0.8 : 0.5,
                 ),
@@ -2108,7 +2075,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 Text(
                   ' / ${_formatDuration(_maxVideoDuration!)}',
                   style: TextStyle(
-                    color: textColor.withOpacity(0.8),
+                    color: textColor.withAlpha(153), // equivalent to opacity 0.6
                     fontSize: 14,
                     fontFamily: 'monospace',
                   ),
@@ -2169,12 +2136,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.5 * value),
+                      color: Colors.white.withAlpha((0.5 * value * 255).round()), // dynamic opacity
                       width: 5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.white.withOpacity(0.2 * value),
+                        color: Colors.white.withAlpha((0.2 * value * 255).round()), // dynamic opacity
                         blurRadius: 8 * value,
                         spreadRadius: 2 * value,
                       ),
@@ -2275,7 +2242,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.red.withOpacity(value * 0.8), // Pulsing opacity
+              color: Colors.red.withAlpha((value * 0.8 * 255).round()), // Pulsing opacity - dynamic value
               width: 5 * value, // Pulsing width
             ),
             boxShadow: [
@@ -2903,9 +2870,5 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         _torchEnabled = _flashMode == FlashMode.torch;
       });
     }
-  }
-
-  void _updateUI() {
-    if (mounted) setState(() {});
   }
 }

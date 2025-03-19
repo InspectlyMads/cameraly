@@ -74,7 +74,7 @@ class ImageViewScreen extends StatelessWidget {
                         Text(
                           'Unable to display this image',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withAlpha(204),
                             fontSize: 16,
                           ),
                         ),
