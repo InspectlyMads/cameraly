@@ -9,7 +9,7 @@ class ImageViewScreen extends StatelessWidget {
   const ImageViewScreen({
     required this.imageFile,
     this.onDelete,
-    this.onShare,
+    // this.onShare,
     super.key,
   });
 
@@ -20,7 +20,7 @@ class ImageViewScreen extends StatelessWidget {
   final void Function(XFile file)? onDelete;
 
   /// Callback when the image is shared.
-  final void Function(XFile file)? onShare;
+  // final void Function(XFile file)? onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +34,11 @@ class ImageViewScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          if (onShare != null)
-            IconButton(
-              icon: const Icon(Icons.share, color: Colors.white),
-              onPressed: () => onShare?.call(imageFile),
-            ),
+          // if (onShare != null)
+          //   IconButton(
+          //     icon: const Icon(Icons.share, color: Colors.white),
+          //     onPressed: () => onShare?.call(imageFile),
+          //   ),
           if (onDelete != null)
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.white),

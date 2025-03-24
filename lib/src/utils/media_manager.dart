@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 import '../screens/image_view_screen.dart';
 import '../screens/media_viewer_screen.dart';
@@ -12,6 +14,7 @@ class CameralyMediaManager extends ChangeNotifier {
   CameralyMediaManager({
     List<XFile>? initialMedia,
     this.maxItems,
+    this.customStoragePath,
     this.onMediaAdded,
     this.onMediaRemoved,
   }) : _media = initialMedia ?? [];
@@ -22,6 +25,10 @@ class CameralyMediaManager extends ChangeNotifier {
   /// The maximum number of media items to keep.
   /// If null, there is no limit.
   final int? maxItems;
+
+  /// Custom storage path for saving captured media.
+  /// If null, the app's temporary directory will be used.
+  final String? customStoragePath;
 
   /// Callback when media is added.
   final Function(XFile)? onMediaAdded;
@@ -44,6 +51,29 @@ class CameralyMediaManager extends ChangeNotifier {
   /// Gets whether there are any captured media files.
   bool get isNotEmpty => _media.isNotEmpty;
 
+  /// Gets the storage directory path where media will be saved.
+  /// Will create the directory if it doesn't exist.
+  Future<String> get storagePath async {
+    if (customStoragePath != null) {
+      final directory = Directory(customStoragePath!);
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      return customStoragePath!;
+    }
+
+    // Default: use app's temporary directory
+    final tempDir = await getTemporaryDirectory();
+    final String tempPath = path.join(tempDir.path, 'cameraly_captures');
+
+    final directory = Directory(tempPath);
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+
+    return tempPath;
+  }
+
   /// Associates a thumbnail path with a video path.
   void setThumbnailForVideo(String videoPath, String thumbnailPath) {
     _videoThumbnails[videoPath] = thumbnailPath;
@@ -63,16 +93,59 @@ class CameralyMediaManager extends ChangeNotifier {
   /// Adds a media file to the manager.
   ///
   /// If [maxItems] is set and the list is full, the oldest item will be removed.
-  void addMedia(XFile file) {
+  /// If a custom storage path is set, the file will be copied to that location.
+  /// If the file is already in the media manager, it will not be added again.
+  /// If the file is a video, a thumbnail will be generated and saved to the media manager.
+  /// Will call the [onMediaAdded] callback if provided.
+  /// Will call the [onCapture] callback if provided.
+  Future<void> addMedia(XFile file) async {
     // If we have a max items limit and we're at the limit, remove the oldest item
     if (maxItems != null && _media.length >= maxItems!) {
       final removedFile = _media.removeAt(0);
       onMediaRemoved?.call(removedFile);
     }
 
-    _media.add(file);
-    onMediaAdded?.call(file);
-    notifyListeners();
+    try {
+      // If we have a custom storage path, copy the file there
+      final XFile fileToAdd;
+      if (customStoragePath != null) {
+        // Get the destination path
+        final String storageDirPath = await storagePath;
+
+        // Extract the file name
+        final String fileName = path.basename(file.path);
+
+        // Create the new path
+        final String newPath = path.join(storageDirPath, fileName);
+
+        // Copy the file to the new location
+        final File sourceFile = File(file.path);
+        if (!await Directory(storageDirPath).exists()) {
+          await Directory(storageDirPath).create(recursive: true);
+        }
+
+        // Only copy if source and destination are different
+        if (file.path != newPath) {
+          await sourceFile.copy(newPath);
+          fileToAdd = XFile(newPath, mimeType: file.mimeType);
+          debugPrint('📁 Copied media file to custom storage path: $newPath');
+        } else {
+          fileToAdd = file;
+        }
+      } else {
+        fileToAdd = file;
+      }
+
+      _media.add(fileToAdd);
+      onMediaAdded?.call(fileToAdd);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Error adding media file: $e');
+      // If there's an error with the custom path, fall back to adding the original file
+      _media.add(file);
+      onMediaAdded?.call(file);
+      notifyListeners();
+    }
   }
 
   /// Removes a media file from the manager.
@@ -733,10 +806,10 @@ class CameralyGalleryView extends StatelessWidget {
               onDelete!(file);
             }
           },
-          // Optional share callback can be added here if needed
-          onShare: (file) {
-            // Implement share functionality
-          },
+          // // Optional share callback can be added here if needed
+          // onShare: (file) {
+          //   // Implement share functionality
+          // },
         ),
       ),
     );

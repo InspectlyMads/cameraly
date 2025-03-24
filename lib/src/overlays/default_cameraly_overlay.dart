@@ -1513,11 +1513,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         if (file != null) {
           // The file is already added to the media manager in CameralyController.stopVideoRecording()
           // So we don't need to add it again here
-
-          // Call the callback if provided
-          if (widget.onCapture != null) {
-            widget.onCapture!(file);
-          }
         }
       } else {
         // Ensure we maintain torch state when starting recording
@@ -1571,12 +1566,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       // Only process the file if it's not null
       if (file != null) {
         // Add to the controller's media manager
+        // Will call the onCapture callback if provided
         _controller?.mediaManager.addMedia(file);
-
-        // Call the callback if provided
-        if (widget.onCapture != null) {
-          widget.onCapture!(file);
-        }
       }
     } catch (e) {
       // Call error callback if provided
@@ -1619,11 +1610,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             // Add the video to the media manager
             widget.controller!.mediaManager.addMedia(processedVideo);
 
-            // Call the onCapture callback if provided
-            if (widget.onCapture != null) {
-              widget.onCapture!(processedVideo);
-            }
-
             // Completion feedback
             loadingHapticTimer.cancel();
             HapticFeedback.mediumImpact();
@@ -1654,11 +1640,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             for (int i = 0; i < pickedFiles.length; i++) {
               final file = pickedFiles[i];
               widget.controller!.mediaManager.addMedia(file);
-
-              // Call the onCapture callback for each file if provided
-              if (widget.onCapture != null) {
-                widget.onCapture!(file);
-              }
 
               // For large imports, provide haptic feedback for progress
               if (pickedFiles.length > 5 && i > 0 && i % 5 == 0) {
@@ -1698,11 +1679,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
             // Add the image to the media manager
             widget.controller!.mediaManager.addMedia(pickedFile);
-
-            // Call the onCapture callback if provided
-            if (widget.onCapture != null) {
-              widget.onCapture!(pickedFile);
-            }
 
             // Completion feedback
             loadingHapticTimer.cancel();
@@ -1848,14 +1824,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       children: [
         // Only show media stack if not recording or explicitly force-showing placehoders
         if ((widget.centerLeftWidget != null) || (widget.showMediaStack && !_isRecording) || widget.showPlaceholders)
-          Positioned(
-            left: 16,
-            top: MediaQuery.of(context).size.height / 2 - 40,
-            child: widget.centerLeftWidget != null
-                ? widget.centerLeftWidget!
-                : widget.showMediaStack && widget.controller?.mediaManager != null
-                    ? AnimatedBuilder(animation: widget.controller!.mediaManager, builder: (context, _) => buildMediaStack())
-                    : buildPlaceholder(),
+          Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Container(
+              child: widget.centerLeftWidget != null
+                  ? widget.centerLeftWidget!
+                  : widget.showMediaStack && widget.controller?.mediaManager != null
+                      ? AnimatedBuilder(animation: widget.controller!.mediaManager, builder: (context, _) => buildMediaStack())
+                      : buildPlaceholder(),
+            ),
           ),
       ],
     );
@@ -1897,11 +1874,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           debugPrint('📹 Recording stopped successfully');
           // File is already added to the media manager in CameralyController.stopVideoRecording()
           // So we don't need to add it again here
-
-          // Call the callback if provided
-          if (widget.onCapture != null) {
-            widget.onCapture!(file);
-          }
 
           if (widget.onMaxDurationReached != null) {
             widget.onMaxDurationReached!();

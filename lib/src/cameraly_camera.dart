@@ -69,6 +69,7 @@ class CameraPreviewSettings {
     // Media handling
     this.maxMediaItems = 30,
     this.videoDurationLimit,
+    this.customStoragePath,
 
     // Callbacks
     this.onCapture,
@@ -254,6 +255,18 @@ class CameraPreviewSettings {
   /// Maximum duration for video recording.
   final Duration? videoDurationLimit;
 
+  /// Custom directory path where captured media will be stored.
+  ///
+  /// If not provided, media will be stored in the app's temporary directory.
+  /// This should be an absolute path to a directory where the app has write permissions.
+  ///
+  /// Example:
+  /// ```dart
+  /// final directory = await getApplicationDocumentsDirectory();
+  /// final path = '${directory.path}/my_camera_app';
+  /// ```
+  final String? customStoragePath;
+
   /// Callback when a photo is captured or video recording is stopped.
   final Function(XFile)? onCapture;
 
@@ -345,6 +358,7 @@ class CameraPreviewSettings {
     OverlayPreset? overlayPreset,
     int? maxMediaItems,
     Duration? videoDurationLimit,
+    String? customStoragePath,
     Function(XFile)? onCapture,
     Function(CameralyController)? onInitialized,
     Function(String, String, {Object? error, bool isRecoverable})? onError,
@@ -393,6 +407,7 @@ class CameraPreviewSettings {
       overlayPreset: overlayPreset ?? this.overlayPreset,
       maxMediaItems: maxMediaItems ?? this.maxMediaItems,
       videoDurationLimit: videoDurationLimit ?? this.videoDurationLimit,
+      customStoragePath: customStoragePath ?? this.customStoragePath,
       onCapture: onCapture ?? this.onCapture,
       onInitialized: onInitialized ?? this.onInitialized,
       onError: onError ?? this.onError,
@@ -491,6 +506,7 @@ class _CameralyCameraState extends State<CameralyCamera> {
     // Initialize media manager
     _mediaManager = CameralyMediaManager(
       maxItems: widget.settings.maxMediaItems,
+      customStoragePath: widget.settings.customStoragePath,
       onMediaAdded: (file) {
         widget.settings.onCapture?.call(file);
       },

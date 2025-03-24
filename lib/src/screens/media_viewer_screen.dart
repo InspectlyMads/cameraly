@@ -13,7 +13,7 @@ class MediaViewerScreen extends StatefulWidget {
     required this.mediaFiles,
     this.initialIndex = 0,
     this.onDelete,
-    this.onShare,
+    // this.onShare,
     this.mediaManager,
     super.key,
   });
@@ -28,7 +28,7 @@ class MediaViewerScreen extends StatefulWidget {
   final void Function(XFile file)? onDelete;
 
   /// Callback when a media file is shared.
-  final void Function(XFile file)? onShare;
+  // final void Function(XFile file)? onShare;
 
   /// Optional media manager that can provide thumbnails for videos
   final CameralyMediaManager? mediaManager;
@@ -188,10 +188,10 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     }
   }
 
-  void _shareCurrentMedia() {
-    final file = widget.mediaFiles[_currentIndex];
-    widget.onShare?.call(file);
-  }
+  // void _shareCurrentMedia() {
+  //   final file = widget.mediaFiles[_currentIndex];
+  //   widget.onShare?.call(file);
+  // }
 
   void _videoProgressListener() {
     if (mounted) setState(() {});
@@ -215,11 +215,11 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          if (widget.onShare != null)
-            IconButton(
-              icon: const Icon(Icons.share, color: Colors.white),
-              onPressed: _shareCurrentMedia,
-            ),
+          // if (widget.onShare != null)
+          //   IconButton(
+          //     icon: const Icon(Icons.share, color: Colors.white),
+          //     onPressed: _shareCurrentMedia,
+          //   ),
           if (widget.onDelete != null)
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.white),
