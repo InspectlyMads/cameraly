@@ -95,10 +95,12 @@ class CameralyMediaManager extends ChangeNotifier {
   /// If [maxItems] is set and the list is full, the oldest item will be removed.
   /// If a custom storage path is set, the file will be copied to that location.
   /// If the file is already in the media manager, it will not be added again.
-  /// If the file is a video, a thumbnail will be generated and saved to the media manager.
+  /// If [isVideo] is true, the file will be treated as a video (for correct mime type).
   /// Will call the [onMediaAdded] callback if provided.
-  /// Will call the [onCapture] callback if provided.
-  Future<void> addMedia(XFile file) async {
+  Future<void> addMedia(XFile file, {bool? isVideo}) async {
+    // Determine if the file is a video based on extension or the isVideo parameter
+    final bool isVideoFile = isVideo ?? file.path.toLowerCase().endsWith('.mp4') || file.path.toLowerCase().endsWith('.mov') || file.path.toLowerCase().endsWith('.avi');
+
     // If we have a max items limit and we're at the limit, remove the oldest item
     if (maxItems != null && _media.length >= maxItems!) {
       final removedFile = _media.removeAt(0);
@@ -127,13 +129,21 @@ class CameralyMediaManager extends ChangeNotifier {
         // Only copy if source and destination are different
         if (file.path != newPath) {
           await sourceFile.copy(newPath);
-          fileToAdd = XFile(newPath, mimeType: file.mimeType);
+          // Set appropriate mime type
+          final String mimeType = isVideoFile ? 'video/mp4' : file.mimeType ?? 'image/jpeg';
+          fileToAdd = XFile(newPath, mimeType: mimeType);
           debugPrint('📁 Copied media file to custom storage path: $newPath');
         } else {
           fileToAdd = file;
         }
       } else {
-        fileToAdd = file;
+        // If the file doesn't have a mime type, set it based on isVideo
+        if (file.mimeType == null) {
+          final String mimeType = isVideoFile ? 'video/mp4' : 'image/jpeg';
+          fileToAdd = XFile(file.path, mimeType: mimeType);
+        } else {
+          fileToAdd = file;
+        }
       }
 
       _media.add(fileToAdd);

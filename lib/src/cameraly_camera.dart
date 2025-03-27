@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'cameraly_controller.dart';
 import 'cameraly_preview.dart';
@@ -34,6 +35,11 @@ class CameraPreviewSettings {
     this.resolution = ResolutionPreset.high,
     this.flashMode = FlashMode.auto,
     bool enableAudio = true,
+    this.compressionQuality = CompressionQuality.auto,
+    this.imageQuality = 90,
+    this.videoQuality = 85,
+    this.addLocationMetadata = false,
+    this.locationAccuracy = LocationAccuracy.high,
 
     // Overlay visibility settings
     this.showOverlay = true,
@@ -317,6 +323,33 @@ class CameraPreviewSettings {
   /// - vibrate: Vibration feedback
   final HapticFeedbackType customButtonHapticFeedbackType;
 
+  /// The compression quality level for captured media.
+  /// Affects both images and videos.
+  ///
+  /// Default is [CompressionQuality.auto], which automatically sets compression
+  /// based on the resolution.
+  final CompressionQuality compressionQuality;
+
+  /// Image quality percentage (0-100) when compression is enabled.
+  ///
+  /// Only used when [compressionQuality] is not [CompressionQuality.none].
+  /// Higher values mean better quality but larger file sizes.
+  /// Default is 90, which provides good quality with reasonable compression.
+  final int imageQuality;
+
+  /// Video quality percentage (0-100) when compression is enabled.
+  ///
+  /// Only used when [compressionQuality] is not [CompressionQuality.none].
+  /// Higher values mean better quality but larger file sizes.
+  /// Default is 85, which provides good quality with reasonable compression.
+  final int videoQuality;
+
+  /// Whether to add location metadata to captured media.
+  final bool addLocationMetadata;
+
+  /// Location accuracy for capturing location metadata.
+  final LocationAccuracy locationAccuracy;
+
   /// Converts this settings object to a [CaptureSettings] object.
   ///
   /// This is used internally by [CameralyCamera] to configure the [CameralyController].
@@ -327,6 +360,11 @@ class CameraPreviewSettings {
       flashMode: flashMode,
       resolution: resolution,
       maxVideoDuration: videoDurationLimit,
+      compressionQuality: compressionQuality,
+      imageQuality: imageQuality,
+      videoQuality: videoQuality,
+      addLocationMetadata: addLocationMetadata,
+      locationAccuracy: locationAccuracy,
     );
   }
 
@@ -372,6 +410,11 @@ class CameraPreviewSettings {
     Widget Function(BuildContext, CameralyOverlayState)? backButtonBuilder,
     bool? useHapticFeedbackOnCustomButtons,
     HapticFeedbackType? customButtonHapticFeedbackType,
+    CompressionQuality? compressionQuality,
+    int? imageQuality,
+    int? videoQuality,
+    bool? addLocationMetadata,
+    LocationAccuracy? locationAccuracy,
   }) {
     final newCameraMode = cameraMode ?? this.cameraMode;
     // If new camera mode is photoOnly, force enableAudio to false
@@ -419,6 +462,11 @@ class CameraPreviewSettings {
       multiImageSelect: multiImageSelect ?? this.multiImageSelect,
       useHapticFeedbackOnCustomButtons: useHapticFeedbackOnCustomButtons ?? this.useHapticFeedbackOnCustomButtons,
       customButtonHapticFeedbackType: customButtonHapticFeedbackType ?? this.customButtonHapticFeedbackType,
+      compressionQuality: compressionQuality ?? this.compressionQuality,
+      imageQuality: imageQuality ?? this.imageQuality,
+      videoQuality: videoQuality ?? this.videoQuality,
+      addLocationMetadata: addLocationMetadata ?? this.addLocationMetadata,
+      locationAccuracy: locationAccuracy ?? this.locationAccuracy,
     );
   }
 }

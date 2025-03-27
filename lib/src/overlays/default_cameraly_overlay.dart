@@ -5,7 +5,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
 import '../cameraly_controller.dart';
 import '../types/camera_mode.dart';
@@ -1496,7 +1495,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (_isRecording) {
         // Let the controller update our recording state through its value listener
         // Don't manually set _isRecording = false here
-        final file = await _controller?.stopVideoRecording();
+        await _controller?.stopVideoRecording();
 
         // Turn off torch after stopping recording if it was enabled
         if (_torchEnabled && !_isFrontCamera) {
@@ -1507,12 +1506,6 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             // Notify torch state change
             _notifyCameraStateChanged();
           });
-        }
-
-        // Only process the file if it's not null
-        if (file != null) {
-          // The file is already added to the media manager in CameralyController.stopVideoRecording()
-          // So we don't need to add it again here
         }
       } else {
         // Ensure we maintain torch state when starting recording
@@ -1561,14 +1554,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         await _controller?.setFlashMode(_flashMode);
       }
 
-      final file = await _controller?.takePicture();
-
-      // Only process the file if it's not null
-      if (file != null) {
-        // Add to the controller's media manager
-        // Will call the onCapture callback if provided
-        _controller?.mediaManager.addMedia(file);
-      }
+      await _controller?.takePicture();
     } catch (e) {
       // Call error callback if provided
       if (widget.onError != null) {
@@ -1577,170 +1563,53 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
+  /// Open the image picker to select media from the device
   Future<void> _openMediaGallery() async {
+    if (widget.controller == null) return;
+
+    final controller = widget.controller!;
+
     try {
-      // Set flag to indicate file picker is active
-      setState(() {
-        _isFilePickerActive = true;
-        _notifyCameraStateChanged(); // Notify state change
-      });
-
-      // Initial haptic feedback when method is called
-      HapticFeedback.selectionClick();
-
-      // Check if we're in video-only mode
-      final isVideoOnlyMode = _controller?.settings.cameraMode == CameraMode.videoOnly;
-
-      if (isVideoOnlyMode) {
-        final XFile? pickedVideo = await _imagePicker.pickVideo(source: ImageSource.gallery);
-
-        // Start continuous haptic feedback IMMEDIATELY when returning from picker
-        final loadingHapticTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
-          HapticFeedback.selectionClick();
-        });
-
-        try {
-          // Immediate feedback when returning from picker
-          HapticFeedback.lightImpact();
-
-          if (pickedVideo != null && widget.controller?.mediaManager != null) {
-            // Process the video file to generate a thumbnail
-            final processedVideo = await _processVideoFile(pickedVideo);
-
-            // Add the video to the media manager
-            widget.controller!.mediaManager.addMedia(processedVideo);
-
-            // Completion feedback
-            loadingHapticTimer.cancel();
-            HapticFeedback.mediumImpact();
-          }
-        } finally {
-          loadingHapticTimer.cancel();
+      // If video-only mode, only show video picker
+      if (controller.settings.cameraMode == CameraMode.videoOnly) {
+        final XFile? video = await _imagePicker.pickVideo(source: ImageSource.gallery);
+        if (video != null) {
+          HapticFeedback.mediumImpact();
+          // Process the video with compression
+          final processedVideo = await controller.processMediaFile(video, true);
+          controller.mediaManager.addMedia(processedVideo, isVideo: true);
         }
-      } else if (widget.multiImageSelect && !isVideoOnlyMode) {
-        // Pick multiple images from device gallery (not in video-only mode)
-        final List<XFile> pickedFiles = await _imagePicker.pickMultiImage();
+        return;
+      }
 
-        // Start continuous haptic feedback IMMEDIATELY when returning from picker
-        // This is the critical moment when the user has tapped "Add" in the OS gallery
-        final loadingHapticTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
-          HapticFeedback.selectionClick();
-        });
+      // In photo mode or combined mode, allow multiple image selection
+      if (widget.multiImageSelect) {
+        final List<XFile> images = await _imagePicker.pickMultipleMedia();
+        if (images.isNotEmpty) {
+          HapticFeedback.mediumImpact();
 
-        try {
-          // Immediate feedback when returning from picker, regardless of selection result
-          HapticFeedback.lightImpact();
+          for (final image in images) {
+            // Determine if this is a video based on file extension
+            final isVideo = image.path.toLowerCase().endsWith('.mp4') || image.path.toLowerCase().endsWith('.mov') || image.path.toLowerCase().endsWith('.avi');
 
-          // Add each image to the media manager
-          if (pickedFiles.isNotEmpty && widget.controller?.mediaManager != null) {
-            // Short delay to allow UI to update
-            await Future.delayed(const Duration(milliseconds: 300));
-
-            // Process files with slight delay between them to allow UI updates
-            for (int i = 0; i < pickedFiles.length; i++) {
-              final file = pickedFiles[i];
-              widget.controller!.mediaManager.addMedia(file);
-
-              // For large imports, provide haptic feedback for progress
-              if (pickedFiles.length > 5 && i > 0 && i % 5 == 0) {
-                HapticFeedback.lightImpact();
-              }
-
-              // Small delay between processing files to prevent UI freezing
-              if (pickedFiles.length > 10 && i < pickedFiles.length - 1) {
-                await Future.delayed(const Duration(milliseconds: 5));
-              }
-            }
-
-            // Completion haptic feedback
-            loadingHapticTimer.cancel();
-            HapticFeedback.heavyImpact();
+            // Process the media file with appropriate compression
+            final processedFile = await controller.processMediaFile(image, isVideo);
+            controller.mediaManager.addMedia(processedFile, isVideo: isVideo);
           }
-        } finally {
-          // Ensure timer is always cancelled to prevent memory leaks
-          loadingHapticTimer.cancel();
         }
       } else {
-        // Pick a single image from device gallery (not in video-only mode)
-        final XFile? pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
-
-        // Start continuous haptic feedback IMMEDIATELY when returning from picker
-        final loadingHapticTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
-          HapticFeedback.selectionClick();
-        });
-
-        try {
-          // Immediate feedback when returning from picker
-          HapticFeedback.lightImpact();
-
-          if (pickedFile != null && widget.controller?.mediaManager != null) {
-            // Brief delay to allow UI to update
-            await Future.delayed(const Duration(milliseconds: 300));
-
-            // Add the image to the media manager
-            widget.controller!.mediaManager.addMedia(pickedFile);
-
-            // Completion feedback
-            loadingHapticTimer.cancel();
-            HapticFeedback.mediumImpact();
-          }
-        } finally {
-          // Ensure timer is always cancelled
-          loadingHapticTimer.cancel();
+        // Single image selection
+        final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
+        if (image != null) {
+          HapticFeedback.mediumImpact();
+          // Process the image with compression
+          final processedImage = await controller.processMediaFile(image, false);
+          controller.mediaManager.addMedia(processedImage, isVideo: false);
         }
       }
-
-      // Call the gallery tap callback if provided
-      if (widget.onGalleryTap != null) {
-        widget.onGalleryTap!();
-      }
     } catch (e) {
-      // Haptic feedback for error
-      HapticFeedback.vibrate();
-
-      // Call error callback if provided
-      if (widget.onError != null) {
-        widget.onError!('gallery', 'Error opening gallery: $e', error: e, isRecoverable: true);
-      }
-    } finally {
-      // Reset file picker active flag when complete (whether successful or error)
-      if (mounted) {
-        setState(() {
-          _isFilePickerActive = false;
-          _notifyCameraStateChanged(); // Notify state change
-        });
-      }
+      debugPrint('Error picking media: $e');
     }
-  }
-
-  // Helper method to process a video file (similar to the implementation in CameralyController)
-  Future<XFile> _processVideoFile(XFile originalFile) async {
-    XFile processedFile = originalFile;
-
-    // Check if we need to generate a thumbnail
-    try {
-      // Determine the thumbnail path (same as video but with .jpg extension)
-      final String thumbnailPath = processedFile.path.replaceAll(RegExp(r'\.(mp4|mov|avi|temp)$', caseSensitive: false), '.jpg');
-
-      // Generate the thumbnail
-      final String? generatedThumbnailPath = await vt.VideoThumbnail.thumbnailFile(
-        video: processedFile.path,
-        thumbnailPath: thumbnailPath,
-        imageFormat: vt.ImageFormat.JPEG,
-        maxHeight: 200,
-        quality: 75,
-      );
-
-      if (generatedThumbnailPath != null && widget.controller?.mediaManager != null) {
-        // Store the thumbnail path in the media manager for later use
-        widget.controller!.mediaManager.setThumbnailForVideo(processedFile.path, generatedThumbnailPath);
-      }
-    } catch (e) {
-      debugPrint('Error generating video thumbnail: $e');
-    }
-
-    // Return the processed file
-    return processedFile;
   }
 
   Future<void> _openCustomGallery() async {

@@ -1,8 +1,28 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
+import 'package:geolocator/geolocator.dart';
 
 import '../cameraly_camera.dart'; // Import for CameraPreviewSettings
 import 'camera_mode.dart';
+
+/// Compression quality level for captured media.
+enum CompressionQuality {
+  /// No compression, original quality.
+  none,
+
+  /// Light compression, high quality.
+  light,
+
+  /// Medium compression, good quality.
+  medium,
+
+  /// High compression, reduced quality.
+  high,
+
+  /// Automatic compression based on the resolution setting.
+  /// This is the default and recommended option.
+  auto,
+}
 
 /// Base settings for camera capture operations.
 ///
@@ -29,12 +49,25 @@ class CaptureSettings {
     this.focusMode = FocusMode.auto,
     this.deviceOrientation = DeviceOrientation.portraitUp,
     this.maxVideoDuration,
+    this.compressionQuality = CompressionQuality.auto,
+    this.imageQuality = 90,
+    this.videoQuality = 85,
+    this.addLocationMetadata = false,
+    this.locationAccuracy = LocationAccuracy.high,
   })  :
         // Force enableAudio to false when in photoOnly mode
         enableAudio = cameraMode == CameraMode.photoOnly ? false : enableAudio,
         assert(
           maxVideoDuration == null || cameraMode != CameraMode.photoOnly,
           'maxVideoDuration can only be used with CameraMode.videoOnly or CameraMode.both',
+        ),
+        assert(
+          imageQuality >= 0 && imageQuality <= 100,
+          'imageQuality must be between 0 and 100',
+        ),
+        assert(
+          videoQuality >= 0 && videoQuality <= 100,
+          'videoQuality must be between 0 and 100',
         );
 
   /// The camera mode (photo, video, or both).
@@ -64,6 +97,33 @@ class CaptureSettings {
   /// Only applicable when [cameraMode] is [CameraMode.videoOnly] or [CameraMode.both].
   final Duration? maxVideoDuration;
 
+  /// The compression quality level for captured media.
+  /// Affects both images and videos.
+  ///
+  /// Default is [CompressionQuality.auto], which automatically sets compression
+  /// based on the resolution.
+  final CompressionQuality compressionQuality;
+
+  /// Image quality percentage (0-100) when compression is enabled.
+  ///
+  /// Only used when [compressionQuality] is not [CompressionQuality.none].
+  /// Higher values mean better quality but larger file sizes.
+  /// Default is 90, which provides good quality with reasonable compression.
+  final int imageQuality;
+
+  /// Video quality percentage (0-100) when compression is enabled.
+  ///
+  /// Only used when [compressionQuality] is not [CompressionQuality.none].
+  /// Higher values mean better quality but larger file sizes.
+  /// Default is 85, which provides good quality with reasonable compression.
+  final int videoQuality;
+
+  /// Whether to add location metadata to captured media.
+  final bool addLocationMetadata;
+
+  /// The accuracy level for location metadata.
+  final LocationAccuracy locationAccuracy;
+
   /// Creates a copy of this settings object with the given fields replaced.
   CaptureSettings copyWith({
     CameraMode? cameraMode,
@@ -74,6 +134,11 @@ class CaptureSettings {
     FocusMode? focusMode,
     DeviceOrientation? deviceOrientation,
     Duration? maxVideoDuration,
+    CompressionQuality? compressionQuality,
+    int? imageQuality,
+    int? videoQuality,
+    bool? addLocationMetadata,
+    LocationAccuracy? locationAccuracy,
   }) {
     final newCameraMode = cameraMode ?? this.cameraMode;
     // If new camera mode is photoOnly, force enableAudio to false
@@ -88,6 +153,11 @@ class CaptureSettings {
       focusMode: focusMode ?? this.focusMode,
       deviceOrientation: deviceOrientation ?? this.deviceOrientation,
       maxVideoDuration: maxVideoDuration ?? this.maxVideoDuration,
+      compressionQuality: compressionQuality ?? this.compressionQuality,
+      imageQuality: imageQuality ?? this.imageQuality,
+      videoQuality: videoQuality ?? this.videoQuality,
+      addLocationMetadata: addLocationMetadata ?? this.addLocationMetadata,
+      locationAccuracy: locationAccuracy ?? this.locationAccuracy,
     );
   }
 
@@ -105,6 +175,39 @@ class CaptureSettings {
         flashMode: FlashMode.off,
         exposureMode: ExposureMode.auto,
         focusMode: FocusMode.auto,
+      );
+
+  /// Creates a new settings instance optimized for file size (more compression).
+  factory CaptureSettings.optimizeStorage() => const CaptureSettings(
+        resolution: ResolutionPreset.medium,
+        flashMode: FlashMode.auto,
+        exposureMode: ExposureMode.auto,
+        focusMode: FocusMode.auto,
+        compressionQuality: CompressionQuality.high,
+        imageQuality: 80,
+        videoQuality: 75,
+      );
+
+  /// Creates a new settings instance optimized for quality (less compression).
+  factory CaptureSettings.highQuality() => const CaptureSettings(
+        resolution: ResolutionPreset.veryHigh,
+        flashMode: FlashMode.auto,
+        exposureMode: ExposureMode.auto,
+        focusMode: FocusMode.auto,
+        compressionQuality: CompressionQuality.light,
+        imageQuality: 95,
+        videoQuality: 90,
+      );
+
+  /// Creates a new settings instance with maximum quality and no compression.
+  factory CaptureSettings.maxQuality() => const CaptureSettings(
+        resolution: ResolutionPreset.max,
+        flashMode: FlashMode.auto,
+        exposureMode: ExposureMode.auto,
+        focusMode: FocusMode.auto,
+        compressionQuality: CompressionQuality.none,
+        imageQuality: 100,
+        videoQuality: 100,
       );
 
   /// Creates a new settings instance from a [CameraPreviewSettings] object.
@@ -140,10 +243,28 @@ class CaptureSettings {
           focusMode == other.focusMode &&
           deviceOrientation == other.deviceOrientation &&
           cameraMode == other.cameraMode &&
-          maxVideoDuration == other.maxVideoDuration;
+          maxVideoDuration == other.maxVideoDuration &&
+          compressionQuality == other.compressionQuality &&
+          imageQuality == other.imageQuality &&
+          videoQuality == other.videoQuality &&
+          addLocationMetadata == other.addLocationMetadata &&
+          locationAccuracy == other.locationAccuracy;
 
   @override
-  int get hashCode => enableAudio.hashCode ^ resolution.hashCode ^ flashMode.hashCode ^ exposureMode.hashCode ^ focusMode.hashCode ^ deviceOrientation.hashCode ^ cameraMode.hashCode ^ maxVideoDuration.hashCode;
+  int get hashCode =>
+      enableAudio.hashCode ^
+      resolution.hashCode ^
+      flashMode.hashCode ^
+      exposureMode.hashCode ^
+      focusMode.hashCode ^
+      deviceOrientation.hashCode ^
+      cameraMode.hashCode ^
+      maxVideoDuration.hashCode ^
+      compressionQuality.hashCode ^
+      imageQuality.hashCode ^
+      videoQuality.hashCode ^
+      addLocationMetadata.hashCode ^
+      locationAccuracy.hashCode;
 
   @override
   String toString() => 'CaptureSettings('
@@ -154,5 +275,10 @@ class CaptureSettings {
       'focusMode: $focusMode, '
       'deviceOrientation: $deviceOrientation, '
       'cameraMode: $cameraMode, '
-      'maxVideoDuration: $maxVideoDuration)';
+      'maxVideoDuration: $maxVideoDuration, '
+      'compressionQuality: $compressionQuality, '
+      'imageQuality: $imageQuality, '
+      'videoQuality: $videoQuality, '
+      'addLocationMetadata: $addLocationMetadata, '
+      'locationAccuracy: $locationAccuracy)';
 }
