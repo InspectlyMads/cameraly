@@ -3,6 +3,7 @@ import 'package:cameraly_example/screens/camera_screen.dart';
 import 'package:cameraly_example/screens/custom_display_screen.dart';
 import 'package:cameraly_example/screens/custom_overlay_example.dart';
 import 'package:cameraly_example/screens/limited_video_example.dart';
+import 'package:cameraly_example/screens/orientation_debug_screen.dart';
 import 'package:cameraly_example/screens/simple_camera_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -92,6 +93,14 @@ class HomeScreen extends StatelessWidget {
             icon: Icons.layers,
             color: Colors.indigo,
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CustomOverlayExample())),
+          ),
+          _buildExampleTile(
+            context,
+            title: 'Orientation Debug',
+            subtitle: 'Test camera behavior during orientation changes',
+            icon: Icons.screen_rotation,
+            color: Colors.deepOrange,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const OrientationDebugScreen())),
           ),
 
           const Divider(height: 40, thickness: 2),
