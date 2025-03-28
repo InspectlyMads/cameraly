@@ -355,6 +355,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
   }
 
+  // Add a static variable to lock camera recreation during orientation changes
+  static bool _isHandlingOrientation = false;
+
   /// Handles device orientation changes.
   ///
   /// This method is called when the device orientation changes and updates
@@ -365,53 +368,68 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       return;
     }
 
-    final newOrientation = await _getDeviceOrientation();
-
-    debugPrint('📸 Handling device orientation change: $newOrientation');
-
-    // First update our local value
-    value = value.copyWith(deviceOrientation: newOrientation);
-
-    // Check again if controller is still valid before proceeding
-    if (_controller == null) {
-      debugPrint('📸 Controller became null during orientation change');
+    // Check if we're already handling an orientation change
+    if (_isHandlingOrientation) {
+      debugPrint('📸 Orientation change already in progress, ignoring duplicate');
       return;
     }
 
-    // On Android, handle the orientation change explicitly
-    if (Platform.isAndroid) {
-      try {
-        // Use a small delay before locking orientation to avoid freezing
-        await Future.delayed(const Duration(milliseconds: 100));
+    _isHandlingOrientation = true;
 
-        // Check again for null controller after delay
-        if (_controller == null) {
-          debugPrint('📸 Controller became null during orientation change delay');
-          return;
-        }
+    try {
+      final newOrientation = await _getDeviceOrientation();
 
-        await setDeviceOrientation(newOrientation);
+      debugPrint('📸 Handling device orientation change: $newOrientation');
 
-        // Force camera resume to fix freezing issues on Android
-        await Future.delayed(const Duration(milliseconds: 300));
+      // First update our local value
+      value = value.copyWith(deviceOrientation: newOrientation);
 
-        // Verify controller is still valid before attempting resume
-        if (_controller == null) {
-          debugPrint('📸 Controller became null before camera resume');
-          return;
-        }
-
-        await handleCameraResume();
-      } catch (e) {
-        debugPrint('❌ Error setting device orientation on Android: $e');
+      // Check again if controller is still valid before proceeding
+      if (_controller == null) {
+        debugPrint('📸 Controller became null during orientation change');
+        _isHandlingOrientation = false;
+        return;
       }
-    } else {
-      // For iOS, just set the orientation
-      try {
-        await setDeviceOrientation(newOrientation);
-      } catch (e) {
-        debugPrint('❌ Error setting device orientation on iOS: $e');
+
+      // On Android, handle the orientation change explicitly
+      if (Platform.isAndroid) {
+        try {
+          // Use a small delay before locking orientation to avoid freezing
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Check again for null controller after delay
+          if (_controller == null) {
+            debugPrint('📸 Controller became null during orientation change delay');
+            _isHandlingOrientation = false;
+            return;
+          }
+
+          await setDeviceOrientation(newOrientation);
+
+          // Force camera resume to fix freezing issues on Android
+          await Future.delayed(const Duration(milliseconds: 300));
+
+          // Verify controller is still valid before attempting resume
+          if (_controller == null) {
+            debugPrint('📸 Controller became null before camera resume');
+            _isHandlingOrientation = false;
+            return;
+          }
+
+          await handleCameraResume();
+        } catch (e) {
+          debugPrint('❌ Error setting device orientation on Android: $e');
+        }
+      } else {
+        // For iOS, just set the orientation
+        try {
+          await setDeviceOrientation(newOrientation);
+        } catch (e) {
+          debugPrint('❌ Error setting device orientation on iOS: $e');
+        }
       }
+    } finally {
+      _isHandlingOrientation = false;
     }
   }
 
@@ -1098,12 +1116,18 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         return null;
       }
 
+      // Save current settings to transfer to new controller
       final previousSettings = _settings;
       final wasRecording = value.isRecordingVideo;
+      final currentZoomLevel = value.zoomLevel;
+      final currentFlashMode = value.flashMode;
+      final currentFocusMode = value.focusMode;
+      final currentExposureMode = value.exposureMode;
+      final currentOrientation = value.deviceOrientation;
 
-      // Create a reference to the current controller
-      final currentController = this;
-      debugPrint('📸 Current controller hashcode: ${currentController.hashCode}');
+      // Update UI to show we're transitioning
+      value = value.copyWith(isChangingController: true);
+      notifyListeners();
 
       // Store the current media manager to reuse in the new controller
       final currentMediaManager = mediaManager;
@@ -1114,10 +1138,35 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         await stopVideoRecording();
       }
 
-      // Ensure the native controller is properly disposed
+      // Pause camera preview first to prevent issues during transition
+      if (_controller != null && _controller!.value.isInitialized) {
+        try {
+          await _controller!.pausePreview();
+        } catch (e) {
+          debugPrint('📸 Error pausing camera preview: $e');
+        }
+      }
+
+      // Minimal delay to ensure camera preview is paused
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // Dispose the current controller
       debugPrint('📸 Disposing current controller: ${_controller?.hashCode}');
-      await _controller?.dispose();
+      final oldController = _controller;
       _controller = null;
+
+      try {
+        // Using a timeout to prevent hanging on disposal
+        await oldController?.dispose().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () {
+            debugPrint('📸 Controller disposal timed out, continuing anyway');
+            return;
+          },
+        );
+      } catch (e) {
+        debugPrint('📸 Error disposing controller: $e');
+      }
 
       // Create a new controller with the new camera and existing media manager
       final newController = CameralyController(
@@ -1130,7 +1179,36 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       try {
         // Initialize the new controller
         debugPrint('📸 Initializing new controller');
-        await newController.initializeWithFallback();
+        await newController.initialize().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {
+            throw TimeoutException('Camera initialization timed out');
+          },
+        );
+
+        // Restore previous camera settings
+        if (currentZoomLevel > 1.0) {
+          try {
+            await newController._controller?.setZoomLevel(currentZoomLevel);
+          } catch (e) {
+            debugPrint('📸 Error restoring zoom level: $e');
+          }
+        }
+
+        if (currentFlashMode != FlashMode.off) {
+          try {
+            await newController._controller?.setFlashMode(currentFlashMode);
+          } catch (e) {
+            debugPrint('📸 Error restoring flash mode: $e');
+          }
+        }
+
+        try {
+          await newController._controller?.setExposureMode(currentExposureMode);
+          await newController._controller?.setFocusMode(currentFocusMode);
+        } catch (e) {
+          debugPrint('📸 Error restoring focus/exposure mode: $e');
+        }
 
         // Double-check if native controller is initialized
         if (newController._controller != null && newController._controller!.value.isInitialized) {
@@ -1443,7 +1521,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   }
 
   @override
-  void dispose() async {
+  Future<void> dispose() async {
     if (_isDisposing) return;
 
     _isDisposing = true;
@@ -1451,6 +1529,13 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
     // Cancel any ongoing operations
     _recordingTimer?.cancel();
+
+    // Cancel any ongoing video compression
+    try {
+      await VideoCompress.cancelCompression();
+    } catch (e) {
+      debugPrint('📸 Error canceling video compression: $e');
+    }
 
     // Add a small delay to ensure any pending frame operations complete
     await Future.delayed(const Duration(milliseconds: 50));
@@ -1473,6 +1558,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     } catch (e) {
       debugPrint('📸 Error disposing camera controller: $e');
     } finally {
+      // Clean up temp files created by this instance
+      _cleanupOldTempFiles();
+
       _isDisposing = false;
       super.dispose();
     }
@@ -1543,16 +1631,33 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     return reportedRatio;
   }
 
+  // Add a global lock to prevent multiple camera initializations
+  static bool _isResumingAnyCamera = false;
+
   /// Handles camera resume with a complete controller recreation for Android
   /// This is a more aggressive approach to fix freezing issues on orientation changes
   Future<void> handleCameraResume() async {
-    if (!value.isInitialized || _controller == null) return;
-    if (_isResuming) {
-      debugPrint('📸 Camera resume already in progress, skipping duplicate request');
+    // Global lock to prevent ANY camera from being resumed simultaneously
+    if (_isResumingAnyCamera) {
+      debugPrint('📸 Another camera is already being resumed, skipping duplicate request');
       return;
     }
 
+    if (!value.isInitialized || _controller == null) return;
+
+    if (_isResuming) {
+      debugPrint('📸 Camera resume already in progress for this controller, skipping duplicate request');
+      return;
+    }
+
+    if (_isHandlingOrientation) {
+      debugPrint('📸 Orientation change already in progress, handling resume as part of it');
+    }
+
+    // Set BOTH locks
     _isResuming = true;
+    _isResumingAnyCamera = true;
+
     try {
       debugPrint('📸 Explicit camera resume requested');
 
@@ -1575,165 +1680,165 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         );
         notifyListeners();
 
-        // Stop recording if necessary
-        if (wasRecording) {
-          try {
-            await stopVideoRecording();
-          } catch (e) {
-            debugPrint('📸 Error stopping recording during recovery: $e');
-          }
-        }
-
-        // Store the current media manager to reuse in the new controller
-        final currentMediaManager = mediaManager;
-
-        // Pause the preview to prevent frame access errors
-        try {
-          if (_controller != null && _controller!.value.isInitialized) {
-            await _controller!.pausePreview();
-          }
-        } catch (e) {
-          debugPrint('📸 Error pausing preview: $e');
-        }
-
-        // Add a minimal delay before disposal
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        debugPrint('📸 Disposing old camera controller');
-        // Create a reference to the old controller
+        // Create a reference to the old controller and null out _controller
+        // immediately to prevent any other code from using it
         final oldController = _controller;
         _controller = null;
 
         try {
+          // Pause the preview first to prevent access to frames after they're released
+          try {
+            if (oldController != null && oldController.value.isInitialized) {
+              await oldController.pausePreview();
+              debugPrint('📸 Successfully paused old controller preview');
+            }
+          } catch (e) {
+            debugPrint('📸 Error pausing preview: $e');
+          }
+
+          // Add a minimal delay before disposal
+          await Future.delayed(const Duration(milliseconds: 150));
+
           // Dispose the old controller with timeout protection
-          await oldController?.dispose().timeout(
-            const Duration(seconds: 2),
-            onTimeout: () {
-              debugPrint('📸 Controller disposal timed out, continuing anyway');
-              return;
-            },
-          );
-        } catch (e) {
-          debugPrint('📸 Error disposing old controller: $e');
-        }
-
-        // Minimal delay to ensure disposal is complete before recreation
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        // Create new controller with same settings
-        debugPrint('📸 Creating new camera controller');
-        final newController = CameraController(
-          _description,
-          _settings.resolution,
-          enableAudio: _settings.enableAudio,
-          imageFormatGroup: ImageFormatGroup.jpeg,
-        );
-
-        try {
-          // Initialize the new controller with timeout protection
-          debugPrint('📸 Initializing new camera controller');
-
-          await newController.initialize().timeout(
-            const Duration(seconds: 3),
-            onTimeout: () {
-              throw TimeoutException('Camera initialization timed out');
-            },
-          );
-
-          // Minimal delay for the controller to fully stabilize
-          await Future.delayed(const Duration(milliseconds: 50));
-
-          // Verify controller is initialized before continuing
-          if (!newController.value.isInitialized) {
-            throw StateError('Camera controller initialize() completed but controller is not initialized');
-          }
-
-          // Assign the new controller
-          _controller = newController;
-
-          // CRITICAL: Explicitly set orientation first
           try {
-            debugPrint('📸 Setting device orientation to: $currentOrientation');
-            await _controller!.lockCaptureOrientation(currentOrientation);
+            debugPrint('📸 Disposing old camera controller');
+            await oldController?.dispose().timeout(
+              const Duration(seconds: 2),
+              onTimeout: () {
+                debugPrint('📸 Controller disposal timed out, continuing anyway');
+                return;
+              },
+            );
+            debugPrint('📸 Old controller successfully disposed');
           } catch (e) {
-            debugPrint('📸 Error setting orientation: $e');
+            debugPrint('📸 Error disposing controller: $e');
           }
 
-          // Minimal pause to let the orientation change apply
-          await Future.delayed(const Duration(milliseconds: 50));
+          // Add extra delay to ensure disposal is complete
+          await Future.delayed(const Duration(milliseconds: 200));
 
-          // Restore previous state
-          debugPrint('📸 Restoring camera parameters');
-          if (currentFlashMode != FlashMode.off) {
-            try {
-              await _controller!.setFlashMode(currentFlashMode);
-            } catch (e) {
-              debugPrint('📸 Error restoring flash mode: $e');
-            }
-          }
-
-          try {
-            await _controller!.setExposureMode(currentExposureMode);
-            await _controller!.setFocusMode(currentFocusMode);
-          } catch (e) {
-            debugPrint('📸 Error restoring focus/exposure: $e');
-          }
-
-          if (currentZoomLevel > 1.0) {
-            try {
-              await _controller!.setZoomLevel(currentZoomLevel);
-            } catch (e) {
-              debugPrint('📸 Error restoring zoom: $e');
-            }
-          }
-
-          // Minimal stabilization delay before notifying listeners
-          await Future.delayed(const Duration(milliseconds: 50));
-
-          // Update our value to reflect the new controller
-          _updateValueFromController();
-
-          // Force explicit value update to ensure orientation and camera state are correct
-          value = value.copyWith(
-            deviceOrientation: currentOrientation,
-            isInitialized: true,
-            error: null,
-            isChangingController: false, // Important: mark the controller change as complete
-            isFrontCamera: isFrontCamera, // Preserve front/back camera state
+          // Create new controller with same settings
+          debugPrint('📸 Creating new camera controller');
+          final newController = CameraController(
+            _description,
+            _settings.resolution,
+            enableAudio: _settings.enableAudio,
+            imageFormatGroup: ImageFormatGroup.jpeg,
           );
 
-          // Force update the UI
-          notifyListeners();
-
-          debugPrint('📸 Camera recovered successfully');
-        } catch (e) {
-          debugPrint('📸 Failed to recover camera: $e');
-
-          // Try a simpler recovery as fallback
           try {
-            if (_controller != null) {
-              debugPrint('📸 Falling back to simple resumePreview');
-              await _controller!.resumePreview();
+            // Initialize the new controller with timeout protection
+            debugPrint('📸 Initializing new camera controller');
+            await newController.initialize().timeout(
+              const Duration(seconds: 3),
+              onTimeout: () {
+                throw TimeoutException('Camera initialization timed out');
+              },
+            );
+            debugPrint('📸 New controller successfully initialized');
 
-              // Still need to mark controller change as complete
-              value = value.copyWith(isChangingController: false, error: 'Camera recovery partially succeeded with fallback');
-              notifyListeners();
-            } else {
-              // Critical failure - the controller is null after recovery attempt
-              value = value.copyWith(isChangingController: false, error: 'Camera recovery failed: $e', isInitialized: false);
-              notifyListeners();
+            // Add extra stabilization delay
+            await Future.delayed(const Duration(milliseconds: 200));
+
+            // Verify controller is initialized before continuing
+            if (!newController.value.isInitialized) {
+              throw StateError('Camera controller initialize() completed but controller is not initialized');
             }
-          } catch (e2) {
-            debugPrint('📸 Even simple resumePreview failed: $e2');
-            value = value.copyWith(isChangingController: false, error: 'Camera recovery failed: $e2', isInitialized: false);
+
+            // Assign the new controller AFTER it's fully initialized
+            _controller = newController;
+
+            // CRITICAL: Explicitly set orientation first
+            try {
+              debugPrint('📸 Setting device orientation to: $currentOrientation');
+              await _controller!.lockCaptureOrientation(currentOrientation);
+            } catch (e) {
+              debugPrint('📸 Error setting orientation: $e');
+            }
+
+            // Minimal pause to let the orientation change apply
+            await Future.delayed(const Duration(milliseconds: 100));
+
+            // Restore previous state
+            debugPrint('📸 Restoring camera parameters');
+            if (currentFlashMode != FlashMode.off) {
+              try {
+                await _controller!.setFlashMode(currentFlashMode);
+              } catch (e) {
+                debugPrint('📸 Error restoring flash mode: $e');
+              }
+            }
+
+            try {
+              await _controller!.setExposureMode(currentExposureMode);
+              await _controller!.setFocusMode(currentFocusMode);
+            } catch (e) {
+              debugPrint('📸 Error restoring focus/exposure: $e');
+            }
+
+            if (currentZoomLevel > 1.0) {
+              try {
+                await _controller!.setZoomLevel(currentZoomLevel);
+              } catch (e) {
+                debugPrint('📸 Error restoring zoom: $e');
+              }
+            }
+
+            // Update our value to reflect the new controller
+            _updateValueFromController();
+
+            // Force explicit value update to ensure orientation and camera state are correct
+            value = value.copyWith(
+              deviceOrientation: currentOrientation,
+              isInitialized: true,
+              error: null,
+              isChangingController: false, // Important: mark the controller change as complete
+              isFrontCamera: isFrontCamera, // Preserve front/back camera state
+            );
+
+            // Force update the UI
             notifyListeners();
+
+            debugPrint('📸 Camera recovered successfully');
+          } catch (e) {
+            debugPrint('📸 Failed to recover camera: $e');
+
+            // Try a simpler recovery as fallback
+            try {
+              if (_controller != null) {
+                debugPrint('📸 Falling back to simple resumePreview');
+                await _controller!.resumePreview();
+
+                // Still need to mark controller change as complete
+                value = value.copyWith(isChangingController: false, error: 'Camera recovery partially succeeded with fallback');
+                notifyListeners();
+              } else {
+                // Critical failure - the controller is null after recovery attempt
+                value = value.copyWith(isChangingController: false, error: 'Camera recovery failed: $e', isInitialized: false);
+                notifyListeners();
+              }
+            } catch (e2) {
+              debugPrint('📸 Even simple resumePreview failed: $e2');
+              value = value.copyWith(isChangingController: false, error: 'Camera recovery failed: $e2', isInitialized: false);
+              notifyListeners();
+            }
           }
+        } catch (e) {
+          debugPrint('📸 Critical error during camera rebuild: $e');
+          value = value.copyWith(isChangingController: false, error: 'Critical camera error: $e', isInitialized: false);
+          notifyListeners();
         }
       } else {
         // For iOS, simple resumePreview works fine
         if (_controller != null) {
-          await _controller!.resumePreview();
-          debugPrint('📸 iOS camera resumed with simple resumePreview');
+          try {
+            await _controller!.resumePreview();
+            debugPrint('📸 iOS camera resumed with simple resumePreview');
+          } catch (e) {
+            debugPrint('📸 Error resuming iOS camera: $e');
+            value = value.copyWith(error: 'Failed to resume camera: $e');
+            notifyListeners();
+          }
         }
       }
     } catch (e) {
@@ -1742,7 +1847,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       value = value.copyWith(isChangingController: false);
       notifyListeners();
     } finally {
+      // Reset BOTH locks
       _isResuming = false;
+      _isResumingAnyCamera = false;
     }
   }
 
@@ -1795,58 +1902,138 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   Future<XFile> processMediaFile(XFile file, bool isVideo) async {
     XFile processedFile = file;
 
-    // First apply compression if needed
-    if (isVideo) {
-      // Video compression
-      final info = await VideoCompress.compressVideo(
-        file.path,
-        quality: _convertToVideoQuality(_settings.videoQuality),
-        deleteOrigin: false,
-        includeAudio: true,
-      );
-      if (info?.path != null) {
-        processedFile = XFile(info!.path!);
-        debugPrint('🎬 Compressed video: ${file.path} -> ${processedFile.path}');
-      }
-    } else {
-      // Image compression
-      if (_settings.imageQuality != null || _settings.compressionQuality != null) {
-        final quality = _settings.imageQuality ?? 80;
-        final compressionQuality = _settings.compressionQuality ?? 0.8;
+    try {
+      // First apply compression if needed
+      if (isVideo) {
+        // Video compression
+        try {
+          final info = await VideoCompress.compressVideo(
+            file.path,
+            quality: _convertToVideoQuality(_settings.videoQuality),
+            deleteOrigin: false,
+            includeAudio: true,
+          );
 
-        final result = await FlutterImageCompress.compressWithFile(
-          file.path,
-          quality: quality,
-          minWidth: 1080,
-          minHeight: 1080,
-        );
+          if (info?.path != null) {
+            processedFile = XFile(info!.path!);
+            debugPrint('🎬 Compressed video: ${file.path} -> ${processedFile.path}');
+          }
+        } catch (e) {
+          debugPrint('🎬 Error compressing video: $e');
+          // If compression fails, use the original file
+          processedFile = file;
+        } finally {
+          // Properly clean up VideoCompress resources to prevent memory leaks
+          try {
+            await VideoCompress.cancelCompression();
+          } catch (e) {
+            debugPrint('🎬 Error canceling video compression: $e');
+          }
+        }
+      } else {
+        // Image compression
+        if (_settings.imageQuality != null || _settings.compressionQuality != null) {
+          final quality = _settings.imageQuality ?? 80;
+          final compressionQuality = _settings.compressionQuality ?? 0.8;
+          File? tempFile;
 
-        if (result != null) {
-          // Save compressed result to a temporary file
-          final dir = await getTemporaryDirectory();
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final targetPath = '${dir.path}/compressed_$timestamp.jpg';
+          try {
+            final result = await FlutterImageCompress.compressWithFile(
+              file.path,
+              quality: quality,
+              minWidth: 1080,
+              minHeight: 1080,
+            );
 
-          await File(targetPath).writeAsBytes(result);
-          processedFile = XFile(targetPath);
-          debugPrint('🖼️ Compressed image: ${file.path} -> ${processedFile.path}');
+            if (result != null) {
+              // Save compressed result to a temporary file
+              final dir = await getTemporaryDirectory();
+              final timestamp = DateTime.now().millisecondsSinceEpoch;
+              final targetPath = '${dir.path}/compressed_$timestamp.jpg';
+
+              tempFile = File(targetPath);
+              await tempFile.writeAsBytes(result);
+              processedFile = XFile(targetPath);
+
+              debugPrint('🖼️ Compressed image: ${file.path} -> ${processedFile.path}');
+
+              // Register the temp file for cleanup when the app closes
+              _registerTempFileForCleanup(tempFile);
+            }
+          } catch (e) {
+            debugPrint('🖼️ Error compressing image: $e');
+            // If compression fails, use the original file
+            processedFile = file;
+          }
         }
       }
-    }
 
-    // Add location metadata to images
-    if (!isVideo && _settings.addLocationMetadata) {
-      try {
-        // Get current location
-        final location = await _getCurrentLocation();
-        // Add location metadata to the image
-        processedFile = await _addLocationMetadataToImage(processedFile, location);
-      } catch (e) {
-        debugPrint('Error adding location metadata: $e');
+      // Add location metadata to images
+      if (!isVideo && _settings.addLocationMetadata) {
+        try {
+          // Get current location
+          final location = await _getCurrentLocation();
+          // Add location metadata to the image
+          processedFile = await _addLocationMetadataToImage(processedFile, location);
+        } catch (e) {
+          debugPrint('Error adding location metadata: $e');
+        }
       }
+    } catch (e) {
+      debugPrint('Error processing media file: $e');
+      // Return the original file if any part of processing fails
+      return file;
     }
 
     return processedFile;
+  }
+
+  // List to track temporary files for cleanup
+  static final List<File> _tempFiles = [];
+
+  // Register a temporary file for cleanup
+  void _registerTempFileForCleanup(File file) {
+    _tempFiles.add(file);
+    // If we have too many temp files, clean up old ones
+    if (_tempFiles.length > 20) {
+      _cleanupOldTempFiles();
+    }
+  }
+
+  // Clean up old temporary files
+  static void _cleanupOldTempFiles() {
+    debugPrint('🧹 Cleaning up old temporary files');
+    // Keep the 10 most recent files, delete the rest
+    if (_tempFiles.length > 10) {
+      final filesToRemove = _tempFiles.sublist(0, _tempFiles.length - 10);
+      for (final file in filesToRemove) {
+        try {
+          if (file.existsSync()) {
+            file.deleteSync();
+            debugPrint('🧹 Deleted temp file: ${file.path}');
+          }
+        } catch (e) {
+          debugPrint('🧹 Error deleting temp file: $e');
+        }
+      }
+      _tempFiles.removeRange(0, _tempFiles.length - 10);
+    }
+  }
+
+  // Clean up all temporary files
+  static void cleanupAllTempFiles() {
+    debugPrint('🧹 Cleaning up all temporary files');
+    for (final file in _tempFiles) {
+      try {
+        if (file.existsSync()) {
+          file.deleteSync();
+          debugPrint('🧹 Deleted temp file: ${file.path}');
+        }
+      } catch (e) {
+        debugPrint('🧹 Error deleting temp file: $e');
+      }
+    }
+    _tempFiles.clear();
   }
 
   /// Converts integer video quality to VideoQuality enum

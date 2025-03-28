@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +11,7 @@ import 'overlays/cameraly_overlay_theme.dart';
 import 'overlays/default_cameraly_overlay.dart';
 import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
+import 'utils/camera_lifecycle_machine.dart';
 import 'utils/cameraly_controller_provider.dart';
 import 'utils/media_manager.dart';
 
@@ -515,21 +515,40 @@ class CameralyCamera extends StatefulWidget {
   State<CameralyCamera> createState() => _CameralyCameraState();
 }
 
-class _CameralyCameraState extends State<CameralyCamera> {
+class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObserver {
   CameralyController? _controller;
   late CameralyMediaManager _mediaManager;
   bool _isInitializing = true;
   String? _errorMessage;
+  List<CameraDescription>? _cameras;
+  bool _controllerInitialized = false;
+  bool _controllerDisposed = false;
+  bool _isChangingController = false;
+
+  // Add lifecycle machine
+  CameraLifecycleMachine? _lifecycleMachine;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _controllerDisposed = true;
+
+    // Clean up lifecycle machine
+    _lifecycleMachine?.dispose();
+
+    // Dispose of controller if we initialized it
+    if (_controllerInitialized && _controller != null) {
+      _controller!.dispose();
+      _controller = null;
+    }
+
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -547,113 +566,85 @@ class _CameralyCameraState extends State<CameralyCamera> {
   }
 
   Future<void> _initializeCamera() async {
-    // Set initial state without triggering a rebuild yet
-    _isInitializing = true;
-    _errorMessage = null;
-
-    // Initialize media manager
-    _mediaManager = CameralyMediaManager(
-      maxItems: widget.settings.maxMediaItems,
-      customStoragePath: widget.settings.customStoragePath,
-      onMediaAdded: (file) {
-        widget.settings.onCapture?.call(file);
-      },
-    );
-
     try {
+      setState(() {
+        _isInitializing = true;
+      });
+
+      // Initialize media manager
+      _mediaManager = CameralyMediaManager(
+        maxItems: widget.settings.maxMediaItems,
+        customStoragePath: widget.settings.customStoragePath,
+        onMediaAdded: (file) {
+          widget.settings.onCapture?.call(file);
+        },
+      );
+
       // Get available cameras
       final cameras = await CameralyController.getAvailableCameras();
       if (cameras.isEmpty) {
-        _errorMessage = 'No cameras available on this device';
-
-        // Now trigger the rebuild with error state
-        if (mounted) {
-          setState(() {
-            _isInitializing = false;
-          });
-        }
-
-        // Call the error callback
-        widget.settings.onError?.call('initialization', 'No cameras available on this device', isRecoverable: false);
+        _handleError('initCamera', 'No cameras found', null, false);
         return;
       }
+      _cameras = cameras;
 
-      // Convert to capture settings and create the controller
-      final captureSettings = widget.settings.toCaptureSettings();
-      final controller = CameralyController(
-        description: cameras.first,
-        settings: captureSettings,
+      // Find initial camera to use
+      final cameraIndex = _getCameraIndexToUse(cameras);
+      final cameraDescription = cameras[cameraIndex];
+
+      // Create controller and initialize it
+      _controller = CameralyController(
+        description: cameraDescription,
+        settings: _createCaptureSettings(),
         mediaManager: _mediaManager,
       );
 
-      // Set controller immediately without rebuild
-      _controller = controller;
+      // Create lifecycle machine
+      _lifecycleMachine = CameraLifecycleMachine(
+        controller: _controller!,
+        onStateChange: _handleLifecycleStateChange,
+        onError: _handleLifecycleError,
+      );
 
-      try {
-        // Platform-specific initialization approach
-        if (Platform.isAndroid) {
-          // On Android, avoid showing loading screen when possible
-          // Initialize in background then directly show camera
-          setState(() {
-            // Set initializing to false immediately to show the camera preview
-            // This prevents the black loading screen flash
-            _isInitializing = false;
-          });
-
-          // Now initialize the controller after showing the UI
-          await controller.initialize();
-
-          // Additional brief stabilization delay without showing loading screen
-          await Future.delayed(const Duration(milliseconds: 100));
-        } else {
-          // For iOS, use the traditional approach - initialize first, then show
-          await controller.initialize();
-
-          // Small delay for UI stability
-          await Future.delayed(const Duration(milliseconds: 100));
-
-          // Update state only after initialization completes
-          if (mounted) {
-            setState(() {
-              _isInitializing = false;
-            });
-          }
-        }
-
-        // Call the onInitialized callback if provided
-        if (mounted) {
-          widget.settings.onInitialized?.call(controller);
-        }
-      } catch (e) {
-        // Handle initialization error
-        final errorMsg = 'Failed to initialize camera: ${e.toString()}';
-
-        // Only update state if still mounted
-        if (mounted) {
-          setState(() {
-            _isInitializing = false;
-            _errorMessage = errorMsg;
-          });
-
-          widget.settings.onError?.call('initialization', errorMsg, error: e, isRecoverable: true);
-        }
-
-        // Clean up the controller
-        controller.dispose();
+      // Initialize using lifecycle machine
+      final initialized = await _lifecycleMachine!.initialize();
+      if (!initialized) {
+        _handleError('initCamera', 'Failed to initialize camera', null, false);
+        return;
       }
-    } catch (e) {
-      // Handle general error
-      final errorMsg = 'Camera error: ${e.toString()}';
+
+      _controllerInitialized = true;
+
+      if (widget.settings.onInitialized != null) {
+        widget.settings.onInitialized!(_controller!);
+      }
 
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _errorMessage = errorMsg;
+          _selectedCameraIndex = cameraIndex;
         });
-
-        widget.settings.onError?.call('system', errorMsg, error: e, isRecoverable: false);
       }
+    } catch (e, stackTrace) {
+      _handleError('initCamera', 'Error initializing camera', e, true, stackTrace);
     }
+  }
+
+  // Handle state transitions from lifecycle machine
+  void _handleLifecycleStateChange(CameraLifecycleState oldState, CameraLifecycleState newState) {
+    debugPrint('CameralyCamera: Lifecycle state changed from $oldState to $newState');
+
+    if (mounted) {
+      setState(() {
+        // Update loading state based on lifecycle transitions
+        _isChangingController = newState == CameraLifecycleState.initializing || newState == CameraLifecycleState.resuming || newState == CameraLifecycleState.recreating || newState == CameraLifecycleState.switching;
+      });
+    }
+  }
+
+  // Handle lifecycle errors
+  void _handleLifecycleError(String message, Object? error) {
+    _handleError('cameraLifecycle', message, error, false);
   }
 
   Widget _buildLoadingUI() {
@@ -778,5 +769,75 @@ class _CameralyCameraState extends State<CameralyCamera> {
         loadingBuilder: (context, value) => _buildLoadingUI(),
       ),
     );
+  }
+
+  // Add these missing helper methods
+
+  // Convert CameraPreviewSettings to CaptureSettings
+  CaptureSettings _createCaptureSettings() {
+    return CaptureSettings(
+      cameraMode: widget.settings.cameraMode,
+      resolution: widget.settings.resolution,
+      flashMode: widget.settings.flashMode,
+      enableAudio: widget.settings.enableAudio,
+      compressionQuality: widget.settings.compressionQuality,
+      imageQuality: widget.settings.imageQuality,
+      videoQuality: widget.settings.videoQuality,
+      addLocationMetadata: widget.settings.addLocationMetadata,
+      locationAccuracy: widget.settings.locationAccuracy,
+      exposureMode: widget.settings.exposureMode,
+      focusMode: widget.settings.focusMode,
+      deviceOrientation: widget.settings.deviceOrientation,
+    );
+  }
+
+  // Get camera index to use (front or back)
+  int _getCameraIndexToUse(List<CameraDescription> cameras) {
+    // Default to first camera
+    int cameraIndex = 0;
+
+    // Try to find back camera for initial use
+    for (int i = 0; i < cameras.length; i++) {
+      if (cameras[i].lensDirection == CameraLensDirection.back) {
+        cameraIndex = i;
+        break;
+      }
+    }
+
+    return cameraIndex;
+  }
+
+  // Selected camera index
+  int _selectedCameraIndex = 0;
+
+  // Handle errors consistently
+  void _handleError(String source, String message, Object? error, bool isRecoverable, [StackTrace? stackTrace]) {
+    final fullMessage = '$source: $message';
+    debugPrint('CameralyCamera error: $fullMessage');
+    if (error != null) {
+      debugPrint('Error details: $error');
+      if (stackTrace != null) {
+        debugPrint('Stack trace: $stackTrace');
+      }
+    }
+
+    // Update state
+    if (mounted) {
+      setState(() {
+        _isInitializing = false;
+        _errorMessage = fullMessage;
+      });
+    }
+
+    // Call error callback
+    widget.settings.onError?.call(source, message, error: error, isRecoverable: isRecoverable);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Only handle app lifecycle changes if controller is initialized
+    if (_controller != null && _lifecycleMachine != null) {
+      _lifecycleMachine!.handleAppLifecycleChange(state);
+    }
   }
 }
