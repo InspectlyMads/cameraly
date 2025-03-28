@@ -36,6 +36,8 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   CameraController? _controller;
   Timer? _recordingTimer;
   DateTime? _recordingStartTime;
+  bool _isDisposing = false;
+  bool _isResuming = false;
 
   /// The camera description this controller is using
   CameraDescription get description => _description;
@@ -342,10 +344,10 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         // Ignore zoom errors during initialization
       }
 
-      // Add a small delay to reduce flickering during initialization
-      await Future.delayed(const Duration(milliseconds: 100));
+      // Minimal delay to reduce flickering during initialization
+      await Future.delayed(const Duration(milliseconds: 30));
 
-      // Final value update with notification after delay
+      // Final value update with notification
       notifyListeners();
     } on CameraException catch (e) {
       value = value.copyWith(error: 'Failed to initialize camera: ${e.description}');
@@ -1441,10 +1443,39 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   }
 
   @override
-  void dispose() {
+  void dispose() async {
+    if (_isDisposing) return;
+
+    _isDisposing = true;
     WidgetsBinding.instance.removeObserver(this);
-    _controller?.dispose();
-    super.dispose();
+
+    // Cancel any ongoing operations
+    _recordingTimer?.cancel();
+
+    // Add a small delay to ensure any pending frame operations complete
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    try {
+      if (_controller != null) {
+        // Pause preview first to prevent frame access errors
+        try {
+          if (Platform.isAndroid && _controller!.value.isInitialized) {
+            await _controller!.pausePreview();
+          }
+        } catch (e) {
+          debugPrint('📸 Error pausing preview during dispose: $e');
+        }
+
+        await Future.delayed(const Duration(milliseconds: 50));
+        await _controller!.dispose();
+        _controller = null;
+      }
+    } catch (e) {
+      debugPrint('📸 Error disposing camera controller: $e');
+    } finally {
+      _isDisposing = false;
+      super.dispose();
+    }
   }
 
   /// Manually detects and prints the current device orientation.
@@ -1516,7 +1547,12 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// This is a more aggressive approach to fix freezing issues on orientation changes
   Future<void> handleCameraResume() async {
     if (!value.isInitialized || _controller == null) return;
+    if (_isResuming) {
+      debugPrint('📸 Camera resume already in progress, skipping duplicate request');
+      return;
+    }
 
+    _isResuming = true;
     try {
       debugPrint('📸 Explicit camera resume requested');
 
@@ -1531,6 +1567,13 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         final currentExposureMode = value.exposureMode;
         final currentOrientation = value.deviceOrientation;
         final wasRecording = value.isRecordingVideo;
+        final isFrontCamera = value.isFrontCamera;
+
+        // Update value to show we're in progress with camera change
+        value = value.copyWith(
+          isChangingController: true,
+        );
+        notifyListeners();
 
         // Stop recording if necessary
         if (wasRecording) {
@@ -1541,28 +1584,40 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
           }
         }
 
-        // First update value to indicate we're intentionally handling this transition
-        // This prevents the UI from showing a loading state until we're done
-        value = value.copyWith(
-          isChangingController: true,
-        );
-        notifyListeners();
+        // Store the current media manager to reuse in the new controller
+        final currentMediaManager = mediaManager;
 
-        // Add a small delay before disposal to let any pending operations complete
+        // Pause the preview to prevent frame access errors
+        try {
+          if (_controller != null && _controller!.value.isInitialized) {
+            await _controller!.pausePreview();
+          }
+        } catch (e) {
+          debugPrint('📸 Error pausing preview: $e');
+        }
+
+        // Add a minimal delay before disposal
         await Future.delayed(const Duration(milliseconds: 50));
 
         debugPrint('📸 Disposing old camera controller');
-        // Dispose the old controller
+        // Create a reference to the old controller
         final oldController = _controller;
         _controller = null;
 
         try {
-          await oldController?.dispose();
+          // Dispose the old controller with timeout protection
+          await oldController?.dispose().timeout(
+            const Duration(seconds: 2),
+            onTimeout: () {
+              debugPrint('📸 Controller disposal timed out, continuing anyway');
+              return;
+            },
+          );
         } catch (e) {
           debugPrint('📸 Error disposing old controller: $e');
         }
 
-        // Add a small delay to ensure disposal is complete before recreation
+        // Minimal delay to ensure disposal is complete before recreation
         await Future.delayed(const Duration(milliseconds: 50));
 
         // Create new controller with same settings
@@ -1575,12 +1630,23 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         );
 
         try {
-          // Initialize the new controller
+          // Initialize the new controller with timeout protection
           debugPrint('📸 Initializing new camera controller');
-          await newController.initialize();
 
-          // Add a small delay for the controller to fully stabilize
+          await newController.initialize().timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              throw TimeoutException('Camera initialization timed out');
+            },
+          );
+
+          // Minimal delay for the controller to fully stabilize
           await Future.delayed(const Duration(milliseconds: 50));
+
+          // Verify controller is initialized before continuing
+          if (!newController.value.isInitialized) {
+            throw StateError('Camera controller initialize() completed but controller is not initialized');
+          }
 
           // Assign the new controller
           _controller = newController;
@@ -1593,8 +1659,8 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
             debugPrint('📸 Error setting orientation: $e');
           }
 
-          // Add a small pause to let the orientation change apply
-          await Future.delayed(const Duration(milliseconds: 100));
+          // Minimal pause to let the orientation change apply
+          await Future.delayed(const Duration(milliseconds: 50));
 
           // Restore previous state
           debugPrint('📸 Restoring camera parameters');
@@ -1621,18 +1687,19 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
             }
           }
 
-          // Add one final stabilization delay before notifying listeners
+          // Minimal stabilization delay before notifying listeners
           await Future.delayed(const Duration(milliseconds: 50));
 
           // Update our value to reflect the new controller
           _updateValueFromController();
 
-          // Force explicit value update to ensure orientation is correct
+          // Force explicit value update to ensure orientation and camera state are correct
           value = value.copyWith(
             deviceOrientation: currentOrientation,
             isInitialized: true,
             error: null,
             isChangingController: false, // Important: mark the controller change as complete
+            isFrontCamera: isFrontCamera, // Preserve front/back camera state
           );
 
           // Force update the UI
@@ -1645,22 +1712,37 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
           // Try a simpler recovery as fallback
           try {
             if (_controller != null) {
-              _controller!.resumePreview();
-              debugPrint('📸 Fallback to simple resumePreview');
+              debugPrint('📸 Falling back to simple resumePreview');
+              await _controller!.resumePreview();
+
+              // Still need to mark controller change as complete
+              value = value.copyWith(isChangingController: false, error: 'Camera recovery partially succeeded with fallback');
+              notifyListeners();
+            } else {
+              // Critical failure - the controller is null after recovery attempt
+              value = value.copyWith(isChangingController: false, error: 'Camera recovery failed: $e', isInitialized: false);
+              notifyListeners();
             }
           } catch (e2) {
             debugPrint('📸 Even simple resumePreview failed: $e2');
+            value = value.copyWith(isChangingController: false, error: 'Camera recovery failed: $e2', isInitialized: false);
+            notifyListeners();
           }
         }
       } else {
         // For iOS, simple resumePreview works fine
         if (_controller != null) {
-          _controller!.resumePreview();
+          await _controller!.resumePreview();
           debugPrint('📸 iOS camera resumed with simple resumePreview');
         }
       }
     } catch (e) {
       debugPrint('📸 Error in handleCameraResume: $e');
+      // Ensure we always reset the changing controller state
+      value = value.copyWith(isChangingController: false);
+      notifyListeners();
+    } finally {
+      _isResuming = false;
     }
   }
 
