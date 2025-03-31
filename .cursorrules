@@ -2,59 +2,59 @@
     "global": {
         "fileAssociations": {
             "*.dart": "dart",
-            "pubspec.yaml": "yaml",
-            "*.arb": "json",
-            "*.g.dart": "dart",
-            "*.freezed.dart": "dart",
-            "*.mocks.dart": "dart",
-            "analysis_options.yaml": "yaml",
-            "*.json": "json",
-            "*.lock": "yaml"
+                "pubspec.yaml": "yaml",
+                    "*.arb": "json",
+                        "*.g.dart": "dart",
+                            "*.freezed.dart": "dart",
+                                "*.mocks.dart": "dart",
+                                    "analysis_options.yaml": "yaml",
+                                        "*.json": "json",
+                                            "*.lock": "yaml"
         },
         "formatOnSave": true,
-        "formatOnPaste": true,
-        "dart.lineLength": 250,
-        "editor.rulers": [
-            250
-        ],
-        "dart.completeFunctionCalls": true,
-        "dart.previewFlutterUiGuides": true,
-        "dart.previewFlutterUiGuidesCustomTracking": true,
-        "dart.showTodos": true,
-        "dart.enableSdkFormatter": true,
-        "dart.debugExternalPackageLibraries": true,
-        "dart.debugSdkLibraries": true,
-        "dart.hotReloadOnSave": "all",
-        "dart.previewHotReloadOnSaveWatcher": true,
-        "files.exclude": {
+            "formatOnPaste": true,
+                "dart.lineLength": 250,
+                    "editor.rulers": [
+                        250
+                    ],
+                        "dart.completeFunctionCalls": true,
+                            "dart.previewFlutterUiGuides": true,
+                                "dart.previewFlutterUiGuidesCustomTracking": true,
+                                    "dart.showTodos": true,
+                                        "dart.enableSdkFormatter": true,
+                                            "dart.debugExternalPackageLibraries": true,
+                                                "dart.debugSdkLibraries": true,
+                                                    "dart.hotReloadOnSave": "all",
+                                                        "dart.previewHotReloadOnSaveWatcher": true,
+                                                            "files.exclude": {
             "**/*.g.dart": false,
-            "**/*.freezed.dart": false,
-            "**/*.mocks.dart": false,
-            "**/.dart_tool": true,
-            "**/.flutter-plugins": true,
-            "**/.flutter-plugins-dependencies": true,
-            "**/build/": true,
-            "**/.metadata": true,
-            "**/*.iml": true,
-            "**/.idea/": true,
-            "**/android/.gradle": true,
-            "**/ios/Pods/": true,
-            "**/coverage/": true,
-            "**/.DS_Store": true,
-            "**/node_modules/": true,
-            "**/*.log": true
+                "**/*.freezed.dart": false,
+                    "**/*.mocks.dart": false,
+                        "**/.dart_tool": true,
+                            "**/.flutter-plugins": true,
+                                "**/.flutter-plugins-dependencies": true,
+                                    "**/build/": true,
+                                        "**/.metadata": true,
+                                            "**/*.iml": true,
+                                                "**/.idea/": true,
+                                                    "**/android/.gradle": true,
+                                                        "**/ios/Pods/": true,
+                                                            "**/coverage/": true,
+                                                                "**/.DS_Store": true,
+                                                                    "**/node_modules/": true,
+                                                                        "**/*.log": true
         },
         "search.exclude": {
             "**/.fvm": true,
-            "**/.dart_tool": true,
-            "**/build/": true,
-            "**/.symlinks": true,
-            "**/.pub-cache": true,
-            "**/*.g.dart": false,
-            "**/*.freezed.dart": false,
-            "**/generated_plugin_registrant.dart": true,
-            "**/ios/Pods/": true,
-            "**/android/.gradle/": true
+                "**/.dart_tool": true,
+                    "**/build/": true,
+                        "**/.symlinks": true,
+                            "**/.pub-cache": true,
+                                "**/*.g.dart": false,
+                                    "**/*.freezed.dart": false,
+                                        "**/generated_plugin_registrant.dart": true,
+                                            "**/ios/Pods/": true,
+                                                "**/android/.gradle/": true
         }
     },
     "project": {
@@ -62,24 +62,25 @@
             "src": {
                 "lib": {
                     "app": "App-level configurations",
-                    "core": "Shared utilities and constants",
-                    "data": "Repositories and data sources",
-                    "domain": "Business logic and entities",
-                    "presentation": "UI components and BLoCs",
-                    "generated": "Generated code (translations, assets)",
-                    "l10n": "Localization files",
-                    "config": "Environment configurations",
-                    "utils": "Helper functions and extensions",
-                    "widgets": "Reusable widget components",
-                    "routing": "Route definitions and navigation",
-                    "theme": "Theme configuration and styles"
+                        "core": "Shared utilities and constants",
+                            "data": "Repositories and data sources",
+                                "domain": "Business logic and entities",
+                                    "presentation": "UI components and Providers",
+                                        "generated": "Generated code (translations, assets)",
+                                            "l10n": "Localization files",
+                                                "config": "Environment configurations",
+                                                    "utils": "Helper functions and extensions",
+                                                        "widgets": "Reusable widget components",
+                                                            "routing": "Route definitions and navigation",
+                                                                "theme": "Theme configuration and styles",
+                                                                    "providers": "State management providers"
                 },
                 "test": {
                     "unit": "Unit tests",
-                    "widget": "Widget tests",
-                    "integration": "Integration tests",
-                    "golden": "Golden tests",
-                    "mocks": "Mock classes for testing"
+                        "widget": "Widget tests",
+                            "integration": "Integration tests",
+                                "golden": "Golden tests",
+                                    "mocks": "Mock classes for testing"
                 }
             }
         },
@@ -87,112 +88,133 @@
             "extensions": [
                 "Dart-Code.dart-code",
                 "Dart-Code.flutter",
-                "felixangelov.bloc",
                 "nash.awesome-flutter-snippets",
-                "robert-brunhage.flutter-riverpod-snippets",
                 "localizely.flutter-intl",
                 "jeroen-meijer.pubspec-assist"
             ]
         },
         "snippets": {
             "dart": {
-                "bloc": {
-                    "prefix": "bloc",
-                    "body": [
-                        "import 'package:flutter_bloc/flutter_bloc.dart';",
-                        "import 'package:freezed_annotation/freezed_annotation.dart';",
-                        "",
-                        "part '${TM_FILENAME_BASE}.freezed.dart';",
-                        "",
-                        "@freezed",
-                        "class ${1:Feature}Event with _$${1:Feature}Event {",
-                        "  const factory ${1:Feature}Event.started() = _Started;",
-                        "}",
-                        "",
-                        "@freezed",
-                        "class ${1:Feature}State with _$${1:Feature}State {",
-                        "  const factory ${1:Feature}State.initial() = _Initial;",
-                        "}",
-                        "",
-                        "class ${1:Feature}Bloc extends Bloc<${1:Feature}Event, ${1:Feature}State> {",
-                        "  ${1:Feature}Bloc() : super(const ${1:Feature}State.initial()) {",
-                        "    on<${1:Feature}Event>((event, emit) {",
-                        "      event.when(",
-                        "        started: () {",
-                        "          // TODO: implement started",
-                        "        },",
-                        "      );",
-                        "    });",
-                        "  }",
-                        "}"
-                    ],
-                    "description": "Creates a new BLoC with Freezed"
+                "changenotifier": {
+                    "prefix": "provider",
+                        "body": [
+                            "import 'package:flutter/foundation.dart';",
+                            "",
+                            "class ${1:Feature}Provider extends ChangeNotifier {",
+                            "  ${1:Feature}Provider();",
+                            "",
+                            "  // State",
+                            "  bool _isLoading = false;",
+                            "  String? _error;",
+                            "",
+                            "  // Getters",
+                            "  bool get isLoading => _isLoading;",
+                            "  String? get error => _error;",
+                            "",
+                            "  // Methods",
+                            "  Future<void> load${1:Feature}() async {",
+                            "    _setLoading(true);",
+                            "    _error = null;",
+                            "",
+                            "    try {",
+                            "      // TODO: Implement loading logic",
+                            "      await Future.delayed(const Duration(seconds: 1));",
+                            "    } catch (e) {",
+                            "      _error = e.toString();",
+                            "    } finally {",
+                            "      _setLoading(false);",
+                            "    }",
+                            "  }",
+                            "",
+                            "  void _setLoading(bool value) {",
+                            "    _isLoading = value;",
+                            "    notifyListeners();",
+                            "  }",
+                            "}"
+                        ],
+                            "description": "Creates a new ChangeNotifier Provider class"
                 },
                 "freezed": {
                     "prefix": "freezed",
-                    "body": [
-                        "import 'package:freezed_annotation/freezed_annotation.dart';",
-                        "",
-                        "part '${TM_FILENAME_BASE}.freezed.dart';",
-                        "part '${TM_FILENAME_BASE}.g.dart';",
-                        "",
-                        "@freezed",
-                        "class ${1:Model} with _$${1:Model} {",
-                        "  const factory ${1:Model}({",
-                        "    required ${2:String} ${3:field},",
-                        "  }) = _${1:Model};",
-                        "",
-                        "  factory ${1:Model}.fromJson(Map<String, dynamic> json) =>",
-                        "      _$${1:Model}FromJson(json);",
-                        "}"
-                    ],
-                    "description": "Creates a new Freezed class with JSON serialization"
+                        "body": [
+                            "import 'package:freezed_annotation/freezed_annotation.dart';",
+                            "",
+                            "part '${TM_FILENAME_BASE}.freezed.dart';",
+                            "part '${TM_FILENAME_BASE}.g.dart';",
+                            "",
+                            "@freezed",
+                            "class ${1:Model} with _$${1:Model} {",
+                            "  const factory ${1:Model}({",
+                            "    required ${2:String} ${3:field},",
+                            "  }) = _${1:Model};",
+                            "",
+                            "  factory ${1:Model}.fromJson(Map<String, dynamic> json) =>",
+                            "      _$${1:Model}FromJson(json);",
+                            "}"
+                        ],
+                            "description": "Creates a new Freezed class with JSON serialization"
                 },
                 "stateless": {
                     "prefix": "stless",
-                    "body": [
-                        "class ${1:WidgetName} extends StatelessWidget {",
-                        "  const ${1:WidgetName}({super.key});",
-                        "",
-                        "  @override",
-                        "  Widget build(BuildContext context) {",
-                        "    return ${2:Container()};",
-                        "  }",
-                        "}"
-                    ],
-                    "description": "Creates a new StatelessWidget with const constructor"
+                        "body": [
+                            "class ${1:WidgetName} extends StatelessWidget {",
+                            "  const ${1:WidgetName}({super.key});",
+                            "",
+                            "  @override",
+                            "  Widget build(BuildContext context) {",
+                            "    return ${2:Container()};",
+                            "  }",
+                            "}"
+                        ],
+                            "description": "Creates a new StatelessWidget with const constructor"
                 },
                 "repository": {
                     "prefix": "repo",
-                    "body": [
-                        "abstract class I${1:Feature}Repository {",
-                        "  Future<Either<Failure, ${2:Success}>> ${3:method}();",
-                        "}",
-                        "",
-                        "class ${1:Feature}Repository implements I${1:Feature}Repository {",
-                        "  const ${1:Feature}Repository();",
-                        "",
-                        "  @override",
-                        "  Future<Either<Failure, ${2:Success}>> ${3:method}() async {",
-                        "    try {",
-                        "      // TODO: Implement repository method",
-                        "      throw UnimplementedError();",
-                        "    } catch (e) {",
-                        "      return Left(Failure.fromException(e));",
-                        "    }",
-                        "  }",
-                        "}"
-                    ],
-                    "description": "Creates a new Repository with interface and implementation"
+                        "body": [
+                            "abstract class I${1:Feature}Repository {",
+                            "  Future<${2:Result<Success>}> ${3:method}();",
+                            "}",
+                            "",
+                            "class ${1:Feature}Repository implements I${1:Feature}Repository {",
+                            "  const ${1:Feature}Repository();",
+                            "",
+                            "  @override",
+                            "  Future<${2:Result<Success>}> ${3:method}() async {",
+                            "    try {",
+                            "      // TODO: Implement repository method",
+                            "      throw UnimplementedError();",
+                            "    } catch (e) {",
+                            "      return ${2:Result<Success>}.error(e.toString());",
+                            "    }",
+                            "  }",
+                            "}"
+                        ],
+                            "description": "Creates a new Repository with interface and implementation"
+                },
+                "consumerwidget": {
+                    "prefix": "consumer",
+                        "body": [
+                            "class ${1:WidgetName} extends ConsumerWidget {",
+                            "  const ${1:WidgetName}({super.key});",
+                            "",
+                            "  @override",
+                            "  Widget build(BuildContext context, WidgetRef ref) {",
+                            "    final ${2:provider} = ref.watch(${2:provider}Provider);",
+                            "",
+                            "    return ${3:Container()};",
+                            "  }",
+                            "}"
+                        ],
+                            "description": "Creates a new ConsumerWidget for use with Provider"
                 }
             },
             "conventions": {
                 "naming": {
                     "files": "snake_case for all files (e.g., auth_page.dart)",
-                    "classes": "PascalCase for classes and enums",
-                    "variables": "camelCase for variables and functions",
-                    "constants": "SCREAMING_SNAKE_CASE for constants",
-                    "private": "_prefixForPrivateMembers"
+                        "classes": "PascalCase for classes and enums",
+                            "variables": "camelCase for variables and functions",
+                                "constants": "SCREAMING_SNAKE_CASE for constants",
+                                    "private": "_prefixForPrivateMembers"
                 },
                 "architecture": {
                     "widgets": [
@@ -201,48 +223,49 @@
                         "Use const constructors for immutable widgets",
                         "Implement proper error boundaries"
                     ],
-                    "state_management": [
-                        "Use BLoC for complex state management",
-                        "Prefer ValueNotifier for simple state",
-                        "Implement proper error handling in BLoCs",
-                        "Use freezed for immutable states"
-                    ],
-                    "performance": [
-                        "Use const constructors",
-                        "Implement proper keys for lists",
-                        "Minimize rebuilds with selective updates",
-                        "Use proper image caching",
-                        "Implement lazy loading for large lists"
-                    ]
+                        "state_management": [
+                            "Use Provider for state management",
+                            "Implement ChangeNotifier for complex state",
+                            "Use ValueNotifier for simple state",
+                            "Prefer Consumer widgets for granular rebuilds",
+                            "Implement proper error handling in Providers"
+                        ],
+                            "performance": [
+                                "Use const constructors",
+                                "Implement proper keys for lists",
+                                "Minimize rebuilds with selective updates",
+                                "Use proper image caching",
+                                "Implement lazy loading for large lists"
+                            ]
                 }
             },
             "formatting": {
                 "dart.lineLength": 250,
-                "dart.style": {
+                    "dart.style": {
                     "blocks": "consistent",
-                    "functions": "spread",
-                    "collections": "preserve",
-                    "cascade": "preserve",
-                    "comments": {
+                        "functions": "spread",
+                            "collections": "preserve",
+                                "cascade": "preserve",
+                                    "comments": {
                         "lineLength": 250,
-                        "docComments": "preserve"
+                            "docComments": "preserve"
                     }
                 }
             },
             "tasks": {
                 "flutter": {
                     "clean": "flutter clean",
-                    "pub-get": "flutter pub get",
-                    "build-runner": "flutter pub run build_runner build --delete-conflicting-outputs",
-                    "build-runner-watch": "flutter pub run build_runner watch --delete-conflicting-outputs",
-                    "gen-l10n": "flutter gen-l10n",
-                    "test": "flutter test",
-                    "test-coverage": "flutter test --coverage",
-                    "analyze": "flutter analyze",
-                    "format": "flutter format lib test",
-                    "build-android": "flutter build apk --release",
-                    "build-ios": "flutter build ios --release",
-                    "build-web": "flutter build web --release"
+                        "pub-get": "flutter pub get",
+                            "build-runner": "flutter pub run build_runner build --delete-conflicting-outputs",
+                                "build-runner-watch": "flutter pub run build_runner watch --delete-conflicting-outputs",
+                                    "gen-l10n": "flutter gen-l10n",
+                                        "test": "flutter test",
+                                            "test-coverage": "flutter test --coverage",
+                                                "analyze": "flutter analyze",
+                                                    "format": "flutter format lib test",
+                                                        "build-android": "flutter build apk --release",
+                                                            "build-ios": "flutter build ios --release",
+                                                                "build-web": "flutter build web --release"
                 }
             }
         }

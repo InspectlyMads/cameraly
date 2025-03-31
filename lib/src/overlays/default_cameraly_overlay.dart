@@ -577,6 +577,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   bool _isVideoMode = false;
   bool _isRecording = false;
   bool _isFilePickerActive = false; // Track when file picker is active
+  bool _isProcessingVideo = false; // Track when video is being processed after recording
   FlashMode _flashMode = FlashMode.auto;
   bool _torchEnabled = false;
   double _currentZoom = 1.0;
@@ -595,6 +596,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   // Animation controller for zoom
   late AnimationController _zoomAnimationController;
   Animation<double>? _zoomAnimation;
+
+  // Add a variable to track the saved orientation for gallery navigation
+  DeviceOrientation? _savedGalleryOrientation;
+  bool _returningFromGallery = false;
 
   /// Whether to show the mode toggle button.
   /// This is determined by the camera mode - only shown when mode is [CameraMode.both].
@@ -830,6 +835,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           debugPrint('🎥 Saving flash state - mode: $_flashMode, torch: $_torchEnabled');
         }
 
+        // Save current orientation for when we resume from gallery
+        _savedGalleryOrientation = _controller!.value.deviceOrientation;
+        debugPrint('🎥 Saving orientation before pause: $_savedGalleryOrientation');
+
         debugPrint('🎥 Pausing camera preview');
         _controller!.cameraController!.pausePreview();
 
@@ -855,6 +864,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     try {
       debugPrint('🎥 Resuming camera preview');
+      _returningFromGallery = true;
 
       // On Android, use our more aggressive recovery method for better reliability
       if (Platform.isAndroid) {
@@ -869,6 +879,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           // Use the enhanced camera resume method that recreates the controller if needed
           await _controller!.handleCameraResume();
 
+          // After resume is complete, explicitly set the saved orientation if available
+          if (_savedGalleryOrientation != null) {
+            debugPrint('🎥 Restoring orientation after gallery return: $_savedGalleryOrientation');
+            try {
+              await _controller!.setDeviceOrientation(_savedGalleryOrientation!);
+            } catch (e) {
+              debugPrint('🎥 Error restoring orientation after gallery: $e');
+            }
+          }
+
           debugPrint('🎥 Android camera resumed with aggressive recovery method');
         } catch (e) {
           debugPrint('🎥 Error in aggressive Android camera recovery: $e');
@@ -876,6 +896,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           // Fallback to simple resume as a last resort
           try {
             _controller!.cameraController!.resumePreview();
+
+            // Still try to restore orientation even with fallback
+            if (_savedGalleryOrientation != null) {
+              await _controller!.setDeviceOrientation(_savedGalleryOrientation!);
+            }
           } catch (e2) {
             debugPrint('🎥 Fallback resume also failed: $e2');
           }
@@ -890,6 +915,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       } else {
         // For iOS, the normal resume works fine
         _controller!.cameraController!.resumePreview();
+
+        // Ensure orientation is correct on iOS too
+        if (_savedGalleryOrientation != null) {
+          try {
+            await _controller!.setDeviceOrientation(_savedGalleryOrientation!);
+          } catch (e) {
+            debugPrint('🎥 Error restoring iOS orientation after gallery: $e');
+          }
+        }
       }
 
       // Restore flash mode and torch settings
@@ -906,6 +940,21 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           debugPrint('🎥 Restoring photo mode flash: $_flashMode');
           await _controller!.setFlashMode(_flashMode);
         }
+      }
+
+      // Add a delayed orientation check to catch any issues with the first attempt
+      if (_savedGalleryOrientation != null) {
+        Future.delayed(const Duration(milliseconds: 500), () async {
+          try {
+            if (_controller != null && _controller!.value.isInitialized && mounted && _returningFromGallery) {
+              debugPrint('🎥 Performing delayed orientation check after gallery return');
+              await _controller!.setDeviceOrientation(_savedGalleryOrientation!);
+              _returningFromGallery = false;
+            }
+          } catch (e) {
+            debugPrint('🎥 Error in delayed orientation check: $e');
+          }
+        });
       }
 
       debugPrint('🎥 Camera resumed with flash mode: $_flashMode, torch: $_torchEnabled');
@@ -1493,9 +1542,32 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     try {
       if (_isRecording) {
-        // Let the controller update our recording state through its value listener
-        // Don't manually set _isRecording = false here
-        await _controller?.stopVideoRecording();
+        // Immediately update UI to stop the timer display
+        setState(() {
+          _isRecording = false;
+          _recordingDuration = Duration.zero;
+          _isProcessingVideo = true; // Set processing state to show loading indicator
+        });
+
+        // Let the controller handle the actual recording stop
+        await _controller?.stopVideoRecording().then((file) {
+          // File processing is complete
+          if (mounted) {
+            setState(() {
+              _isProcessingVideo = false; // Clear processing state
+            });
+          }
+        }).catchError((error) {
+          if (mounted) {
+            setState(() {
+              _isProcessingVideo = false; // Clear processing state on error too
+            });
+          }
+          debugPrint('📹 Error stopping recording: $error');
+          if (widget.onError != null) {
+            widget.onError!('recording', 'Failed to stop recording: $error');
+          }
+        });
 
         // Turn off torch after stopping recording if it was enabled
         if (_torchEnabled && !_isFrontCamera) {
@@ -1527,13 +1599,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         }
       }
     } catch (e) {
-      // Since we rely on the controller to update our state,
-      // we need to make sure we handle errors properly
-      debugPrint('📹 Recording error: $e');
+      // Clear processing state on any error
+      if (mounted) {
+        setState(() {
+          _isProcessingVideo = false;
+        });
+      }
 
-      // Call error callback if provided
+      debugPrint('📹 Error toggling recording: $e');
       if (widget.onError != null) {
-        widget.onError!('capture', 'Error: $e');
+        widget.onError!('recording', 'Failed to ${_isRecording ? 'stop' : 'start'} recording: $e');
       }
     }
   }
@@ -1566,52 +1641,228 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   /// Open the image picker to select media from the device
   Future<void> _openMediaGallery() async {
     if (widget.controller == null) return;
+    if (_isRecording) {
+      debugPrint('📹 Cannot open gallery while recording');
+      return;
+    }
+
+    // Prevent starting if already active
+    if (_isFilePickerActive) {
+      debugPrint('📹 Media picker already active');
+      return;
+    }
 
     final controller = widget.controller!;
+    final startTime = DateTime.now();
+
+    // Save current orientation before opening gallery
+    _savedGalleryOrientation = controller.value.deviceOrientation;
+    debugPrint('📸 Saving orientation before opening system file picker: $_savedGalleryOrientation');
+
+    // Set file picker as active before starting
+    setState(() {
+      _isFilePickerActive = true;
+    });
 
     try {
       // If video-only mode, only show video picker
       if (controller.settings.cameraMode == CameraMode.videoOnly) {
         final XFile? video = await _imagePicker.pickVideo(source: ImageSource.gallery);
-        if (video != null) {
-          HapticFeedback.mediumImpact();
-          // Process the video with compression
-          final processedVideo = await controller.processMediaFile(video, true);
-          controller.mediaManager.addMedia(processedVideo, isVideo: true);
+
+        // If no video selected, clear active state and return
+        if (video == null) {
+          if (mounted) {
+            setState(() {
+              _isFilePickerActive = false;
+            });
+          }
+
+          // Restore orientation when returning without selection
+          _restoreOrientationAfterFilePicker();
+          return;
         }
+
+        // Video selected, provide feedback
+        HapticFeedback.mediumImpact();
+
+        // Process the video with compression (loading state stays active)
+        final processedVideo = await controller.processMediaFile(video, true);
+        controller.mediaManager.addMedia(processedVideo, isVideo: true);
+
+        // Ensure the loading state is visible for a minimum time
+        final processingDuration = DateTime.now().difference(startTime);
+        if (processingDuration.inMilliseconds < 1000) {
+          final remainingTime = 1000 - processingDuration.inMilliseconds;
+          debugPrint('📹 Adding ${remainingTime}ms delay to ensure visible loading state for video');
+          await Future.delayed(Duration(milliseconds: remainingTime));
+        }
+
+        // Clear active state once processed
+        if (mounted) {
+          setState(() {
+            _isFilePickerActive = false;
+          });
+        }
+
+        // Restore orientation after file picker returns
+        _restoreOrientationAfterFilePicker();
         return;
       }
 
       // In photo mode or combined mode, allow multiple image selection
       if (widget.multiImageSelect) {
         final List<XFile> images = await _imagePicker.pickMultipleMedia();
-        if (images.isNotEmpty) {
-          HapticFeedback.mediumImpact();
 
-          for (final image in images) {
-            // Determine if this is a video based on file extension
-            final isVideo = image.path.toLowerCase().endsWith('.mp4') || image.path.toLowerCase().endsWith('.mov') || image.path.toLowerCase().endsWith('.avi');
-
-            // Process the media file with appropriate compression
-            final processedFile = await controller.processMediaFile(image, isVideo);
-            controller.mediaManager.addMedia(processedFile, isVideo: isVideo);
+        // If no images selected, clear active state and return
+        if (images.isEmpty) {
+          if (mounted) {
+            setState(() {
+              _isFilePickerActive = false;
+            });
           }
+
+          // Restore orientation when returning without selection
+          _restoreOrientationAfterFilePicker();
+          return;
+        }
+
+        // Images selected, provide feedback
+        HapticFeedback.mediumImpact();
+
+        // Process each media file (loading indicator stays on)
+        for (final image in images) {
+          // Determine if this is a video based on file extension
+          final isVideo = image.path.toLowerCase().endsWith('.mp4') || image.path.toLowerCase().endsWith('.mov') || image.path.toLowerCase().endsWith('.avi');
+
+          // Process the media file with appropriate compression
+          final processedFile = await controller.processMediaFile(image, isVideo);
+          controller.mediaManager.addMedia(processedFile, isVideo: isVideo);
+        }
+
+        // For multiple files, ensure a consistent minimum loading time
+        final processingDuration = DateTime.now().difference(startTime);
+        if (processingDuration.inMilliseconds < 800) {
+          final remainingTime = 800 - processingDuration.inMilliseconds;
+          debugPrint('📹 Adding ${remainingTime}ms delay to ensure visible loading state for multiple files');
+          await Future.delayed(Duration(milliseconds: remainingTime));
         }
       } else {
         // Single image selection
         final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
-        if (image != null) {
-          HapticFeedback.mediumImpact();
-          // Process the image with compression
-          final processedImage = await controller.processMediaFile(image, false);
-          controller.mediaManager.addMedia(processedImage, isVideo: false);
+
+        // If no image selected, clear active state and return
+        if (image == null) {
+          if (mounted) {
+            setState(() {
+              _isFilePickerActive = false;
+            });
+          }
+
+          // Restore orientation when returning without selection
+          _restoreOrientationAfterFilePicker();
+          return;
+        }
+
+        // Image selected, provide feedback
+        HapticFeedback.mediumImpact();
+
+        // Process the image with compression (loading state stays active)
+        final processedImage = await controller.processMediaFile(image, false);
+        controller.mediaManager.addMedia(processedImage, isVideo: false);
+
+        // Ensure the loading state is visible for a minimum time
+        final processingDuration = DateTime.now().difference(startTime);
+        if (processingDuration.inMilliseconds < 800) {
+          final remainingTime = 800 - processingDuration.inMilliseconds;
+          debugPrint('📹 Adding ${remainingTime}ms delay to ensure visible loading state for image');
+          await Future.delayed(Duration(milliseconds: remainingTime));
         }
       }
     } catch (e) {
-      debugPrint('Error picking media: $e');
+      debugPrint('Error picking or processing media: $e');
+
+      // Report error if callback exists
+      if (widget.onError != null) {
+        widget.onError!('media_picker', 'Failed to import media: $e');
+      }
+    } finally {
+      // Always ensure we reset the active state when done
+      if (mounted) {
+        setState(() {
+          _isFilePickerActive = false;
+        });
+      }
+
+      // Restore orientation after file picker returns
+      _restoreOrientationAfterFilePicker();
     }
   }
 
+  /// Helper method to restore orientation after returning from file picker
+  Future<void> _restoreOrientationAfterFilePicker() async {
+    if (_controller == null || !_controller!.value.isInitialized || _savedGalleryOrientation == null) {
+      return;
+    }
+
+    debugPrint('📸 Restoring orientation after system file picker: $_savedGalleryOrientation');
+
+    try {
+      // Using the lifecycle machine is the most reliable approach
+      if (_controller!.lifecycleMachine != null) {
+        debugPrint('📸 Using lifecycle machine for orientation fix after file picker');
+        await _controller!.lifecycleMachine!.handleOrientationChange(_savedGalleryOrientation!, priority: true);
+        debugPrint('📸 Lifecycle orientation fix completed after file picker');
+        return;
+      }
+
+      // Fallback to direct orientation setting if lifecycle machine not available
+      await _controller!.setDeviceOrientation(_savedGalleryOrientation!);
+
+      // Add a delayed check with a different approach for stubborn cases
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        if (_controller != null && _controller!.value.isInitialized && mounted) {
+          try {
+            // Check if orientation is still incorrect after the first fix
+            if (_controller!.value.deviceOrientation != _savedGalleryOrientation) {
+              debugPrint('📸 Orientation still incorrect after file picker, trying alternative fix');
+
+              // Try to "jolt" the camera orientation with two quick changes
+              if (Platform.isAndroid && _controller!.cameraController != null) {
+                // First set the opposite orientation momentarily
+                final oppositeOrientation = _getOppositeOrientation(_savedGalleryOrientation!);
+                await _controller!.cameraController!.lockCaptureOrientation(oppositeOrientation);
+                await Future.delayed(const Duration(milliseconds: 100));
+
+                // Then set back to the desired orientation
+                await _controller!.cameraController!.lockCaptureOrientation(_savedGalleryOrientation!);
+                debugPrint('📸 Applied orientation jolt fix after file picker');
+              }
+            }
+          } catch (e) {
+            debugPrint('📸 Error in delayed orientation fix: $e');
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('📸 Error restoring orientation after file picker: $e');
+    }
+  }
+
+  /// Helper to get the opposite orientation
+  DeviceOrientation _getOppositeOrientation(DeviceOrientation orientation) {
+    switch (orientation) {
+      case DeviceOrientation.portraitUp:
+        return DeviceOrientation.portraitDown;
+      case DeviceOrientation.portraitDown:
+        return DeviceOrientation.portraitUp;
+      case DeviceOrientation.landscapeLeft:
+        return DeviceOrientation.landscapeRight;
+      case DeviceOrientation.landscapeRight:
+        return DeviceOrientation.landscapeLeft;
+    }
+  }
+
+  /// Open the custom gallery to view captured media
   Future<void> _openCustomGallery() async {
     // Don't open gallery when recording
     if (_isRecording) {
@@ -1631,6 +1882,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     });
 
     try {
+      // Make sure we're saving the current device orientation before pausing
+      if (_controller != null && _controller!.value.isInitialized) {
+        _savedGalleryOrientation = _controller!.value.deviceOrientation;
+        debugPrint('📸 Saving orientation before gallery: $_savedGalleryOrientation');
+      }
+
       // Pause camera before showing gallery
       debugPrint('🎥 Pausing camera before opening gallery');
       _pauseCamera();
@@ -1649,6 +1906,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
       // Important: Resume camera immediately after returning from gallery
       debugPrint('🎥 Returning from gallery - resuming camera');
+      _returningFromGallery = true;
       await _resumeCamera();
     } catch (e) {
       debugPrint('📸 Error during gallery navigation: $e');
@@ -1662,7 +1920,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
-  Widget _buildCenterArea({required bool isLandscape, required CameralyOverlayTheme theme}) {
+  Widget buildCenterArea({required bool isLandscape, required CameralyOverlayTheme theme}) {
     Widget buildMediaStack() {
       final mediaManager = widget.controller?.mediaManager;
       if (mediaManager == null) {
@@ -1730,34 +1988,111 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
 
     debugPrint('📹 Starting recording limit timer: $_maxVideoDuration');
+
     _recordingLimitTimer?.cancel();
-    _recordingLimitTimer = Timer(_maxVideoDuration!, () {
+    _recordingLimitTimer = Timer(_maxVideoDuration!, () async {
       debugPrint('📹 Max recording duration reached, stopping recording');
-      if (_isRecording) {
-        // Provide strong haptic feedback when max duration is reached
-        HapticFeedback.heavyImpact();
 
-        // Use the controller to stop recording
-        // Don't manually update _isRecording here
-        _controller?.stopVideoRecording().then((file) {
-          debugPrint('📹 Recording stopped successfully');
-          // File is already added to the media manager in CameralyController.stopVideoRecording()
-          // So we don't need to add it again here
+      // Provide haptic feedback when max duration is reached
+      HapticFeedback.heavyImpact();
 
+      // Immediately update the UI state to show recording has stopped
+      setState(() {
+        _isRecording = false;
+        _recordingDuration = Duration.zero;
+        _isProcessingVideo = true; // Show processing state
+      });
+
+      try {
+        // Make sure we have a controller
+        if (_controller != null) {
+          final videoFile = await _controller!.stopVideoRecording();
+          debugPrint('📹 Recording stopped successfully after reaching duration limit');
+
+          // Make sure orientation is unlocked
+          _controller?.lifecycleMachine?.unlockOrientationAfterRecording();
+
+          // Call onCapture callback if provided
+          if (widget.onCapture != null) {
+            widget.onCapture!(videoFile);
+          }
+
+          // Also call onMaxDurationReached if provided
           if (widget.onMaxDurationReached != null) {
             widget.onMaxDurationReached!();
           }
-        }).catchError((error) {
-          debugPrint('📹 Error stopping recording: $error');
-          if (widget.onError != null) {
-            widget.onError!('capture', 'Error stopping recording: $error');
-          }
-        });
 
-        // No need to manually update _isRecording
-        // The controller's value change will trigger _handleControllerUpdate
+          // Clear processing state
+          if (mounted) {
+            setState(() {
+              _isProcessingVideo = false;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('📹 Error stopping recording on duration limit: $e');
+
+        // Make sure orientation is unlocked even if there was an error
+        _controller?.lifecycleMachine?.unlockOrientationAfterRecording();
+
+        // If error handler is provided, call it
+        if (widget.onError != null) {
+          widget.onError!('recording_limit', 'Failed to stop recording after reaching duration limit', error: e);
+        }
+
+        // Clear processing state on error too
+        if (mounted) {
+          setState(() {
+            _isProcessingVideo = false;
+          });
+        }
+      } finally {
+        // Cancel any active recording timers
+        _recordingTimer?.cancel();
+        _recordingTimer = null;
+        _recordingLimitTimer?.cancel();
+        _recordingLimitTimer = null;
       }
     });
+  }
+
+  /// Updates the state of UI buttons based on current camera state
+  void _updateButtonStates() {
+    if (_controller == null || !mounted) return;
+
+    // Update flash button state
+    _updateFlashButtonState();
+
+    // Update recording indicator if needed
+    if (_controller!.value.isRecordingVideo != _isRecording) {
+      setState(() {
+        _isRecording = _controller!.value.isRecordingVideo;
+      });
+    }
+
+    // Update video mode state if needed
+    final bool cameraReady = _controller!.value.isInitialized && !_controller!.value.isRecordingVideo;
+
+    // Refresh UI state if camera is ready
+    if (cameraReady) {
+      // No need to check any specific condition - just ensure UI state is fresh
+      setState(() {
+        // This empty setState forces a UI rebuild
+      });
+    }
+  }
+
+  /// Updates the flash button state based on current flash mode
+  void _updateFlashButtonState() {
+    if (_controller == null || !mounted) return;
+
+    // Update flash mode from controller if needed
+    if (_controller!.value.flashMode != _flashMode) {
+      setState(() {
+        _flashMode = _controller!.value.flashMode;
+        _torchEnabled = _flashMode == FlashMode.torch;
+      });
+    }
   }
 
   @override
@@ -1808,16 +2143,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           ),
 
           // Main layout container
-          isLandscape ? _buildLandscapeLayout(theme, size, padding) : _buildPortraitLayout(theme, size, padding),
+          isLandscape ? buildLandscapeLayout(theme, size, padding) : buildPortraitLayout(theme, size, padding),
 
           // Floating recording pill at bottom
           if (_isRecording)
             Positioned(
-              bottom: isLandscape ? 16 : (_getBottomAreaHeight(false) + 90), // Position above the capture button in portrait
+              bottom: isLandscape ? 16 : (getBottomAreaHeight(false) + 90), // Position above the capture button in portrait
               left: 0,
               right: 0,
               child: Center(
-                child: _buildRecordingPill(),
+                child: buildRecordingPill(),
               ),
             ),
         ],
@@ -1826,7 +2161,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   // New floating pill indicator for recording
-  Widget _buildRecordingPill() {
+  Widget buildRecordingPill() {
     final isNearEnd = _hasVideoDurationLimit && _maxVideoDuration != null && _recordingDuration.inMilliseconds / _maxVideoDuration!.inMilliseconds > 0.8;
 
     // Calculate remaining time as a formatted string
@@ -1956,12 +2291,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   // New animated capture button
-  Widget _buildAnimatedCaptureButton({bool isLandscape = false, bool isWideScreen = false}) {
+  Widget buildAnimatedCaptureButton({bool isLandscape = false, bool isWideScreen = false}) {
     final double size = isLandscape ? (isWideScreen ? 100 : 80) : 90;
     final double innerSize = isLandscape ? (isWideScreen ? 80 : 64) : 70;
 
-    // Show a loading indicator when file picker is active
-    if (_isFilePickerActive) {
+    // Show a loading indicator when file picker is active or video is processing
+    if (_isFilePickerActive || _isProcessingVideo) {
       return Stack(
         children: [
           // Pulsing loading indicator
@@ -1977,12 +2312,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.white.withAlpha((0.5 * value * 255).round()), // dynamic opacity
+                      color: _isProcessingVideo
+                          ? Colors.orange.withAlpha((0.5 * value * 255).round()) // Orange for video processing
+                          : Colors.white.withAlpha((0.5 * value * 255).round()), // White for file picker
                       width: 5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.white.withAlpha((0.2 * value * 255).round()), // dynamic opacity
+                        color: _isProcessingVideo
+                            ? Colors.orange.withAlpha((0.2 * value * 255).round()) // Orange for video processing
+                            : Colors.white.withAlpha((0.2 * value * 255).round()), // White for file picker
                         blurRadius: 8 * value,
                         spreadRadius: 2 * value,
                       ),
@@ -1993,8 +2332,8 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     child: SizedBox(
                       width: innerSize * 0.7,
                       height: innerSize * 0.7,
-                      child: const CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(_isProcessingVideo ? Colors.orange : Colors.white),
                         strokeWidth: 3,
                       ),
                     ),
@@ -2007,30 +2346,29 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             },
           ),
 
-          // Optional status text for multi-file imports
-          if (widget.multiImageSelect)
-            Positioned(
-              bottom: -20,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'Importing...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
+          // Status text
+          Positioned(
+            bottom: -20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _isProcessingVideo ? 'Saving...' : 'Importing...',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
             ),
+          ),
         ],
       );
     }
@@ -2049,7 +2387,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         _handleCapture();
       },
       child: _isRecording
-          ? _buildRecordingCaptureButton(size: size)
+          ? buildRecordingCaptureButton(size: size)
           : Container(
               height: size,
               width: size,
@@ -2070,7 +2408,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   // Recording state capture button with pulse effect
-  Widget _buildRecordingCaptureButton({required double size}) {
+  Widget buildRecordingCaptureButton({required double size}) {
     // For recording state, show square stop button with pulsing effect
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 1.0, end: 1.08),
@@ -2114,7 +2452,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     );
   }
 
-  Future<void> _toggleTorch() async {
+  Future<void> toggleTorch() async {
     try {
       // Provide haptic feedback when torch is toggled
       HapticFeedback.selectionClick();
@@ -2134,21 +2472,21 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
-  Widget _buildPortraitLayout(CameralyOverlayTheme theme, Size size, EdgeInsets padding) {
+  Widget buildPortraitLayout(CameralyOverlayTheme theme, Size size, EdgeInsets padding) {
     return Stack(
       children: [
         // Top area
-        _buildTopArea(isLandscape: false),
+        buildTopArea(isLandscape: false),
 
         // Center area with proper positioning
-        Positioned(top: 0, left: 0, right: 0, bottom: widget.bottomOverlayWidget != null ? 100 : 0, child: _buildCenterArea(isLandscape: false, theme: theme)),
+        Positioned(top: 0, left: 0, right: 0, bottom: widget.bottomOverlayWidget != null ? 100 : 0, child: buildCenterArea(isLandscape: false, theme: theme)),
 
         // Bottom overlay widget - positioned above the gradient
         if (widget.bottomOverlayWidget != null || widget.showPlaceholders)
           Positioned(
             left: 20,
             right: 20,
-            bottom: _getBottomAreaHeight(false) + 20,
+            bottom: getBottomAreaHeight(false) + 20,
             child: widget.bottomOverlayWidget ??
                 Container(
                   width: 200,
@@ -2162,25 +2500,25 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           ),
 
         // Bottom area with gradient
-        Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomArea(isLandscape: false, theme: theme)),
+        Positioned(left: 0, right: 0, bottom: 0, child: buildBottomArea(isLandscape: false, theme: theme)),
       ],
     );
   }
 
-  Widget _buildLandscapeLayout(CameralyOverlayTheme theme, Size size, EdgeInsets padding) {
+  Widget buildLandscapeLayout(CameralyOverlayTheme theme, Size size, EdgeInsets padding) {
     const leftAreaWidth = 80.0; // Width of the left area
     const rightAreaWidth = 120.0; // Width of the right area
 
     return Stack(
       children: [
         // Left area (top area in portrait)
-        Positioned(top: 0, left: 80, bottom: 0, width: leftAreaWidth, child: _buildTopArea(isLandscape: true)),
+        Positioned(top: 0, left: 80, bottom: 0, width: leftAreaWidth, child: buildTopArea(isLandscape: true)),
 
         // Center area with proper positioning
-        Positioned(top: 0, left: leftAreaWidth + 80, right: rightAreaWidth, bottom: 0, child: _buildCenterArea(isLandscape: true, theme: theme)),
+        Positioned(top: 0, left: leftAreaWidth + 80, right: rightAreaWidth, bottom: 0, child: buildCenterArea(isLandscape: true, theme: theme)),
 
         // Right area with controls (equivalent to bottom in portrait)
-        Positioned(top: 0, right: 0, bottom: 0, width: rightAreaWidth, child: _buildBottomArea(isLandscape: true, theme: theme)),
+        Positioned(top: 0, right: 0, bottom: 0, width: rightAreaWidth, child: buildBottomArea(isLandscape: true, theme: theme)),
 
         // Zoom level buttons - Positioned at the top with proper padding and hit testing area
         if (widget.showZoomControls && _availableZoomLevels.length > 1)
@@ -2205,7 +2543,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   }
 
   // Helper method to calculate the height of the bottom area
-  double _getBottomAreaHeight(bool isLandscape) {
+  double getBottomAreaHeight(bool isLandscape) {
     if (isLandscape) {
       return 0; // Not needed for landscape
     } else {
@@ -2218,7 +2556,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
-  Widget _buildTopArea({required bool isLandscape}) {
+  Widget buildTopArea({required bool isLandscape}) {
     // Note: We removed the unused state object
 
     return SafeArea(
@@ -2251,7 +2589,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             if (widget.showFlashButton && _isVideoMode && !_isFrontCamera && _controller?.value.hasFlashCapability == true)
               Align(
                 alignment: isLandscape ? Alignment.centerLeft : Alignment.topRight,
-                child: CameralyOverlayButton(onTap: _toggleTorch, child: Icon(_torchEnabled ? Icons.flashlight_on : Icons.flashlight_off, color: _torchEnabled ? Colors.white : Colors.white60)),
+                child: CameralyOverlayButton(onTap: toggleTorch, child: Icon(_torchEnabled ? Icons.flashlight_on : Icons.flashlight_off, color: _torchEnabled ? Colors.white : Colors.white60)),
               ),
 
             // Gallery button (shown in top area when customLeftButton or customLeftButtonBuilder is provided)
@@ -2272,7 +2610,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     );
   }
 
-  Widget _buildBottomArea({required bool isLandscape, required CameralyOverlayTheme theme}) {
+  Widget buildBottomArea({required bool isLandscape, required CameralyOverlayTheme theme}) {
     // This is the area with the gradient background
     final screenWidth = MediaQuery.of(context).size.width;
     final isWideScreen = screenWidth > 900;
@@ -2284,11 +2622,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         // Add a solid background color to ensure visibility
         color: Colors.black.withAlpha(77),
       ),
-      child: isLandscape ? _buildLandscapeControls(isWideScreen) : _buildPortraitControls(),
+      child: isLandscape ? buildLandscapeControls(isWideScreen) : buildPortraitControls(),
     );
   }
 
-  Widget _buildPortraitControls() {
+  Widget buildPortraitControls() {
     // Get the current overlay state for button builders
     final overlayState = CameralyOverlayState(
       isRecording: _isRecording,
@@ -2433,7 +2771,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               ),
 
               // Capture button - Enhanced with animation when recording
-              if (widget.showCaptureButton) _buildAnimatedCaptureButton(),
+              if (widget.showCaptureButton) buildAnimatedCaptureButton(),
 
               // Right button (Camera switch or custom)
               SizedBox(
@@ -2484,7 +2822,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     );
   }
 
-  Widget _buildLandscapeControls(bool isWideScreen) {
+  Widget buildLandscapeControls(bool isWideScreen) {
     // Get the current overlay state for button builders
     final overlayState = CameralyOverlayState(
       isRecording: _isRecording,
@@ -2560,7 +2898,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             ),
 
           // Capture button - Use animated version
-          if (widget.showCaptureButton) _buildAnimatedCaptureButton(isLandscape: true, isWideScreen: isWideScreen),
+          if (widget.showCaptureButton) buildAnimatedCaptureButton(isLandscape: true, isWideScreen: isWideScreen),
 
           // Spacing after capture button
           SizedBox(height: isWideScreen ? 24 : 16),
@@ -2672,44 +3010,5 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         ],
       ),
     );
-  }
-
-  /// Updates the state of UI buttons based on current camera state
-  void _updateButtonStates() {
-    if (_controller == null || !mounted) return;
-
-    // Update flash button state
-    _updateFlashButtonState();
-
-    // Update recording indicator if needed
-    if (_controller!.value.isRecordingVideo != _isRecording) {
-      setState(() {
-        _isRecording = _controller!.value.isRecordingVideo;
-      });
-    }
-
-    // Update video mode state if needed
-    final bool cameraReady = _controller!.value.isInitialized && !_controller!.value.isRecordingVideo;
-
-    // Refresh UI state if camera is ready
-    if (cameraReady) {
-      // No need to check any specific condition - just ensure UI state is fresh
-      setState(() {
-        // This empty setState forces a UI rebuild
-      });
-    }
-  }
-
-  /// Updates the flash button state based on current flash mode
-  void _updateFlashButtonState() {
-    if (_controller == null || !mounted) return;
-
-    // Update flash mode from controller if needed
-    if (_controller!.value.flashMode != _flashMode) {
-      setState(() {
-        _flashMode = _controller!.value.flashMode;
-        _torchEnabled = _flashMode == FlashMode.torch;
-      });
-    }
   }
 }

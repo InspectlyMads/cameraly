@@ -15,6 +15,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import 'cameraly_value.dart';
 import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
+import 'utils/camera_lifecycle_machine.dart';
 import 'utils/media_manager.dart';
 import 'utils/orientation_channel.dart';
 
@@ -38,6 +39,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   DateTime? _recordingStartTime;
   bool _isDisposing = false;
   bool _isResuming = false;
+  CameraLifecycleMachine? _lifecycleMachine;
 
   /// The camera description this controller is using
   CameraDescription get description => _description;
@@ -53,6 +55,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
   /// The media manager for handling captured photos and videos
   CameralyMediaManager get mediaManager => _mediaManager;
+
+  /// The lifecycle machine managing camera state transitions
+  CameraLifecycleMachine? get lifecycleMachine => _lifecycleMachine;
 
   // Location tracking
   Position? _lastKnownLocation;
@@ -283,6 +288,18 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
       await _controller!.initialize();
 
+      // Create the lifecycle machine after controller is initialized
+      _lifecycleMachine = CameraLifecycleMachine(
+        controller: this,
+        onStateChange: (oldState, newState) {
+          debugPrint('📸 Lifecycle state changed: $oldState → $newState');
+        },
+        onError: (message, error) {
+          debugPrint('📸 Lifecycle error: $message ($error)');
+          value = value.copyWith(error: message);
+        },
+      );
+
       // Listen for camera value changes to update our value
       _controller!.addListener(_updateValueFromController);
 
@@ -371,6 +388,12 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     // Check if we're already handling an orientation change
     if (_isHandlingOrientation) {
       debugPrint('📸 Orientation change already in progress, ignoring duplicate');
+      return;
+    }
+
+    // Don't change orientation during recording - this can cause the camera to flip
+    if (value.isRecordingVideo) {
+      debugPrint('📸 Ignoring orientation change during video recording to prevent camera flipping');
       return;
     }
 
@@ -712,30 +735,60 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
 
     try {
+      // Get the current device orientation from UI
+      final window = WidgetsBinding.instance.window;
+      final physicalSize = window.physicalSize;
+      final isLandscape = physicalSize.width > physicalSize.height;
+
+      // Determine the proper orientation to lock for recording
+      DeviceOrientation orientationToLock;
+
+      if (isLandscape) {
+        // Check which landscape orientation we're in
+        // This uses screen metrics which are more reliable than sensor data
+        final currentValue = value.deviceOrientation;
+
+        // If current orientation says landscape but doesn't specify direction correctly,
+        // determine it from the window geometry and any available sensor data
+        if (currentValue == DeviceOrientation.landscapeLeft || currentValue == DeviceOrientation.landscapeRight) {
+          orientationToLock = currentValue;
+        } else {
+          // Default to landscapeRight which is the most common natural position
+          orientationToLock = DeviceOrientation.landscapeRight;
+        }
+      } else {
+        // For portrait, always use portraitUp to avoid upside-down recording
+        orientationToLock = DeviceOrientation.portraitUp;
+      }
+
+      debugPrint('🎥 Recording will use orientation: $orientationToLock (determined from device physical orientation)');
+
       // Ensure the orientation is set correctly before starting recording
       // Only needed for Android - iOS handles orientation correctly by itself
       if (Platform.isAndroid) {
         try {
-          // Get the exact device rotation from the platform
-          final DeviceOrientation deviceOrientation = await OrientationChannel.getPlatformOrientation();
-
-          debugPrint('🎥 Starting video recording with orientation from platform channel: $deviceOrientation');
-
-          // Ensure orientation is set correctly before recording
-          await _controller!.lockCaptureOrientation(deviceOrientation);
+          // Lock the camera to the correct orientation
+          await _controller!.lockCaptureOrientation(orientationToLock);
+          debugPrint('🎥 Locked camera capture orientation to: $orientationToLock');
         } catch (e) {
-          // If platform channel fails, use the current orientation from our value
-          final deviceOrientation = value.deviceOrientation;
-          debugPrint('⚠️ Error getting platform orientation for video recording: $e');
-          debugPrint('🎥 Falling back to current orientation value: $deviceOrientation');
-
-          // Lock the capture orientation to ensure the video is recorded correctly
-          await _controller!.lockCaptureOrientation(deviceOrientation);
+          debugPrint('⚠️ Error locking capture orientation: $e');
         }
       }
 
+      // Lock system orientation using SystemChrome
+      if (_lifecycleMachine != null) {
+        await _lifecycleMachine!.lockOrientationForRecording();
+      } else {
+        // Fallback if lifecycle machine isn't available
+        await SystemChrome.setPreferredOrientations([orientationToLock]);
+        debugPrint('🎥 Locked orientation using fallback method: $orientationToLock');
+      }
+
+      // Record recording start time to track duration
+      _recordingStartTime = DateTime.now();
+
       await _controller!.startVideoRecording();
-      value = value.copyWith(isRecordingVideo: true);
+      value = value.copyWith(isRecordingVideo: true, deviceOrientation: orientationToLock);
     } on CameraException catch (e) {
       value = value.copyWith(error: e.description);
       rethrow;
@@ -759,26 +812,163 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
 
     try {
+      // Record the time when processing started to ensure a minimum visible loading state
+      final processingStartTime = DateTime.now();
+
       // Cancel the timer if it's running
       _recordingTimer?.cancel();
       _recordingTimer = null;
 
       final recordingDuration = _recordingStartTime != null ? DateTime.now().difference(_recordingStartTime!) : Duration.zero;
+
+      // Immediately update the UI to stop showing recording state
+      // This will make the timer stop immediately
+      value = value.copyWith(isRecordingVideo: false);
+
+      // Now perform the actual recording stop and post-processing
       final XFile videoFile = await _controller!.stopVideoRecording();
+
+      // Unlock orientation after recording stops
+      if (_lifecycleMachine != null) {
+        await _lifecycleMachine!.unlockOrientationAfterRecording();
+      } else {
+        // Fallback if lifecycle machine isn't available
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        debugPrint('🎥 Unlocked orientation using fallback method');
+      }
 
       debugPrint('Video recording stopped: ${videoFile.path} (duration: ${recordingDuration.inSeconds}s)');
 
       // Process the video file (fixing extension, compression)
       final XFile processedFile = await _processVideoFile(videoFile);
 
-      value = value.copyWith(isRecordingVideo: false, lastRecordedVideo: processedFile);
+      // Update with processed file information, but don't change recording state again
+      value = value.copyWith(lastRecordedVideo: processedFile);
+
       // Add the recorded video to the media manager
       _mediaManager.addMedia(processedFile, isVideo: true);
+
+      // Ensure the processing state is visible for at least 800ms to avoid UI flicker
+      final processingDuration = DateTime.now().difference(processingStartTime);
+      if (processingDuration.inMilliseconds < 800) {
+        final remainingTime = 800 - processingDuration.inMilliseconds;
+        if (remainingTime > 0) {
+          await Future.delayed(Duration(milliseconds: remainingTime));
+        }
+      }
+
       return processedFile;
     } on CameraException catch (e) {
-      value = value.copyWith(isRecordingVideo: false);
+      // Ensure orientation is unlocked even on error
+      if (_lifecycleMachine != null) {
+        await _lifecycleMachine!.unlockOrientationAfterRecording();
+      } else {
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      }
+
+      // Only update error state, not recording state (which was already set to false)
+      value = value.copyWith(error: e.description);
       debugPrint('Error stopping video recording: ${e.code} - ${e.description}');
       rethrow;
+    }
+  }
+
+  /// Stops video recording and discards the file without saving it.
+  ///
+  /// This is used when recording is interrupted (e.g., when app goes to background)
+  /// and we don't want to save the incomplete recording.
+  Future<void> stopVideoRecordingWithoutSave() async {
+    if (!value.isInitialized) {
+      throw CameraException(
+        'cameraly_not_initialized',
+        'Cannot stop recording. CameralyController is not initialized.',
+      );
+    }
+
+    if (!value.isRecordingVideo) {
+      return; // Nothing to do if not recording
+    }
+
+    try {
+      // Record the time when processing started
+      final processingStartTime = DateTime.now();
+
+      // Cancel the timer if it's running
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+
+      final recordingDuration = _recordingStartTime != null ? DateTime.now().difference(_recordingStartTime!) : Duration.zero;
+
+      // Immediately update the UI to stop showing recording state
+      value = value.copyWith(isRecordingVideo: false);
+
+      // Now perform the actual recording stop
+      final XFile videoFile = await _controller!.stopVideoRecording();
+
+      // Unlock orientation after recording stops
+      if (_lifecycleMachine != null) {
+        await _lifecycleMachine!.unlockOrientationAfterRecording();
+      } else {
+        // Fallback if lifecycle machine isn't available
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        debugPrint('🎥 Unlocked orientation using fallback method');
+      }
+
+      debugPrint('Video recording stopped and will be discarded: ${videoFile.path} (duration: ${recordingDuration.inSeconds}s)');
+
+      // Delete the file instead of processing and saving it
+      try {
+        final File file = File(videoFile.path);
+        if (await file.exists()) {
+          await file.delete();
+          debugPrint('Successfully deleted discarded recording: ${videoFile.path}');
+        }
+      } catch (e) {
+        debugPrint('Error deleting discarded recording: $e');
+      }
+
+      // Ensure the processing state is visible for at least 500ms
+      // (shorter time for discard operations since there's no actual processing)
+      final processingDuration = DateTime.now().difference(processingStartTime);
+      if (processingDuration.inMilliseconds < 500) {
+        final remainingTime = 500 - processingDuration.inMilliseconds;
+        if (remainingTime > 0) {
+          await Future.delayed(Duration(milliseconds: remainingTime));
+        }
+      }
+
+      // No need to update state again since we already did it
+    } on CameraException catch (e) {
+      // Ensure orientation is unlocked even on error
+      if (_lifecycleMachine != null) {
+        await _lifecycleMachine!.unlockOrientationAfterRecording();
+      } else {
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      }
+
+      // Only update error state if needed
+      value = value.copyWith(error: e.description);
+      debugPrint('Error stopping video recording for discard: ${e.code} - ${e.description}');
     }
   }
 
@@ -1266,7 +1456,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
   }
 
-  /// Toggles video recording (starts or stops).
+  /// Toggles video recording on/off and returns the video file if recording was stopped.
   Future<XFile?> toggleVideoRecording() async {
     if (!value.isInitialized) return null;
 
@@ -1478,6 +1668,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   /// the preview, which can cause locking issues.
   Future<void> setDeviceOrientation(DeviceOrientation orientation) async {
     if (!value.isInitialized || _controller == null) return;
+
+    // Add debug print to track calls
+    debugPrint('📱 Setting device orientation to: $orientation (current: ${value.deviceOrientation})');
 
     // Skip orientation handling for iOS - it handles orientation correctly by itself
     if (!Platform.isAndroid) {

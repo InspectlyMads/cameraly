@@ -92,6 +92,76 @@ class CameraLifecycleMachine {
   // Add a timestamp to track the last orientation change
   DateTime? _lastOrientationChange;
 
+  /// Whether orientation is currently locked for recording
+  bool _isOrientationLocked = false;
+
+  /// The orientation that was locked for recording
+  DeviceOrientation? _lockedOrientation;
+
+  /// Locks the device orientation when starting to record a video
+  Future<bool> lockOrientationForRecording() async {
+    if (_isOrientationLocked) {
+      debugPrint('🎥 Orientation already locked for recording');
+      return true;
+    }
+
+    try {
+      // Get the actual physical orientation from MediaQuery instead of using
+      // the controller's value, which might not be accurate
+      final window = WidgetsBinding.instance.window;
+      final physicalSize = window.physicalSize;
+      final isLandscape = physicalSize.width > physicalSize.height;
+
+      // Determine the current UI orientation more accurately
+      final uiOrientation = isLandscape ? (controller.value.deviceOrientation == DeviceOrientation.landscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight) : DeviceOrientation.portraitUp;
+
+      // Use this more accurate orientation value
+      _lockedOrientation = uiOrientation;
+
+      debugPrint('🎥 Locking orientation for recording to: $_lockedOrientation (corrected based on device physical orientation)');
+
+      // Lock the orientation at the system level
+      await SystemChrome.setPreferredOrientations([
+        _lockedOrientation ?? DeviceOrientation.portraitUp,
+      ]);
+
+      // Update the flag
+      _isOrientationLocked = true;
+      return true;
+    } catch (e) {
+      debugPrint('🎥 Error locking orientation for recording: $e');
+      return false;
+    }
+  }
+
+  /// Unlocks the device orientation after recording ends
+  Future<bool> unlockOrientationAfterRecording() async {
+    if (!_isOrientationLocked) {
+      debugPrint('🎥 Orientation not locked, nothing to unlock');
+      return true;
+    }
+
+    try {
+      debugPrint('🎥 Unlocking orientation after recording');
+
+      // Reset to all orientations
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+
+      // Update the flag and reset locked orientation
+      _isOrientationLocked = false;
+      _lockedOrientation = null;
+      return true;
+    } catch (e) {
+      debugPrint('🎥 Error unlocking orientation after recording: $e');
+      return false;
+    }
+  }
+
   /// Change the state of the camera lifecycle
   void _changeState(CameraLifecycleState newState) {
     if (_currentState == newState) return;
@@ -179,6 +249,12 @@ class CameraLifecycleMachine {
   Future<bool> handleOrientationChange(DeviceOrientation orientation, {bool priority = false}) async {
     if (!isStable && _currentState != CameraLifecycleState.suspended) {
       debugPrint('🎥 Cannot handle orientation change in state: $_currentState');
+      return false;
+    }
+
+    // Don't change orientation during recording - this causes the upside-down problem
+    if (controller.value.isRecordingVideo) {
+      debugPrint('🎥 Ignoring orientation change during video recording to prevent camera flipping');
       return false;
     }
 
@@ -438,9 +514,12 @@ class CameraLifecycleMachine {
         // Check for any active recording and handle it properly
         if (controller.value.isRecordingVideo) {
           try {
-            // Stop recording and save the file when app goes to background
-            final file = await controller.stopVideoRecording();
-            debugPrint('🎥 Stopped recording due to app backgrounding, saved to: ${file.path}');
+            debugPrint('🎥 Stopping and discarding recording due to app backgrounding');
+            // Stop recording without saving the file when app goes to background
+            await controller.stopVideoRecordingWithoutSave();
+
+            // Unlock orientation after discarding recording
+            await unlockOrientationAfterRecording();
           } catch (e) {
             debugPrint('🎥 Error stopping recording during backgrounding: $e');
           }
@@ -612,6 +691,11 @@ class CameraLifecycleMachine {
   Future<void> dispose() async {
     _changeState(CameraLifecycleState.disposing);
 
+    // Ensure orientation is unlocked when disposing
+    if (_isOrientationLocked) {
+      await unlockOrientationAfterRecording();
+    }
+
     // Cancel any active operations
     for (final entry in _activeOperations.entries) {
       debugPrint('🎥 Cancelling operation: ${entry.key}');
@@ -647,6 +731,106 @@ class CameraLifecycleMachine {
     // Call error handler if provided
     if (onError != null) {
       onError!(message, error);
+    }
+  }
+
+  /// Handle the first orientation change with a direct callback mechanism
+  Future<bool> handleFirstOrientationChange(DeviceOrientation orientation, {required VoidCallback onComplete}) async {
+    if (!isStable && _currentState != CameraLifecycleState.suspended) {
+      debugPrint('🎥 Cannot handle first orientation change in state: $_currentState');
+      return false;
+    }
+
+    // Force the first orientation change timestamp
+    _lastOrientationChange = DateTime.now();
+
+    // Mark this as the first orientation change
+    debugPrint('🎥 Handling first orientation change with direct callback');
+
+    _operationInProgress = true;
+    final previousState = _currentState;
+    _changeState(CameraLifecycleState.recreating);
+
+    try {
+      final completer = Completer<void>();
+      _activeOperations['orientation'] = completer;
+
+      try {
+        // For Android, direct update without recreation is more reliable for first orientation
+        if (Platform.isAndroid && controller.cameraController != null) {
+          try {
+            // Set orientation directly
+            await controller.cameraController!.lockCaptureOrientation(orientation);
+            debugPrint('🎥 First orientation set directly on Android');
+          } catch (e) {
+            // Log but continue - not critical for first orientation
+            debugPrint('🎥 Could not set direct orientation on Android: $e');
+          }
+        }
+
+        // Always update the value with the new orientation
+        controller.value = controller.value.copyWith(deviceOrientation: orientation);
+
+        // Force a state change - this should trigger the state change listeners
+        _changeState(CameraLifecycleState.ready);
+
+        // Critical: Call the completion callback directly
+        // This ensures UI updates immediately without relying on state changes
+        debugPrint('🎥 Calling first orientation direct completion callback');
+        onComplete();
+
+        completer.complete();
+
+        // Notify state change listeners as a backup
+        if (onStateChange != null) {
+          debugPrint('🎥 Forcing UI notification for first orientation change');
+          onStateChange!(_currentState, _currentState);
+        }
+
+        _operationInProgress = false;
+        _activeOperations.remove('orientation');
+        return true;
+      } catch (e) {
+        debugPrint('🎥 Error in first orientation change: $e');
+
+        // Even on error, call the completion callback to ensure UI updates
+        onComplete();
+
+        // Set to ready state to unblock the UI
+        _changeState(CameraLifecycleState.ready);
+        completer.complete();
+        _operationInProgress = false;
+        _activeOperations.remove('orientation');
+
+        // Make sure UI is notified
+        if (onStateChange != null) {
+          onStateChange!(_currentState, _currentState);
+        }
+        return true;
+      }
+    } catch (e, stack) {
+      _handleError('Unexpected error during first orientation change', e, stack);
+      _changeState(previousState);
+      _operationInProgress = false;
+
+      // Call completion callback even on error
+      onComplete();
+
+      return false;
+    }
+  }
+
+  /// Handles when recording starts or stops
+  ///
+  /// This can be used to track recording state externally to ensure
+  /// orientation locking/unlocking works in all cases.
+  Future<void> handleRecordingStateChange(bool isRecording) async {
+    if (isRecording) {
+      // Lock orientation when recording starts
+      await lockOrientationForRecording();
+    } else {
+      // Unlock orientation when recording stops
+      await unlockOrientationAfterRecording();
     }
   }
 }
