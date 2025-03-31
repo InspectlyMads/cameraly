@@ -330,20 +330,40 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       // Cancel any ongoing orientation change timer
       _orientationDebounceTimer?.cancel();
 
-      // For the first orientation change after startup, reduce debounce time significantly
-      // This helps the camera stabilize faster on the first run
+      // For rapid landscape-to-landscape transitions, use a much shorter debounce time
+      // This helps capture the rapid changes better and prevents getting stuck
       final isFirstMetricChange = _cameraVisibleSince == null;
-      final debounceTime = isFirstMetricChange ? 250 : 1000;
 
-      debugPrint('🎥 Orientation metrics changed, using ${isFirstMetricChange ? "quick" : "standard"} debounce ($debounceTime ms)');
+      // Get orientation before debounce to compare later
+      final orientationBefore = _getPreciseDeviceOrientation(context);
+      debugPrint('🎥 Orientation before debounce: $orientationBefore');
 
-      // Use a debounce to allow multiple metric changes to settle
+      // Adjust debounce time based on the scenario
+      // Very short debounce for landscape-to-landscape transitions
+      // Slightly longer for first orientation after launch
+      // Standard debounce for normal transitions
+      final debounceTime = isFirstMetricChange ? 250 : 100;
+
+      debugPrint('🎥 Orientation metrics changed, using ${isFirstMetricChange ? "first-run" : "rapid"} debounce ($debounceTime ms)');
+
+      // Use a much shorter debounce to ensure we catch rapid orientation changes
       _orientationDebounceTimer = Timer(Duration(milliseconds: debounceTime), () {
         if (mounted && _controller != null && _lifecycleMachine != null) {
+          // Get current orientation from context with improved precision
+          final currentOrientation = _getPreciseDeviceOrientation(context);
+
+          // Detect rapid landscape-to-landscape transition
+          final isRapidLandscapeTransition =
+              (orientationBefore == DeviceOrientation.landscapeLeft && currentOrientation == DeviceOrientation.landscapeRight) || (orientationBefore == DeviceOrientation.landscapeRight && currentOrientation == DeviceOrientation.landscapeLeft);
+
+          if (isRapidLandscapeTransition) {
+            debugPrint('🎥 Detected rapid landscape transition: $orientationBefore → $currentOrientation');
+          }
+
           // Set global flag
           _isAnyOrientationChangeInProgress = true;
 
-          // Show loading indicator (but don't for very quick orientation adjustments)
+          // Show loading indicator
           setState(() {
             _isChangingOrientation = true;
 
@@ -354,35 +374,47 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
             }
           });
 
-          // Get current orientation from context for reliability
-          final mediaQuery = MediaQuery.of(context);
-          final currentOrientation = mediaQuery.orientation == Orientation.landscape
-              ? (mediaQuery.viewInsets.left > mediaQuery.viewInsets.right ? DeviceOrientation.landscapeRight : DeviceOrientation.landscapeLeft)
-              : (mediaQuery.viewInsets.top > mediaQuery.viewInsets.bottom ? DeviceOrientation.portraitDown : DeviceOrientation.portraitUp);
-
           debugPrint('🎥 Handling orientation change to: $currentOrientation');
 
-          // Let lifecycle machine handle the details - it has its own check for
-          // whether orientation actually changed
-          _lifecycleMachine!.handleOrientationChange(currentOrientation).then((_) {
-            // Release global lock
-            _isAnyOrientationChangeInProgress = false;
+          // For rapid landscape transitions, use special handling
+          if (isRapidLandscapeTransition) {
+            // Use higher priority for rapid landscape transitions
+            _lifecycleMachine!.handleOrientationChange(currentOrientation, priority: true).then((_) {
+              _isAnyOrientationChangeInProgress = false;
+            }).catchError((error) {
+              debugPrint('🎥 Error during rapid orientation change: $error');
+              _isAnyOrientationChangeInProgress = false;
 
-            // The flag should be reset by the lifecycle state change handler
-            // No need for a timeout here as the lifecycle machine will call
-            // _handleLifecycleStateChange with the ready state when done
-          }).catchError((error) {
-            debugPrint('🎥 Error during orientation change: $error');
-            _isAnyOrientationChangeInProgress = false;
+              // Ensure orientation flag is cleared even on error
+              if (mounted && _isChangingOrientation) {
+                setState(() {
+                  _isChangingOrientation = false;
+                  _cameraVisibleSince ??= DateTime.now();
+                });
+              }
+            });
+          } else {
+            // Use standard handling for normal transitions
+            _lifecycleMachine!.handleOrientationChange(currentOrientation).then((_) {
+              // Release global lock
+              _isAnyOrientationChangeInProgress = false;
 
-            // Ensure orientation flag is cleared even on error
-            if (mounted && _isChangingOrientation) {
-              setState(() {
-                _isChangingOrientation = false;
-                _cameraVisibleSince ??= DateTime.now();
-              });
-            }
-          });
+              // The flag should be reset by the lifecycle state change handler
+              // No need for a timeout here as the lifecycle machine will call
+              // _handleLifecycleStateChange with the ready state when done
+            }).catchError((error) {
+              debugPrint('🎥 Error during orientation change: $error');
+              _isAnyOrientationChangeInProgress = false;
+
+              // Ensure orientation flag is cleared even on error
+              if (mounted && _isChangingOrientation) {
+                setState(() {
+                  _isChangingOrientation = false;
+                  _cameraVisibleSince ??= DateTime.now();
+                });
+              }
+            });
+          }
         }
       });
     }
@@ -798,6 +830,54 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           _isChangingOrientation = false;
         });
       }
+    }
+  }
+
+  /// Get a more precise device orientation from MediaQuery and sensor values
+  DeviceOrientation _getPreciseDeviceOrientation(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+
+    // First check if we're in landscape or portrait
+    if (mediaQuery.orientation == Orientation.landscape) {
+      // For landscape, we need to be more careful when determining left vs right
+
+      // Try using view padding which is typically more reliable
+      // Left paddings are typically larger on landscape right, and right paddings larger on landscape left
+      final leftPadding = mediaQuery.padding.left + mediaQuery.viewPadding.left;
+      final rightPadding = mediaQuery.padding.right + mediaQuery.viewPadding.right;
+
+      // Also use system gesture insets as backup
+      final leftGesture = mediaQuery.systemGestureInsets.left;
+      final rightGesture = mediaQuery.systemGestureInsets.right;
+
+      // Use window metrics for additional accuracy
+      final size = WidgetsBinding.instance.window.physicalSize;
+      final viewInsets = WidgetsBinding.instance.window.viewInsets;
+
+      // Combine all metrics for best determination
+      final isLikelyLandscapeLeft = leftPadding > rightPadding || leftGesture > rightGesture || viewInsets.left > viewInsets.right;
+
+      // For the rare case when metrics are equal, use controller's existing value or default to right
+      if (leftPadding == rightPadding && leftGesture == rightGesture && viewInsets.left == viewInsets.right) {
+        // Use current value if available, otherwise default to landscape right
+        if (_controller != null && _controller!.value.isInitialized) {
+          final currentOrientation = _controller!.value.deviceOrientation;
+          if (currentOrientation == DeviceOrientation.landscapeLeft || currentOrientation == DeviceOrientation.landscapeRight) {
+            return currentOrientation;
+          }
+        }
+        return DeviceOrientation.landscapeRight; // Default
+      }
+
+      debugPrint('🔄 Landscape detection: left=$leftPadding, right=$rightPadding, leftGesture=$leftGesture, rightGesture=$rightGesture');
+      return isLikelyLandscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight;
+    } else {
+      // For portrait, determine up vs down (though down is rare)
+      final topPadding = mediaQuery.padding.top + mediaQuery.viewPadding.top;
+      final bottomPadding = mediaQuery.padding.bottom + mediaQuery.viewPadding.bottom;
+      final isUpsideDown = topPadding < bottomPadding;
+
+      return isUpsideDown ? DeviceOrientation.portraitDown : DeviceOrientation.portraitUp;
     }
   }
 }

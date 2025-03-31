@@ -176,7 +176,7 @@ class CameraLifecycleMachine {
   }
 
   /// Handle a device orientation change
-  Future<bool> handleOrientationChange(DeviceOrientation orientation) async {
+  Future<bool> handleOrientationChange(DeviceOrientation orientation, {bool priority = false}) async {
     if (!isStable && _currentState != CameraLifecycleState.suspended) {
       debugPrint('🎥 Cannot handle orientation change in state: $_currentState');
       return false;
@@ -188,8 +188,16 @@ class CameraLifecycleMachine {
     // Track if this is the first orientation change since app started
     final isFirstOrientationChange = _lastOrientationChange == null;
 
-    // Skip lockout period for the first orientation change to ensure it happens immediately
-    if (!isFirstOrientationChange && _lastOrientationChange != null) {
+    // Get previous orientation to detect landscape-to-landscape transitions
+    final previousOrientation = controller.value.deviceOrientation;
+    final isLandscapeToLandscape =
+        (previousOrientation == DeviceOrientation.landscapeLeft && orientation == DeviceOrientation.landscapeRight) || (previousOrientation == DeviceOrientation.landscapeRight && orientation == DeviceOrientation.landscapeLeft);
+
+    // Skip lockout period for:
+    // 1. First orientation change
+    // 2. Priority changes (explicitly marked)
+    // 3. Direct landscape-to-landscape transitions
+    if (!isFirstOrientationChange && !priority && !isLandscapeToLandscape && _lastOrientationChange != null) {
       final elapsed = now.difference(_lastOrientationChange!).inMilliseconds;
       if (elapsed < 2500) {
         debugPrint('🎥 Orientation change too soon (${elapsed}ms), ignoring');
@@ -206,9 +214,9 @@ class CameraLifecycleMachine {
       return false;
     }
 
-    // Special handling for first orientation change - always proceed even if orientation appears unchanged
-    // This is because the first orientation change is critical for stability and may need explicit setting
-    if (!isFirstOrientationChange) {
+    // Special handling for first orientation change or landscape-to-landscape -
+    // always proceed even if orientation appears unchanged
+    if (!isFirstOrientationChange && !isLandscapeToLandscape && !priority) {
       // For subsequent changes, check if orientation actually changed
       if (controller.value.deviceOrientation == orientation) {
         debugPrint('🎥 Skipping orientation change - orientation unchanged: $orientation');
@@ -222,8 +230,12 @@ class CameraLifecycleMachine {
 
         return true; // Return success since no change was needed
       }
-    } else {
-      debugPrint('🎥 First orientation change detected - proceeding even if orientation appears unchanged');
+    } else if (isLandscapeToLandscape) {
+      debugPrint('🎥 Detected direct landscape-to-landscape transition: $previousOrientation → $orientation');
+    } else if (isFirstOrientationChange) {
+      debugPrint('🎥 First orientation change detected');
+    } else if (priority) {
+      debugPrint('🎥 Priority orientation change detected');
     }
 
     // If we're already dealing with an orientation change, prevent duplicate
@@ -236,24 +248,58 @@ class CameraLifecycleMachine {
     final previousState = _currentState;
     _changeState(CameraLifecycleState.recreating);
 
-    if (isFirstOrientationChange) {
-      debugPrint('🎥 First orientation change - using optimized path');
-    }
-
     try {
       final completer = Completer<void>();
       _activeOperations['orientation'] = completer;
 
+      // Special optimized path for direct landscape-to-landscape transitions
+      if (isLandscapeToLandscape) {
+        try {
+          debugPrint('🎥 Using optimized landscape-to-landscape transition path');
+
+          // For Android, direct lock to the new orientation is most reliable
+          if (Platform.isAndroid && controller.cameraController != null) {
+            try {
+              await controller.cameraController!.lockCaptureOrientation(orientation);
+              debugPrint('🎥 Direct landscape orientation lock successful');
+            } catch (e) {
+              debugPrint('🎥 Could not directly lock landscape orientation: $e');
+              // Continue anyway - we'll update the value below
+            }
+          }
+
+          // Always update the value with the new orientation
+          controller.value = controller.value.copyWith(deviceOrientation: orientation);
+
+          // Move to ready state immediately
+          _changeState(CameraLifecycleState.ready);
+          completer.complete();
+
+          // Explicitly notify UI of completion
+          if (onStateChange != null) {
+            debugPrint('🎥 Notifying UI of landscape transition completion');
+            onStateChange!(_currentState, _currentState);
+          }
+
+          _operationInProgress = false;
+          _activeOperations.remove('orientation');
+          return true;
+        } catch (e) {
+          debugPrint('🎥 Error in landscape-to-landscape transition, using fallback: $e');
+          // Continue with standard flow as fallback
+        }
+      }
+
       // For the first orientation change, we'll use a simplified approach
       // to ensure we don't get stuck in a transitional state
-      if (isFirstOrientationChange) {
+      if (isFirstOrientationChange || priority) {
         try {
           // For Android, direct update without recreation is more reliable for first orientation
           if (Platform.isAndroid && controller.cameraController != null) {
             try {
               // Set orientation directly
               await controller.cameraController!.lockCaptureOrientation(orientation);
-              debugPrint('🎥 First orientation set directly on Android');
+              debugPrint('🎥 First/priority orientation set directly on Android');
             } catch (e) {
               // Log but continue - not critical for first orientation
               debugPrint('🎥 Could not set direct orientation on Android: $e');
@@ -269,7 +315,7 @@ class CameraLifecycleMachine {
 
           // Explicitly notify UI of completion
           if (onStateChange != null) {
-            debugPrint('🎥 Notifying UI of first orientation change completion');
+            debugPrint('🎥 Notifying UI of first/priority orientation change completion');
             onStateChange!(_currentState, _currentState);
           }
 
@@ -277,12 +323,12 @@ class CameraLifecycleMachine {
           _activeOperations.remove('orientation');
           return true;
         } catch (e) {
-          debugPrint('🎥 Error in first orientation change, using fallback: $e');
+          debugPrint('🎥 Error in first/priority orientation change, using fallback: $e');
           // Continue with standard flow as fallback
         }
       }
 
-      // Standard orientation change flow for non-first changes
+      // Standard orientation change flow for normal changes
       try {
         // For Android, try using a more lightweight orientation update approach first
         if (Platform.isAndroid) {
@@ -317,10 +363,10 @@ class CameraLifecycleMachine {
         try {
           // Add explicit timeout for the operation
           await controller.handleDeviceOrientationChange().timeout(
-            Duration(milliseconds: isFirstOrientationChange ? 2000 : 3000),
+            Duration(milliseconds: isFirstOrientationChange || priority ? 2000 : 3000),
             onTimeout: () {
-              if (isFirstOrientationChange) {
-                debugPrint('🎥 First orientation change timed out, but we will still try to proceed');
+              if (isFirstOrientationChange || priority) {
+                debugPrint('🎥 Critical orientation change timed out, but we will still try to proceed');
                 // For first change, continue despite timeout - the camera may still be usable
                 return;
               } else {
@@ -329,9 +375,9 @@ class CameraLifecycleMachine {
             },
           );
         } catch (e) {
-          // If we get an error during first orientation change, log but still try to continue
-          if (isFirstOrientationChange) {
-            debugPrint('🎥 Error during first orientation change, but we will still try to proceed: $e');
+          // If we get an error during critical orientation change, log but still try to continue
+          if (isFirstOrientationChange || priority) {
+            debugPrint('🎥 Error during critical orientation change, but we will still try to proceed: $e');
           } else {
             // For subsequent changes, propagate the error
             rethrow;
@@ -359,8 +405,8 @@ class CameraLifecycleMachine {
       } finally {
         _activeOperations.remove('orientation');
 
-        // For first orientation change, ensure we're no longer in a transitional state
-        if (isFirstOrientationChange && isChangingState) {
+        // For critical orientation changes, ensure we're no longer in a transitional state
+        if ((isFirstOrientationChange || priority || isLandscapeToLandscape) && isChangingState) {
           _changeState(CameraLifecycleState.ready);
           // Ensure UI is notified
           if (onStateChange != null) {
