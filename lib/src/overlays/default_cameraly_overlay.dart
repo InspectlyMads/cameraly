@@ -2888,50 +2888,47 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           // Camera controls row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center, // Ensure vertical centering
             children: [
               // Left button (Gallery or custom)
               SizedBox(
                 width: 56,
-                height: 73, // 56 + 17 padding for consistent height
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.start, // Align to top
-                  children: [
-                    // Hide buttons completely when processing
-                    if (_isProcessingVideo)
-                      const SizedBox.shrink()
-                    // Use the customLeftButtonBuilder if provided, otherwise fallback to customLeftButton
-                    else if (widget.customLeftButtonBuilder != null)
-                      _isFilePickerActive
-                          // If file picker is active, render a disabled version of the button
-                          ? Opacity(
-                              opacity: 0.5,
-                              child: IgnorePointer(
-                                child: widget.customLeftButtonBuilder!(context, overlayState),
-                              ),
-                            )
-                          : widget.customLeftButtonBuilder!(context, overlayState)
-                    else if (widget.customLeftButton != null)
-                      _isFilePickerActive
-                          ? Opacity(
-                              opacity: 0.5,
-                              child: IgnorePointer(
-                                child: widget.customLeftButton!,
-                              ),
-                            )
-                          : widget.customLeftButton!
-                    else if (widget.showGalleryButton && widget.customLeftButton == null)
-                      CameralyOverlayButton(
-                        onTap: (_isRecording || _isFilePickerActive) ? null : _openMediaGallery,
-                        backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
-                        size: 56,
-                        margin: EdgeInsets.zero, // Remove the default top margin
-                        useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
-                        hapticFeedbackType: widget.customButtonHapticFeedbackType,
-                        child: Icon(Icons.photo_library, color: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white, size: 30),
-                      )
-                    else
-                      const SizedBox.shrink(),
-                  ],
+                height: 56, // Match height with button size without extra padding
+                child: Center(
+                  // Center the button content
+                  child: _isProcessingVideo || _isRecording
+                      ? const SizedBox.shrink()
+                      // Use the customLeftButtonBuilder if provided, otherwise fallback to customLeftButton
+                      : widget.customLeftButtonBuilder != null
+                          ? _isFilePickerActive
+                              // If file picker is active, render a disabled version of the button
+                              ? Opacity(
+                                  opacity: 0.5,
+                                  child: IgnorePointer(
+                                    child: widget.customLeftButtonBuilder!(context, overlayState),
+                                  ),
+                                )
+                              : widget.customLeftButtonBuilder!(context, overlayState)
+                          : widget.customLeftButton != null
+                              ? _isFilePickerActive
+                                  ? Opacity(
+                                      opacity: 0.5,
+                                      child: IgnorePointer(
+                                        child: widget.customLeftButton!,
+                                      ),
+                                    )
+                                  : widget.customLeftButton!
+                              : widget.showGalleryButton && widget.customLeftButton == null
+                                  ? CameralyOverlayButton(
+                                      onTap: (_isRecording || _isFilePickerActive) ? null : _openMediaGallery,
+                                      backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
+                                      size: 56,
+                                      margin: EdgeInsets.zero, // Remove the default top margin
+                                      useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
+                                      hapticFeedbackType: widget.customButtonHapticFeedbackType,
+                                      child: Icon(Icons.photo_library, color: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white, size: 30),
+                                    )
+                                  : const SizedBox.shrink(),
                 ),
               ),
 
@@ -2941,45 +2938,42 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               // Right button (Camera switch or custom)
               SizedBox(
                 width: 56,
-                height: 73, // 56 + 17 padding for consistent height
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.start, // Align to top
-                  children: [
-                    // Hide buttons completely when processing
-                    if (_isProcessingVideo)
-                      const SizedBox.shrink()
-                    // Use the customRightButtonBuilder if provided, otherwise fallback to customRightButton
-                    else if (widget.customRightButtonBuilder != null)
-                      _isFilePickerActive
-                          ? Opacity(
-                              opacity: 0.5,
-                              child: IgnorePointer(
-                                child: widget.customRightButtonBuilder!(context, overlayState),
-                              ),
-                            )
-                          : widget.customRightButtonBuilder!(context, overlayState)
-                    else if (widget.customRightButton != null)
-                      _isFilePickerActive
-                          ? Opacity(
-                              opacity: 0.5,
-                              child: IgnorePointer(
-                                child: widget.customRightButton!,
-                              ),
-                            )
-                          : widget.customRightButton!
-                    else if (widget.showSwitchCameraButton)
-                      Container(
-                        decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
-                        child: IconButton.filled(
-                          onPressed: _isFilePickerActive ? null : _switchCamera,
-                          icon: const Icon(Icons.switch_camera),
-                          iconSize: 30,
-                          style: IconButton.styleFrom(backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24, foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white, padding: const EdgeInsets.all(12)),
-                        ),
-                      )
-                    else
-                      const SizedBox.shrink(),
-                  ],
+                height: 56, // Match height with button size without extra padding
+                child: Center(
+                  // Center the button content
+                  child: _isProcessingVideo || _isRecording
+                      ? const SizedBox.shrink()
+                      // Use the customRightButtonBuilder if provided, otherwise fallback to customRightButton
+                      : widget.customRightButtonBuilder != null
+                          ? _isFilePickerActive
+                              ? Opacity(
+                                  opacity: 0.5,
+                                  child: IgnorePointer(
+                                    child: widget.customRightButtonBuilder!(context, overlayState),
+                                  ),
+                                )
+                              : widget.customRightButtonBuilder!(context, overlayState)
+                          : widget.customRightButton != null
+                              ? _isFilePickerActive
+                                  ? Opacity(
+                                      opacity: 0.5,
+                                      child: IgnorePointer(
+                                        child: widget.customRightButton!,
+                                      ),
+                                    )
+                                  : widget.customRightButton!
+                              : widget.showSwitchCameraButton
+                                  ? Container(
+                                      decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, 0.4), shape: BoxShape.circle),
+                                      child: IconButton.filled(
+                                        onPressed: _isFilePickerActive ? null : _switchCamera,
+                                        icon: const Icon(Icons.switch_camera),
+                                        iconSize: 30,
+                                        style: IconButton.styleFrom(
+                                            backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24, foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white, padding: const EdgeInsets.all(12)),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
                 ),
               ),
             ],
@@ -3002,13 +2996,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       isFilePickerActive: _isFilePickerActive,
     );
 
-    // Determine if buttons should be hidden (during file picking or media processing)
-    final bool hideButtons = _isFilePickerActive || _isProcessingVideo;
+    // Determine if buttons should be hidden (during file picking, media processing or recording)
+    final bool hideButtons = _isFilePickerActive || _isProcessingVideo || _isRecording;
+
+    // Size for the container that will center the button content
+    final double buttonSize = isWideScreen ? 64 : 56;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center, // Ensure horizontal centering
         children: [
           // Photo/Video toggle
           if (!_isRecording && _controller?.settings.cameraMode == CameraMode.both)
@@ -3074,118 +3072,114 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           // Spacing after capture button
           SizedBox(height: isWideScreen ? 24 : 16),
 
-          // Left button (Gallery or custom) - Hide completely when processing
-          if (!_isProcessingVideo)
-            SizedBox(
-              width: isWideScreen ? 64 : 56,
-              height: isWideScreen ? 64 : 56,
-              child: widget.customLeftButtonBuilder != null
-                  ? _isFilePickerActive
-                      ? Opacity(
-                          opacity: 0.5,
-                          child: IgnorePointer(
-                            child: widget.customLeftButtonBuilder!(context, overlayState),
-                          ),
-                        )
-                      : widget.customLeftButtonBuilder!(context, overlayState)
-                  : widget.customLeftButton != null
-                      ? _isFilePickerActive
-                          ? Opacity(
-                              opacity: 0.5,
-                              child: IgnorePointer(
-                                child: widget.customLeftButton!,
-                              ),
-                            )
-                          : widget.customLeftButton!
-                      : (widget.showGalleryButton
-                          ? Container(
-                              decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                              child: IconButton.filled(
-                                onPressed: (_isRecording || _isFilePickerActive)
-                                    ? null
-                                    : () {
-                                        if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
-                                          // Apply the appropriate haptic feedback type
-                                          switch (widget.customButtonHapticFeedbackType) {
-                                            case HapticFeedbackType.light:
-                                              HapticFeedback.lightImpact();
-                                              break;
-                                            case HapticFeedbackType.medium:
-                                              HapticFeedback.mediumImpact();
-                                              break;
-                                            case HapticFeedbackType.heavy:
-                                              HapticFeedback.heavyImpact();
-                                              break;
-                                            case HapticFeedbackType.selection:
-                                              HapticFeedback.selectionClick();
-                                              break;
-                                            case HapticFeedbackType.vibrate:
-                                              HapticFeedback.vibrate();
-                                              break;
-                                          }
-                                        }
-                                        _openMediaGallery();
-                                      },
-                                icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
-                                  foregroundColor: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white,
-                                  minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
-                                  disabledForegroundColor: Colors.white38,
+          // Left button (Gallery or custom) - Hide completely when processing or recording
+          SizedBox(
+            width: buttonSize,
+            height: buttonSize,
+            child: !_isProcessingVideo && !_isRecording
+                ? (widget.customLeftButtonBuilder != null
+                    ? _isFilePickerActive
+                        ? Opacity(
+                            opacity: 0.5,
+                            child: IgnorePointer(
+                              child: widget.customLeftButtonBuilder!(context, overlayState),
+                            ),
+                          )
+                        : widget.customLeftButtonBuilder!(context, overlayState)
+                    : widget.customLeftButton != null
+                        ? _isFilePickerActive
+                            ? Opacity(
+                                opacity: 0.5,
+                                child: IgnorePointer(
+                                  child: widget.customLeftButton!,
                                 ),
-                              ),
-                            )
-                          : const SizedBox.shrink()),
-            )
-          else
-            // Empty space to maintain layout when processing
-            SizedBox(height: isWideScreen ? 64 : 56),
+                              )
+                            : widget.customLeftButton!
+                        : (widget.showGalleryButton
+                            ? Container(
+                                decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
+                                child: IconButton.filled(
+                                  onPressed: (_isRecording || _isFilePickerActive)
+                                      ? null
+                                      : () {
+                                          if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
+                                            // Apply the appropriate haptic feedback type
+                                            switch (widget.customButtonHapticFeedbackType) {
+                                              case HapticFeedbackType.light:
+                                                HapticFeedback.lightImpact();
+                                                break;
+                                              case HapticFeedbackType.medium:
+                                                HapticFeedback.mediumImpact();
+                                                break;
+                                              case HapticFeedbackType.heavy:
+                                                HapticFeedback.heavyImpact();
+                                                break;
+                                              case HapticFeedbackType.selection:
+                                                HapticFeedback.selectionClick();
+                                                break;
+                                              case HapticFeedbackType.vibrate:
+                                                HapticFeedback.vibrate();
+                                                break;
+                                            }
+                                          }
+                                          _openMediaGallery();
+                                        },
+                                  icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
+                                    foregroundColor: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white,
+                                    minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                                    disabledForegroundColor: Colors.white38,
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink()))
+                : const SizedBox.shrink(),
+          ),
 
           // Spacing between buttons
           SizedBox(height: isWideScreen ? 24 : 16),
 
-          // Right button (Camera switch or custom) - Hide completely when processing
-          if (!_isProcessingVideo)
-            SizedBox(
-              width: isWideScreen ? 64 : 56,
-              height: isWideScreen ? 64 : 56,
-              child: widget.customRightButtonBuilder != null
-                  ? _isFilePickerActive
-                      ? Opacity(
-                          opacity: 0.5,
-                          child: IgnorePointer(
-                            child: widget.customRightButtonBuilder!(context, overlayState),
-                          ),
-                        )
-                      : widget.customRightButtonBuilder!(context, overlayState)
-                  : widget.customRightButton != null
-                      ? _isFilePickerActive
-                          ? Opacity(
-                              opacity: 0.5,
-                              child: IgnorePointer(
-                                child: widget.customRightButton!,
-                              ),
-                            )
-                          : widget.customRightButton!
-                      : (widget.showSwitchCameraButton && !_isRecording
-                          ? Container(
-                              decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                              child: IconButton.filled(
-                                onPressed: _isFilePickerActive ? null : _switchCamera,
-                                icon: const Icon(Icons.switch_camera),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24,
-                                  foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white,
-                                  minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
-                                  disabledForegroundColor: Colors.white38,
+          // Right button (Camera switch or custom) - Hide completely when processing or recording
+          SizedBox(
+            width: buttonSize,
+            height: buttonSize,
+            child: !_isProcessingVideo && !_isRecording
+                ? (widget.customRightButtonBuilder != null
+                    ? _isFilePickerActive
+                        ? Opacity(
+                            opacity: 0.5,
+                            child: IgnorePointer(
+                              child: widget.customRightButtonBuilder!(context, overlayState),
+                            ),
+                          )
+                        : widget.customRightButtonBuilder!(context, overlayState)
+                    : widget.customRightButton != null
+                        ? _isFilePickerActive
+                            ? Opacity(
+                                opacity: 0.5,
+                                child: IgnorePointer(
+                                  child: widget.customRightButton!,
                                 ),
-                              ),
-                            )
-                          : const SizedBox.shrink()),
-            )
-          else
-            // Empty space to maintain layout when processing
-            SizedBox(height: isWideScreen ? 64 : 56),
+                              )
+                            : widget.customRightButton!
+                        : (widget.showSwitchCameraButton && !_isRecording
+                            ? Container(
+                                decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
+                                child: IconButton.filled(
+                                  onPressed: _isFilePickerActive ? null : _switchCamera,
+                                  icon: const Icon(Icons.switch_camera),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24,
+                                    foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white,
+                                    minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                                    disabledForegroundColor: Colors.white38,
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink()))
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
