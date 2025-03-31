@@ -3096,42 +3096,37 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                               )
                             : widget.customLeftButton!
                         : (widget.showGalleryButton
-                            ? Container(
-                                decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                                child: IconButton.filled(
-                                  onPressed: (_isRecording || _isFilePickerActive)
-                                      ? null
-                                      : () {
-                                          if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
-                                            // Apply the appropriate haptic feedback type
-                                            switch (widget.customButtonHapticFeedbackType) {
-                                              case HapticFeedbackType.light:
-                                                HapticFeedback.lightImpact();
-                                                break;
-                                              case HapticFeedbackType.medium:
-                                                HapticFeedback.mediumImpact();
-                                                break;
-                                              case HapticFeedbackType.heavy:
-                                                HapticFeedback.heavyImpact();
-                                                break;
-                                              case HapticFeedbackType.selection:
-                                                HapticFeedback.selectionClick();
-                                                break;
-                                              case HapticFeedbackType.vibrate:
-                                                HapticFeedback.vibrate();
-                                                break;
-                                            }
+                            ? CameralyOverlayButton(
+                                onTap: (_isRecording || _isFilePickerActive)
+                                    ? null
+                                    : () {
+                                        if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
+                                          // Apply the appropriate haptic feedback type
+                                          switch (widget.customButtonHapticFeedbackType) {
+                                            case HapticFeedbackType.light:
+                                              HapticFeedback.lightImpact();
+                                              break;
+                                            case HapticFeedbackType.medium:
+                                              HapticFeedback.mediumImpact();
+                                              break;
+                                            case HapticFeedbackType.heavy:
+                                              HapticFeedback.heavyImpact();
+                                              break;
+                                            case HapticFeedbackType.selection:
+                                              HapticFeedback.selectionClick();
+                                              break;
+                                            case HapticFeedbackType.vibrate:
+                                              HapticFeedback.vibrate();
+                                              break;
                                           }
-                                          _openMediaGallery();
-                                        },
-                                  icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
-                                    foregroundColor: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white,
-                                    minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
-                                    disabledForegroundColor: Colors.white38,
-                                  ),
-                                ),
+                                        }
+                                        _openMediaGallery();
+                                      },
+                                backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : const Color.fromRGBO(0, 0, 0, 0.4),
+                                size: buttonSize,
+                                useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
+                                hapticFeedbackType: widget.customButtonHapticFeedbackType,
+                                child: Icon(Icons.photo_library, color: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white, size: isWideScreen ? 32 : 24),
                               )
                             : const SizedBox.shrink()))
                 : const SizedBox.shrink(),
@@ -3163,18 +3158,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                                 ),
                               )
                             : widget.customRightButton!
-                        : (widget.showSwitchCameraButton && !_isRecording
-                            ? Container(
-                                decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                                child: IconButton.filled(
-                                  onPressed: _isFilePickerActive ? null : _switchCamera,
-                                  icon: const Icon(Icons.switch_camera),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24,
-                                    foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white,
-                                    minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
-                                    disabledForegroundColor: Colors.white38,
-                                  ),
+                        : (widget.showSwitchCameraButton
+                            ? CameralyOverlayButton(
+                                onTap: _isFilePickerActive ? null : _switchCamera,
+                                backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : const Color.fromRGBO(0, 0, 0, 0.4),
+                                size: buttonSize,
+                                useHapticFeedback: widget.useHapticFeedbackOnCustomButtons,
+                                hapticFeedbackType: widget.customButtonHapticFeedbackType,
+                                child: Icon(
+                                  Icons.switch_camera,
+                                  color: _isFilePickerActive ? Colors.white60 : Colors.white,
+                                  size: isWideScreen ? 32 : 24,
                                 ),
                               )
                             : const SizedBox.shrink()))
