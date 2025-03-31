@@ -1685,6 +1685,13 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         // Video selected, provide feedback
         HapticFeedback.mediumImpact();
 
+        // Now that we're actually processing the video, show the processing indicator
+        if (mounted) {
+          setState(() {
+            _isProcessingVideo = true; // Show processing indicator during video compression
+          });
+        }
+
         // Process the video with compression (loading state stays active)
         final processedVideo = await controller.processMediaFile(video, true);
         controller.mediaManager.addMedia(processedVideo, isVideo: true);
@@ -1701,6 +1708,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         if (mounted) {
           setState(() {
             _isFilePickerActive = false;
+            _isProcessingVideo = false; // Clear processing indicator
           });
         }
 
@@ -1728,6 +1736,13 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
         // Images selected, provide feedback
         HapticFeedback.mediumImpact();
+
+        // Now that we're processing files, show the processing indicator
+        if (mounted) {
+          setState(() {
+            _isProcessingVideo = true; // Use same processing indicator for consistency
+          });
+        }
 
         // Process each media file (loading indicator stays on)
         for (final image in images) {
@@ -1766,6 +1781,13 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         // Image selected, provide feedback
         HapticFeedback.mediumImpact();
 
+        // Now that we're processing the image, switch to processing indicator
+        if (mounted) {
+          setState(() {
+            _isProcessingVideo = true; // Use same processing indicator for images
+          });
+        }
+
         // Process the image with compression (loading state stays active)
         final processedImage = await controller.processMediaFile(image, false);
         controller.mediaManager.addMedia(processedImage, isVideo: false);
@@ -1790,6 +1812,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       if (mounted) {
         setState(() {
           _isFilePickerActive = false;
+          _isProcessingVideo = false; // Always clear processing state
         });
       }
 
