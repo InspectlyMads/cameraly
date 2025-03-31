@@ -1717,87 +1717,195 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         return;
       }
 
-      // In photo mode or combined mode, allow multiple image selection
-      if (widget.multiImageSelect) {
-        final List<XFile> images = await _imagePicker.pickMultipleMedia();
+      // Photo-only mode - only allow photos to be selected
+      if (controller.settings.cameraMode == CameraMode.photoOnly) {
+        if (widget.multiImageSelect) {
+          // Use pickMultiImage specifically (not pickMultipleMedia) to only allow photos
+          final List<XFile> images = await _imagePicker.pickMultiImage();
 
-        // If no images selected, clear active state and return
-        if (images.isEmpty) {
+          // If no images selected, clear active state and return
+          if (images.isEmpty) {
+            if (mounted) {
+              setState(() {
+                _isFilePickerActive = false;
+              });
+            }
+
+            // Restore orientation when returning without selection
+            _restoreOrientationAfterFilePicker();
+            return;
+          }
+
+          // Images selected, provide feedback
+          HapticFeedback.mediumImpact();
+
+          // Now that we're processing files, show the processing indicator
           if (mounted) {
             setState(() {
-              _isFilePickerActive = false;
+              _isProcessingVideo = true; // Use same processing indicator for consistency
             });
           }
 
-          // Restore orientation when returning without selection
-          _restoreOrientationAfterFilePicker();
-          return;
+          // Process each image (all are guaranteed to be photos)
+          for (final image in images) {
+            final processedFile = await controller.processMediaFile(image, false);
+            controller.mediaManager.addMedia(processedFile, isVideo: false);
+          }
+
+          // Ensure a consistent minimum loading time
+          final processingDuration = DateTime.now().difference(startTime);
+          if (processingDuration.inMilliseconds < 800) {
+            final remainingTime = 800 - processingDuration.inMilliseconds;
+            debugPrint('📸 Adding ${remainingTime}ms delay to ensure visible loading state for multiple images');
+            await Future.delayed(Duration(milliseconds: remainingTime));
+          }
+        } else {
+          // Single image selection
+          final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
+
+          // If no image selected, clear active state and return
+          if (image == null) {
+            if (mounted) {
+              setState(() {
+                _isFilePickerActive = false;
+              });
+            }
+
+            // Restore orientation when returning without selection
+            _restoreOrientationAfterFilePicker();
+            return;
+          }
+
+          // Image selected, provide feedback
+          HapticFeedback.mediumImpact();
+
+          // Now that we're processing the image, switch to processing indicator
+          if (mounted) {
+            setState(() {
+              _isProcessingVideo = true; // Use same processing indicator for images
+            });
+          }
+
+          // Process the image with compression
+          final processedImage = await controller.processMediaFile(image, false);
+          controller.mediaManager.addMedia(processedImage, isVideo: false);
+
+          // Ensure the loading state is visible for a minimum time
+          final processingDuration = DateTime.now().difference(startTime);
+          if (processingDuration.inMilliseconds < 800) {
+            final remainingTime = 800 - processingDuration.inMilliseconds;
+            debugPrint('📸 Adding ${remainingTime}ms delay to ensure visible loading state for image');
+            await Future.delayed(Duration(milliseconds: remainingTime));
+          }
         }
+      }
+      // Combined photo and video mode - allow both media types
+      else {
+        if (widget.multiImageSelect) {
+          final List<XFile> media = await _imagePicker.pickMultipleMedia();
 
-        // Images selected, provide feedback
-        HapticFeedback.mediumImpact();
+          // If no media selected, clear active state and return
+          if (media.isEmpty) {
+            if (mounted) {
+              setState(() {
+                _isFilePickerActive = false;
+              });
+            }
 
-        // Now that we're processing files, show the processing indicator
-        if (mounted) {
-          setState(() {
-            _isProcessingVideo = true; // Use same processing indicator for consistency
-          });
-        }
+            // Restore orientation when returning without selection
+            _restoreOrientationAfterFilePicker();
+            return;
+          }
 
-        // Process each media file (loading indicator stays on)
-        for (final image in images) {
-          // Determine if this is a video based on file extension
-          final isVideo = image.path.toLowerCase().endsWith('.mp4') || image.path.toLowerCase().endsWith('.mov') || image.path.toLowerCase().endsWith('.avi');
+          // Media selected, provide feedback
+          HapticFeedback.mediumImpact();
 
-          // Process the media file with appropriate compression
-          final processedFile = await controller.processMediaFile(image, isVideo);
+          // Now that we're processing files, show the processing indicator
+          if (mounted) {
+            setState(() {
+              _isProcessingVideo = true; // Use same processing indicator for consistency
+            });
+          }
+
+          // Process each media file with appropriate handling
+          for (final file in media) {
+            // Determine if this is a video based on file extension
+            final isVideo = file.path.toLowerCase().endsWith('.mp4') || file.path.toLowerCase().endsWith('.mov') || file.path.toLowerCase().endsWith('.avi');
+
+            // Process the media file with appropriate compression
+            final processedFile = await controller.processMediaFile(file, isVideo);
+            controller.mediaManager.addMedia(processedFile, isVideo: isVideo);
+          }
+
+          // Ensure a consistent minimum loading time
+          final processingDuration = DateTime.now().difference(startTime);
+          if (processingDuration.inMilliseconds < 800) {
+            final remainingTime = 800 - processingDuration.inMilliseconds;
+            debugPrint('📹 Adding ${remainingTime}ms delay to ensure visible loading state for multiple files');
+            await Future.delayed(Duration(milliseconds: remainingTime));
+          }
+        } else {
+          // Single media selection - ask user what they want to pick
+          final mediaType = await _showMediaPickerDialog();
+          if (mediaType == null) {
+            if (mounted) {
+              setState(() {
+                _isFilePickerActive = false;
+              });
+            }
+
+            // Restore orientation when returning without selection
+            _restoreOrientationAfterFilePicker();
+            return;
+          }
+
+          XFile? selectedFile;
+          bool isVideo = false;
+
+          if (mediaType == 'photo') {
+            selectedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
+            isVideo = false;
+          } else {
+            // video
+            selectedFile = await _imagePicker.pickVideo(source: ImageSource.gallery);
+            isVideo = true;
+          }
+
+          // If no file selected, clear active state and return
+          if (selectedFile == null) {
+            if (mounted) {
+              setState(() {
+                _isFilePickerActive = false;
+              });
+            }
+
+            // Restore orientation when returning without selection
+            _restoreOrientationAfterFilePicker();
+            return;
+          }
+
+          // File selected, provide feedback
+          HapticFeedback.mediumImpact();
+
+          // Now that we're processing the file, show processing indicator
+          if (mounted) {
+            setState(() {
+              _isProcessingVideo = true;
+            });
+          }
+
+          // Process the file with appropriate compression
+          final processedFile = await controller.processMediaFile(selectedFile, isVideo);
           controller.mediaManager.addMedia(processedFile, isVideo: isVideo);
-        }
 
-        // For multiple files, ensure a consistent minimum loading time
-        final processingDuration = DateTime.now().difference(startTime);
-        if (processingDuration.inMilliseconds < 800) {
-          final remainingTime = 800 - processingDuration.inMilliseconds;
-          debugPrint('📹 Adding ${remainingTime}ms delay to ensure visible loading state for multiple files');
-          await Future.delayed(Duration(milliseconds: remainingTime));
-        }
-      } else {
-        // Single image selection
-        final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
-
-        // If no image selected, clear active state and return
-        if (image == null) {
-          if (mounted) {
-            setState(() {
-              _isFilePickerActive = false;
-            });
+          // Ensure the loading state is visible for a minimum time
+          final processingDuration = DateTime.now().difference(startTime);
+          final minDuration = isVideo ? 1000 : 800;
+          if (processingDuration.inMilliseconds < minDuration) {
+            final remainingTime = minDuration - processingDuration.inMilliseconds;
+            debugPrint('📹 Adding ${remainingTime}ms delay to ensure visible loading state');
+            await Future.delayed(Duration(milliseconds: remainingTime));
           }
-
-          // Restore orientation when returning without selection
-          _restoreOrientationAfterFilePicker();
-          return;
-        }
-
-        // Image selected, provide feedback
-        HapticFeedback.mediumImpact();
-
-        // Now that we're processing the image, switch to processing indicator
-        if (mounted) {
-          setState(() {
-            _isProcessingVideo = true; // Use same processing indicator for images
-          });
-        }
-
-        // Process the image with compression (loading state stays active)
-        final processedImage = await controller.processMediaFile(image, false);
-        controller.mediaManager.addMedia(processedImage, isVideo: false);
-
-        // Ensure the loading state is visible for a minimum time
-        final processingDuration = DateTime.now().difference(startTime);
-        if (processingDuration.inMilliseconds < 800) {
-          final remainingTime = 800 - processingDuration.inMilliseconds;
-          debugPrint('📹 Adding ${remainingTime}ms delay to ensure visible loading state for image');
-          await Future.delayed(Duration(milliseconds: remainingTime));
         }
       }
     } catch (e) {
@@ -1819,6 +1927,29 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       // Restore orientation after file picker returns
       _restoreOrientationAfterFilePicker();
     }
+  }
+
+  /// Show a dialog asking the user whether to pick a photo or video
+  Future<String?> _showMediaPickerDialog() async {
+    return await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select Media Type'),
+          content: const Text('Would you like to select a photo or video?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'photo'),
+              child: const Text('Photo'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'video'),
+              child: const Text('Video'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// Helper method to restore orientation after returning from file picker
@@ -2318,6 +2449,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     final double size = isLandscape ? (isWideScreen ? 100 : 80) : 90;
     final double innerSize = isLandscape ? (isWideScreen ? 80 : 64) : 70;
 
+    // Get theme-appropriate colors
+    final ThemeData theme = Theme.of(context);
+    final Color processingColor = theme.colorScheme.primary; // Use primary color for processing
+    const Color importingColor = Colors.white; // Keep white for importing/file picking
+
     // Show a loading indicator when file picker is active or video is processing
     if (_isFilePickerActive || _isProcessingVideo) {
       return Stack(
@@ -2336,15 +2472,15 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: _isProcessingVideo
-                          ? Colors.orange.withAlpha((0.5 * value * 255).round()) // Orange for video processing
-                          : Colors.white.withAlpha((0.5 * value * 255).round()), // White for file picker
+                          ? processingColor.withAlpha((0.5 * value * 255).round()) // Theme color for processing
+                          : importingColor.withAlpha((0.5 * value * 255).round()), // White for file picker
                       width: 5,
                     ),
                     boxShadow: [
                       BoxShadow(
                         color: _isProcessingVideo
-                            ? Colors.orange.withAlpha((0.2 * value * 255).round()) // Orange for video processing
-                            : Colors.white.withAlpha((0.2 * value * 255).round()), // White for file picker
+                            ? processingColor.withAlpha((0.2 * value * 255).round()) // Theme color for processing
+                            : importingColor.withAlpha((0.2 * value * 255).round()), // White for file picker
                         blurRadius: 8 * value,
                         spreadRadius: 2 * value,
                       ),
@@ -2356,7 +2492,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       width: innerSize * 0.7,
                       height: innerSize * 0.7,
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(_isProcessingVideo ? Colors.orange : Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(_isProcessingVideo ? processingColor : importingColor),
                         strokeWidth: 3,
                       ),
                     ),
@@ -2661,6 +2797,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       isFilePickerActive: _isFilePickerActive,
     );
 
+    // Determine if buttons should be hidden (during file picking or media processing)
+    final bool hideButtons = _isFilePickerActive || _isProcessingVideo;
+
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 20, left: 20, right: 20, top: 20),
       child: Column(
@@ -2682,7 +2821,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: _isFilePickerActive
+                      onTap: hideButtons
                           ? null
                           : () => setState(() {
                                 // Provide haptic feedback when switching to photo mode
@@ -2702,9 +2841,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.photo_camera, color: (_isFilePickerActive || !_isVideoMode) ? Colors.white60 : Colors.white, size: 20),
+                            Icon(Icons.photo_camera, color: (hideButtons || !_isVideoMode) ? Colors.white60 : Colors.white, size: 20),
                             const SizedBox(width: 8),
-                            Text('Photo', style: TextStyle(color: (_isFilePickerActive || !_isVideoMode) ? Colors.white60 : Colors.white, fontWeight: !_isVideoMode ? FontWeight.bold : FontWeight.normal)),
+                            Text('Photo', style: TextStyle(color: (hideButtons || !_isVideoMode) ? Colors.white60 : Colors.white, fontWeight: !_isVideoMode ? FontWeight.bold : FontWeight.normal)),
                           ],
                         ),
                       ),
@@ -2714,7 +2853,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: _isFilePickerActive
+                      onTap: hideButtons
                           ? null
                           : () => setState(() {
                                 // Provide haptic feedback when switching to video mode
@@ -2732,9 +2871,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.videocam, color: (_isFilePickerActive || _isVideoMode) ? Colors.white60 : Colors.white, size: 20),
+                            Icon(Icons.videocam, color: (hideButtons || _isVideoMode) ? Colors.white60 : Colors.white, size: 20),
                             const SizedBox(width: 8),
-                            Text('Video', style: TextStyle(color: (_isFilePickerActive || _isVideoMode) ? Colors.white60 : Colors.white, fontWeight: _isVideoMode ? FontWeight.bold : FontWeight.normal)),
+                            Text('Video', style: TextStyle(color: (hideButtons || _isVideoMode) ? Colors.white60 : Colors.white, fontWeight: _isVideoMode ? FontWeight.bold : FontWeight.normal)),
                           ],
                         ),
                       ),
@@ -2757,8 +2896,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start, // Align to top
                   children: [
+                    // Hide buttons completely when processing
+                    if (_isProcessingVideo)
+                      const SizedBox.shrink()
                     // Use the customLeftButtonBuilder if provided, otherwise fallback to customLeftButton
-                    if (widget.customLeftButtonBuilder != null)
+                    else if (widget.customLeftButtonBuilder != null)
                       _isFilePickerActive
                           // If file picker is active, render a disabled version of the button
                           ? Opacity(
@@ -2803,8 +2945,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start, // Align to top
                   children: [
+                    // Hide buttons completely when processing
+                    if (_isProcessingVideo)
+                      const SizedBox.shrink()
                     // Use the customRightButtonBuilder if provided, otherwise fallback to customRightButton
-                    if (widget.customRightButtonBuilder != null)
+                    else if (widget.customRightButtonBuilder != null)
                       _isFilePickerActive
                           ? Opacity(
                               opacity: 0.5,
@@ -2857,6 +3002,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       isFilePickerActive: _isFilePickerActive,
     );
 
+    // Determine if buttons should be hidden (during file picking or media processing)
+    final bool hideButtons = _isFilePickerActive || _isProcessingVideo;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       child: Column(
@@ -2872,7 +3020,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextButton(
-                    onPressed: _isFilePickerActive
+                    onPressed: hideButtons
                         ? null
                         : () => setState(() {
                               // Provide haptic feedback when switching to photo mode
@@ -2892,11 +3040,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       disabledForegroundColor: Colors.white38,
                     ),
-                    child: Text('Photo', style: TextStyle(fontSize: 12, color: _isFilePickerActive ? Colors.white38 : (!_isVideoMode ? Colors.white : Colors.white60))),
+                    child: Text('Photo', style: TextStyle(fontSize: 12, color: hideButtons ? Colors.white38 : (!_isVideoMode ? Colors.white : Colors.white60))),
                   ),
                   const SizedBox(height: 4),
                   TextButton(
-                    onPressed: _isFilePickerActive
+                    onPressed: hideButtons
                         ? null
                         : () => setState(() {
                               // Provide haptic feedback when switching to video mode
@@ -2914,7 +3062,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       disabledForegroundColor: Colors.white38,
                     ),
-                    child: Text('Video', style: TextStyle(fontSize: 12, color: _isFilePickerActive ? Colors.white38 : (_isVideoMode ? Colors.white : Colors.white60))),
+                    child: Text('Video', style: TextStyle(fontSize: 12, color: hideButtons ? Colors.white38 : (_isVideoMode ? Colors.white : Colors.white60))),
                   ),
                 ],
               ),
@@ -2926,110 +3074,118 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           // Spacing after capture button
           SizedBox(height: isWideScreen ? 24 : 16),
 
-          // Left button (Gallery or custom)
-          SizedBox(
-            width: isWideScreen ? 64 : 56,
-            height: isWideScreen ? 64 : 56,
-            child: widget.customLeftButtonBuilder != null
-                ? _isFilePickerActive
-                    ? Opacity(
-                        opacity: 0.5,
-                        child: IgnorePointer(
-                          child: widget.customLeftButtonBuilder!(context, overlayState),
-                        ),
-                      )
-                    : widget.customLeftButtonBuilder!(context, overlayState)
-                : widget.customLeftButton != null
-                    ? _isFilePickerActive
-                        ? Opacity(
-                            opacity: 0.5,
-                            child: IgnorePointer(
-                              child: widget.customLeftButton!,
-                            ),
-                          )
-                        : widget.customLeftButton!
-                    : (widget.showGalleryButton
-                        ? Container(
-                            decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                            child: IconButton.filled(
-                              onPressed: (_isRecording || _isFilePickerActive)
-                                  ? null
-                                  : () {
-                                      if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
-                                        // Apply the appropriate haptic feedback type
-                                        switch (widget.customButtonHapticFeedbackType) {
-                                          case HapticFeedbackType.light:
-                                            HapticFeedback.lightImpact();
-                                            break;
-                                          case HapticFeedbackType.medium:
-                                            HapticFeedback.mediumImpact();
-                                            break;
-                                          case HapticFeedbackType.heavy:
-                                            HapticFeedback.heavyImpact();
-                                            break;
-                                          case HapticFeedbackType.selection:
-                                            HapticFeedback.selectionClick();
-                                            break;
-                                          case HapticFeedbackType.vibrate:
-                                            HapticFeedback.vibrate();
-                                            break;
-                                        }
-                                      }
-                                      _openMediaGallery();
-                                    },
-                              icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
-                              style: IconButton.styleFrom(
-                                backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
-                                foregroundColor: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white,
-                                minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
-                                disabledForegroundColor: Colors.white38,
+          // Left button (Gallery or custom) - Hide completely when processing
+          if (!_isProcessingVideo)
+            SizedBox(
+              width: isWideScreen ? 64 : 56,
+              height: isWideScreen ? 64 : 56,
+              child: widget.customLeftButtonBuilder != null
+                  ? _isFilePickerActive
+                      ? Opacity(
+                          opacity: 0.5,
+                          child: IgnorePointer(
+                            child: widget.customLeftButtonBuilder!(context, overlayState),
+                          ),
+                        )
+                      : widget.customLeftButtonBuilder!(context, overlayState)
+                  : widget.customLeftButton != null
+                      ? _isFilePickerActive
+                          ? Opacity(
+                              opacity: 0.5,
+                              child: IgnorePointer(
+                                child: widget.customLeftButton!,
                               ),
-                            ),
-                          )
-                        : const SizedBox.shrink()),
-          ),
+                            )
+                          : widget.customLeftButton!
+                      : (widget.showGalleryButton
+                          ? Container(
+                              decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
+                              child: IconButton.filled(
+                                onPressed: (_isRecording || _isFilePickerActive)
+                                    ? null
+                                    : () {
+                                        if (!_isRecording && widget.useHapticFeedbackOnCustomButtons) {
+                                          // Apply the appropriate haptic feedback type
+                                          switch (widget.customButtonHapticFeedbackType) {
+                                            case HapticFeedbackType.light:
+                                              HapticFeedback.lightImpact();
+                                              break;
+                                            case HapticFeedbackType.medium:
+                                              HapticFeedback.mediumImpact();
+                                              break;
+                                            case HapticFeedbackType.heavy:
+                                              HapticFeedback.heavyImpact();
+                                              break;
+                                            case HapticFeedbackType.selection:
+                                              HapticFeedback.selectionClick();
+                                              break;
+                                            case HapticFeedbackType.vibrate:
+                                              HapticFeedback.vibrate();
+                                              break;
+                                          }
+                                        }
+                                        _openMediaGallery();
+                                      },
+                                icon: Icon(Icons.photo_library, size: isWideScreen ? 32 : 24),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: (_isRecording || _isFilePickerActive) ? const Color.fromRGBO(158, 158, 158, 0.3) : Colors.white24,
+                                  foregroundColor: (_isRecording || _isFilePickerActive) ? Colors.white60 : Colors.white,
+                                  minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                                  disabledForegroundColor: Colors.white38,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink()),
+            )
+          else
+            // Empty space to maintain layout when processing
+            SizedBox(height: isWideScreen ? 64 : 56),
 
           // Spacing between buttons
           SizedBox(height: isWideScreen ? 24 : 16),
 
-          // Right button (Camera switch or custom)
-          SizedBox(
-            width: isWideScreen ? 64 : 56,
-            height: isWideScreen ? 64 : 56,
-            child: widget.customRightButtonBuilder != null
-                ? _isFilePickerActive
-                    ? Opacity(
-                        opacity: 0.5,
-                        child: IgnorePointer(
-                          child: widget.customRightButtonBuilder!(context, overlayState),
-                        ),
-                      )
-                    : widget.customRightButtonBuilder!(context, overlayState)
-                : widget.customRightButton != null
-                    ? _isFilePickerActive
-                        ? Opacity(
-                            opacity: 0.5,
-                            child: IgnorePointer(
-                              child: widget.customRightButton!,
-                            ),
-                          )
-                        : widget.customRightButton!
-                    : (widget.showSwitchCameraButton && !_isRecording
-                        ? Container(
-                            decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
-                            child: IconButton.filled(
-                              onPressed: _isFilePickerActive ? null : _switchCamera,
-                              icon: const Icon(Icons.switch_camera),
-                              style: IconButton.styleFrom(
-                                backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24,
-                                foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white,
-                                minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
-                                disabledForegroundColor: Colors.white38,
+          // Right button (Camera switch or custom) - Hide completely when processing
+          if (!_isProcessingVideo)
+            SizedBox(
+              width: isWideScreen ? 64 : 56,
+              height: isWideScreen ? 64 : 56,
+              child: widget.customRightButtonBuilder != null
+                  ? _isFilePickerActive
+                      ? Opacity(
+                          opacity: 0.5,
+                          child: IgnorePointer(
+                            child: widget.customRightButtonBuilder!(context, overlayState),
+                          ),
+                        )
+                      : widget.customRightButtonBuilder!(context, overlayState)
+                  : widget.customRightButton != null
+                      ? _isFilePickerActive
+                          ? Opacity(
+                              opacity: 0.5,
+                              child: IgnorePointer(
+                                child: widget.customRightButton!,
                               ),
-                            ),
-                          )
-                        : const SizedBox.shrink()),
-          ),
+                            )
+                          : widget.customRightButton!
+                      : (widget.showSwitchCameraButton && !_isRecording
+                          ? Container(
+                              decoration: BoxDecoration(color: Colors.black.withAlpha(102), shape: BoxShape.circle),
+                              child: IconButton.filled(
+                                onPressed: _isFilePickerActive ? null : _switchCamera,
+                                icon: const Icon(Icons.switch_camera),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: _isFilePickerActive ? Colors.grey.withAlpha(77) : Colors.white24,
+                                  foregroundColor: _isFilePickerActive ? Colors.white60 : Colors.white,
+                                  minimumSize: isWideScreen ? const Size(64, 64) : const Size(48, 48),
+                                  disabledForegroundColor: Colors.white38,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink()),
+            )
+          else
+            // Empty space to maintain layout when processing
+            SizedBox(height: isWideScreen ? 64 : 56),
         ],
       ),
     );
