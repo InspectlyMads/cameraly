@@ -2049,4 +2049,139 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
         return VideoQuality.DefaultQuality;
     }
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Skip if controller is not initialized
+    if (_controller == null || !_controller!.value.isInitialized) {
+      debugPrint('📸 Skipping lifecycle event ($state): controller not initialized');
+      return;
+    }
+
+    debugPrint('📸 App lifecycle state changed: $state');
+
+    // Handle different lifecycle states
+    switch (state) {
+      case AppLifecycleState.inactive:
+        // App is inactive (partly covered or in app switcher)
+        _handleAppInactive();
+        break;
+
+      case AppLifecycleState.paused:
+        // App is fully in background
+        _handleAppPaused();
+        break;
+
+      case AppLifecycleState.resumed:
+        // App is back in foreground
+        _handleAppResumed();
+        break;
+
+      case AppLifecycleState.detached:
+        // App is terminated
+        _handleAppDetached();
+        break;
+
+      default:
+        // Handle any future lifecycle states
+        debugPrint('📸 Unhandled app lifecycle state: $state');
+        break;
+    }
+  }
+
+  /// Handle when app becomes inactive (partially backgrounded)
+  void _handleAppInactive() {
+    debugPrint('📸 App inactive');
+
+    // If recording, stop it and save the file
+    if (value.isRecordingVideo) {
+      debugPrint('📸 Stopping video recording due to app becoming inactive');
+      stopVideoRecording().then((file) {
+        debugPrint('📸 Successfully saved video: ${file.path}');
+      }).catchError((error) {
+        debugPrint('📸 Error stopping video recording: $error');
+      });
+    }
+
+    // On Android, explicitly pause preview to save resources
+    if (Platform.isAndroid && _controller != null && _controller!.value.isInitialized) {
+      try {
+        _controller!.pausePreview();
+        debugPrint('📸 Camera preview paused (Android)');
+      } catch (e) {
+        debugPrint('📸 Error pausing camera preview: $e');
+      }
+    }
+  }
+
+  /// Handle when app is fully paused (in background)
+  void _handleAppPaused() {
+    debugPrint('📸 App paused');
+
+    // Clean up resources
+    _freeResources();
+  }
+
+  /// Handle when app is resumed from background
+  Future<void> _handleAppResumed() async {
+    // Skip if already resuming
+    if (_isResuming) {
+      debugPrint('📸 Already resuming, skipping duplicate request');
+      return;
+    }
+
+    debugPrint('📸 App resumed');
+
+    // If on Android, try to resume the preview
+    if (Platform.isAndroid && _controller != null && _controller!.value.isInitialized) {
+      try {
+        await _controller!.resumePreview();
+        debugPrint('📸 Camera preview resumed (Android)');
+      } catch (e) {
+        debugPrint('📸 Error resuming camera preview: $e');
+        // Will try full reinitialization instead
+      }
+    }
+
+    // For iOS or if Android resume failed, do a full reinit
+    if (Platform.isIOS || !(_controller?.value.isInitialized ?? false)) {
+      debugPrint('📸 Need to fully reinitialize camera after resume');
+
+      // This will trigger a full reinitialization through the lifecycle machine
+      handleCameraResume();
+    }
+  }
+
+  /// Handle when app is detached (terminated)
+  void _handleAppDetached() {
+    debugPrint('📸 App detached');
+
+    // Clean up ALL resources
+    _freeResources(fullCleanup: true);
+  }
+
+  /// Free up resources to prevent leaks
+  void _freeResources({bool fullCleanup = false}) {
+    // Cancel any ongoing video compression
+    try {
+      VideoCompress.cancelCompression();
+      debugPrint('📸 Cancelled any ongoing video compression');
+    } catch (e) {
+      debugPrint('📸 Error canceling video compression: $e');
+    }
+
+    // Clean up temp files
+    if (fullCleanup) {
+      cleanupAllTempFiles();
+    } else {
+      _cleanupOldTempFiles();
+    }
+
+    // Release any other resources that might cause leaks
+    // For example, cancel timers
+    _recordingTimer?.cancel();
+
+    // Force a small GC-encouraging delay
+    Future.delayed(const Duration(milliseconds: 50));
+  }
 }

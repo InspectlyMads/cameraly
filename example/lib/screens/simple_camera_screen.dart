@@ -29,7 +29,7 @@ class SimpleCameraScreen extends StatelessWidget {
           // UI settings
           showSwitchCameraButton: true,
           showFlashButton: true,
-          showMediaStack: true,
+          showMediaStack: false,
 
           // Custom UI elements
           customRightButton: FloatingActionButton(onPressed: () => Navigator.pop(context), backgroundColor: Colors.white, foregroundColor: Colors.black87, child: const Icon(Icons.check)),

@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'cameraly_controller.dart';
 import 'cameraly_value.dart';
@@ -174,10 +175,15 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     _setupController();
     WidgetsBinding.instance.addObserver(this);
 
+    // Mark camera as not yet stable
+    _cameraVisibleSince = null;
+
     // Don't use artificial delay on any platform - if camera is ready, show it immediately
     if (_controller != null && _controller!.value.isInitialized) {
       // Already initialized, set flag to false immediately
       _isInitializing = false;
+      // Start stabilization timer
+      _cameraVisibleSince = DateTime.now();
     } else {
       // Only use a minimal delay to prevent flickering during fast initialization
       Future.delayed(const Duration(milliseconds: 100), () {
@@ -188,6 +194,11 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         }
       });
     }
+
+    // Add post-frame callback to update orientation after first render
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeFirstOrientationUpdate();
+    });
   }
 
   void _setupController() {
@@ -202,21 +213,8 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         onError: _handleLifecycleError,
       );
 
-      // Force an orientation update when the widget is first built
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _controller != null && _controller!.value.isInitialized) {
-          // Print the current orientation for debugging
-          _controller!.printCurrentOrientation(context);
-
-          // Force an orientation update using the lifecycle machine
-          _lifecycleMachine?.handleOrientationChange(_controller!.value.deviceOrientation);
-
-          // If controller is already initialized, exit initialization state
-          setState(() {
-            _isInitializing = false;
-          });
-        }
-      });
+      // We'll handle orientation initialization separately in _initializeFirstOrientationUpdate
+      // to avoid double orientation changes and allow better control of loading indicators
     }
   }
 
@@ -224,11 +222,24 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   void _handleLifecycleStateChange(CameraLifecycleState oldState, CameraLifecycleState newState) {
     debugPrint('CameralyPreview: Lifecycle state changed from $oldState to $newState');
 
+    // Safety check for if both old and new state are "ready" - this is a forced redispatch
+    // from the lifecycle machine to ensure the UI updates
+    if (oldState == CameraLifecycleState.ready && newState == CameraLifecycleState.ready && _isChangingOrientation) {
+      debugPrint('🎥 Received forced ready state notification - immediately updating UI');
+      if (mounted) {
+        setState(() {
+          _isChangingOrientation = false;
+          _cameraVisibleSince = DateTime.now();
+        });
+      }
+      return;
+    }
+
     if (mounted) {
       // Update the orientation change flag based on the new state
-      // Only trigger UI updates when state actually changes
       if (newState == CameraLifecycleState.ready && _isChangingOrientation) {
         // When camera is ready, immediately hide the loading indicator
+        debugPrint('🎥 Camera is ready - hiding orientation change indicator');
         setState(() {
           _isChangingOrientation = false;
           // Reset camera visible time to now
@@ -236,19 +247,9 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         });
       } else if ((newState == CameraLifecycleState.recreating || newState == CameraLifecycleState.resuming) && !_isChangingOrientation) {
         // Only set to true if it wasn't already true
+        debugPrint('🎥 Camera is recreating/resuming - showing orientation change indicator');
         setState(() {
           _isChangingOrientation = true;
-
-          // Add safety timeout to ensure loading indicator doesn't get stuck
-          Future.delayed(const Duration(milliseconds: 1500), () {
-            if (mounted && _isChangingOrientation) {
-              debugPrint('🎥 Safety timeout: forcing orientation change flag reset');
-              setState(() {
-                _isChangingOrientation = false;
-                _cameraVisibleSince = DateTime.now();
-              });
-            }
-          });
         });
       }
     }
@@ -329,28 +330,58 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       // Cancel any ongoing orientation change timer
       _orientationDebounceTimer?.cancel();
 
-      // Use a longer debounce to allow multiple metric changes to settle
-      // Don't show loading indicator immediately to prevent flashes
-      _orientationDebounceTimer = Timer(const Duration(milliseconds: 1000), () {
+      // For the first orientation change after startup, reduce debounce time significantly
+      // This helps the camera stabilize faster on the first run
+      final isFirstMetricChange = _cameraVisibleSince == null;
+      final debounceTime = isFirstMetricChange ? 250 : 1000;
+
+      debugPrint('🎥 Orientation metrics changed, using ${isFirstMetricChange ? "quick" : "standard"} debounce ($debounceTime ms)');
+
+      // Use a debounce to allow multiple metric changes to settle
+      _orientationDebounceTimer = Timer(Duration(milliseconds: debounceTime), () {
         if (mounted && _controller != null && _lifecycleMachine != null) {
           // Set global flag
           _isAnyOrientationChangeInProgress = true;
 
-          // Simply trigger orientation update with current controller value
-          // The lifecycle machine will handle checking if change is needed
+          // Show loading indicator (but don't for very quick orientation adjustments)
           setState(() {
             _isChangingOrientation = true;
-            _cameraVisibleSince = null;
+
+            // During first orientation change, track that we've started the process
+            // but don't set _cameraVisibleSince yet - that happens when it completes
+            if (!isFirstMetricChange) {
+              _cameraVisibleSince = null;
+            }
           });
+
+          // Get current orientation from context for reliability
+          final mediaQuery = MediaQuery.of(context);
+          final currentOrientation = mediaQuery.orientation == Orientation.landscape
+              ? (mediaQuery.viewInsets.left > mediaQuery.viewInsets.right ? DeviceOrientation.landscapeRight : DeviceOrientation.landscapeLeft)
+              : (mediaQuery.viewInsets.top > mediaQuery.viewInsets.bottom ? DeviceOrientation.portraitDown : DeviceOrientation.portraitUp);
+
+          debugPrint('🎥 Handling orientation change to: $currentOrientation');
 
           // Let lifecycle machine handle the details - it has its own check for
           // whether orientation actually changed
-          _lifecycleMachine!.handleOrientationChange(_controller!.value.deviceOrientation).then((_) {
+          _lifecycleMachine!.handleOrientationChange(currentOrientation).then((_) {
             // Release global lock
             _isAnyOrientationChangeInProgress = false;
+
+            // The flag should be reset by the lifecycle state change handler
+            // No need for a timeout here as the lifecycle machine will call
+            // _handleLifecycleStateChange with the ready state when done
           }).catchError((error) {
             debugPrint('🎥 Error during orientation change: $error');
             _isAnyOrientationChangeInProgress = false;
+
+            // Ensure orientation flag is cleared even on error
+            if (mounted && _isChangingOrientation) {
+              setState(() {
+                _isChangingOrientation = false;
+                _cameraVisibleSince ??= DateTime.now();
+              });
+            }
           });
         }
       });
@@ -718,6 +749,55 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       );
     } else {
       return cameraStack;
+    }
+  }
+
+  // Add a dedicated method for first orientation update
+  void _initializeFirstOrientationUpdate() {
+    if (mounted && _controller != null && _lifecycleMachine != null && _controller!.value.isInitialized) {
+      // During first orientation update, always trigger the handler even if
+      // we don't think the orientation changed - the API will determine this
+      setState(() {
+        _isChangingOrientation = true;
+      });
+
+      // Get the current device orientation from MediaQuery for reliability
+      final currentOrientation = MediaQuery.of(context).orientation == Orientation.landscape
+          ? DeviceOrientation.landscapeRight // Default to right for first orientation
+          : DeviceOrientation.portraitUp; // Default to up for portrait
+
+      debugPrint('🎥 Initializing first orientation to: $currentOrientation');
+
+      // Let the lifecycle machine handle orientation with the first-change flag
+      // This ensures it treats it as a first orientation change
+      _lifecycleMachine!.handleOrientationChange(currentOrientation).then((_) {
+        debugPrint('🎥 First orientation change completed successfully');
+        // Always make sure we reset the orientation change flag
+        if (mounted) {
+          setState(() {
+            _isChangingOrientation = false;
+            // Mark camera as stable
+            _cameraVisibleSince = DateTime.now();
+          });
+        }
+      }).catchError((error) {
+        debugPrint('🎥 Error during first orientation change: $error');
+        // Also clear the flag on error
+        if (mounted) {
+          setState(() {
+            _isChangingOrientation = false;
+            _cameraVisibleSince = DateTime.now();
+          });
+        }
+      });
+    } else {
+      debugPrint('🎥 Skipping first orientation update - camera not ready');
+      // Even if we skip, make sure we're not in a changing state
+      if (mounted && _isChangingOrientation) {
+        setState(() {
+          _isChangingOrientation = false;
+        });
+      }
     }
   }
 }
