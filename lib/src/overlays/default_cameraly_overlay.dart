@@ -11,6 +11,7 @@ import '../types/camera_mode.dart';
 import '../utils/cameraly_controller_provider.dart';
 import '../utils/media_manager.dart';
 import 'cameraly_overlay_theme.dart';
+import 'zoom_ruler_widget.dart';
 
 /// A reusable button widget for camera overlay controls.
 ///
@@ -601,6 +602,17 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   DeviceOrientation? _savedGalleryOrientation;
   bool _returningFromGallery = false;
 
+  // Add zoom ruler visibility control
+  bool _isZoomRulerVisible = false;
+  Timer? _zoomRulerTimer;
+
+  // Add variables to track pinch gesture
+  double _baseScale = 1.0;
+  double _startZoom = 1.0;
+
+  // Track if we're in a snap zone to prevent repeated haptic feedback
+  bool _isInPinchSnapZone = false;
+
   /// Whether to show the mode toggle button.
   /// This is determined by the camera mode - only shown when mode is [CameraMode.both].
   bool get effectiveShowModeToggle => _controller?.settings.cameraMode == CameraMode.both;
@@ -653,6 +665,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
     _recordingTimer?.cancel();
     _recordingLimitTimer?.cancel();
+
+    // Cancel zoom ruler timer
+    _zoomRulerTimer?.cancel();
 
     _zoomAnimationController.removeListener(_handleZoomAnimation);
     _zoomAnimationController.dispose();
@@ -1097,30 +1112,21 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         }
       }
 
+      // Show zoom ruler immediately - do this BEFORE animation starts
+      _showZoomRuler();
+
+      // Update current zoom state immediately to ensure ruler position is correct
+      setState(() {
+        _currentZoom = targetZoom;
+      });
+
       // If an animation is already running, stop it
       if (_zoomAnimationController.isAnimating) {
         _zoomAnimationController.stop();
       }
 
-      // Create a new tween from current zoom to target zoom
-      _zoomAnimation = Tween<double>(
-        begin: _currentZoom,
-        end: targetZoom,
-      ).animate(CurvedAnimation(
-        parent: _zoomAnimationController,
-        curve: Curves.easeInOut,
-      ));
-
-      // Reset animation controller
-      _zoomAnimationController.reset();
-
-      // Start the animation
-      await _zoomAnimationController.forward();
-
-      // Update current zoom after animation completes
-      setState(() {
-        _currentZoom = targetZoom;
-      });
+      // Set the camera zoom level directly
+      await _controller?.setZoomLevel(targetZoom);
     } catch (e) {
       debugPrint('Error setting zoom level: $e');
     }
@@ -1136,13 +1142,32 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: _availableZoomLevels.map((zoom) {
-          final isSelected = (_currentZoom - zoom).abs() < 0.1;
+          // Find which button should be selected: the largest button that's <= current zoom
+          // For example: 1.9x should still be shown in the 1x button, not the 2x button
 
-          // Format zoom text: only show "x" suffix on selected button
+          // For each zoom button, we need to find if it's the largest one that's <= currentZoom
+          // First get all the zoom levels that are <= currentZoom
+          final List<double> zoomLevelsLessThanCurrent = _availableZoomLevels.where((level) => level <= _currentZoom).toList();
+
+          // If no zoom levels are <= currentZoom, use the smallest available
+          if (zoomLevelsLessThanCurrent.isEmpty) {
+            zoomLevelsLessThanCurrent.add(_availableZoomLevels.reduce((a, b) => a < b ? a : b));
+          }
+
+          // Find the largest one among these
+          final largestLowerZoom = zoomLevelsLessThanCurrent.reduce((a, b) => a > b ? a : b);
+
+          // This button is selected if it equals the largest lower zoom level
+          final isSelected = zoom == largestLowerZoom;
+
+          // Format zoom text based on whether it's selected
           String zoomText;
           if (isSelected) {
-            // Remove .0 for integer values even when selected
-            zoomText = zoom % 1 == 0 ? '${zoom.toInt()}x' : '${zoom}x';
+            // If selected, show actual zoom value with 'x' suffix
+            final actualZoom = _currentZoom.toStringAsFixed(1);
+            // Remove trailing zeros (e.g., 2.0 -> 2)
+            final cleanZoom = actualZoom.endsWith('.0') ? actualZoom.substring(0, actualZoom.length - 2) : actualZoom;
+            zoomText = '${cleanZoom}x';
           } else {
             // For non-selected buttons, just show the number without "x" suffix
             // Remove .0 for integer values
@@ -1160,6 +1185,9 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                     HapticFeedback.selectionClick();
                   }
                   _setZoomLevel(zoom);
+
+                  // Show zoom ruler when zoom button is tapped
+                  _showZoomRuler();
                 },
                 // Use a circular border radius to match design
                 borderRadius: BorderRadius.circular(16),
@@ -1176,7 +1204,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                       child: Container(
                         // Increase padding for larger hit target
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                         decoration: BoxDecoration(
                           color: isSelected ? Colors.white : Colors.white.withAlpha(26),
                           borderRadius: BorderRadius.circular(24),
@@ -1210,6 +1238,116 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         }).toList(),
       ),
     );
+  }
+
+  // Add a method to handle pinch-to-zoom gesture
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (_controller == null || !_controller!.value.isInitialized || _isRecording) return;
+
+    if (details.scale != 1.0) {
+      // Calculate new zoom level based on gesture scale
+      // Decrease sensitivity for more precise control
+      double scaleFactor = details.scale > 1.0
+          ? 1.0 + (details.scale - 1.0) * 0.8 // Zoom in: reduced sensitivity (was 2.0)
+          : 1.0 / (1.0 + (1.0 - details.scale) * 0.8); // Zoom out: reduced sensitivity (was 2.0)
+
+      double newZoom = _startZoom * scaleFactor;
+
+      // Clamp to min/max zoom
+      newZoom = newZoom.clamp(_minZoom, _maxZoom);
+
+      // Store original zoom value to check if it changed
+      final originalZoom = newZoom;
+
+      // Implement snapping behavior for integer values - use a smaller threshold
+      const double snapThreshold = 0.03; // Reduced from 0.08 to 0.03 (3% instead of 8%)
+      final double fractionalPart = newZoom - newZoom.floor();
+      final double distanceToNextInteger = 1.0 - fractionalPart;
+
+      bool wasSnapped = false;
+
+      // Check if we're close to an integer value - either the floor or ceiling
+      if (fractionalPart < snapThreshold) {
+        // Close to lower integer (e.g., 1.97 → 1.0)
+        newZoom = newZoom.floor().toDouble();
+        wasSnapped = true;
+
+        // Only provide haptic feedback when entering the snap zone from outside
+        if (!_isInPinchSnapZone) {
+          HapticFeedback.selectionClick();
+          _isInPinchSnapZone = true;
+        }
+      } else if (distanceToNextInteger < snapThreshold) {
+        // Close to upper integer (e.g., 2.03 → 2.0)
+        newZoom = newZoom.ceil().toDouble();
+        wasSnapped = true;
+
+        // Only provide haptic feedback when entering the snap zone from outside
+        if (!_isInPinchSnapZone) {
+          HapticFeedback.selectionClick();
+          _isInPinchSnapZone = true;
+        }
+      } else {
+        // We're not in a snap zone anymore
+        _isInPinchSnapZone = false;
+      }
+
+      // Only update if zoom changed significantly
+      if ((_currentZoom - newZoom).abs() > 0.005) {
+        // More sensitive threshold
+        // Check if we're crossing a zoom level for haptic feedback
+        for (final zoomLevel in _availableZoomLevels) {
+          if ((_currentZoom < zoomLevel && newZoom >= zoomLevel) || (_currentZoom > zoomLevel && newZoom <= zoomLevel)) {
+            HapticFeedback.lightImpact();
+            break;
+          }
+        }
+
+        // IMPORTANT: First update current zoom state and show ruler
+        // BEFORE actually changing camera zoom level
+        if (mounted) {
+          setState(() {
+            _currentZoom = newZoom;
+
+            // Show zoom ruler during pinch gesture
+            _isZoomRulerVisible = true;
+
+            // Cancel any existing timer
+            _zoomRulerTimer?.cancel();
+          });
+        }
+
+        // THEN update the actual camera zoom level AFTER ui update
+        _controller?.setZoomLevel(newZoom);
+      }
+    }
+  }
+
+  // Handle end of pinch gesture
+  void _handleScaleEnd(ScaleEndDetails details) {
+    // Provide haptic feedback on gesture end
+    HapticFeedback.selectionClick();
+
+    // Save current zoom as the new start zoom
+    _startZoom = _currentZoom;
+
+    // Reset snap zone tracking for next pinch gesture
+    _isInPinchSnapZone = false;
+
+    // Start timer to hide zoom ruler after delay
+    _zoomRulerTimer?.cancel();
+    _zoomRulerTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _isZoomRulerVisible = false;
+        });
+      }
+    });
+
+    // Notify zoom change
+    if (widget.onZoomChanged != null) {
+      widget.onZoomChanged!(_currentZoom);
+    }
   }
 
   void _handleControllerChanged() {
@@ -2249,6 +2387,27 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     }
   }
 
+  /// Shows the zoom ruler temporarily and schedules it to hide after a delay
+  void _showZoomRuler() {
+    if (mounted) {
+      setState(() {
+        _isZoomRulerVisible = true;
+      });
+
+      // Cancel any existing timer
+      _zoomRulerTimer?.cancel();
+
+      // Schedule auto-hide after 3 seconds
+      _zoomRulerTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _isZoomRulerVisible = false;
+          });
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = widget.theme ?? CameralyOverlayTheme.fromContext(context);
@@ -2270,46 +2429,81 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     // Wrap the result with DefaultCameralyOverlayScope to expose the state
     return DefaultCameralyOverlayScope(
       state: this,
-      child: Stack(
-        fit: StackFit.expand,
-        key: ValueKey<Orientation>(MediaQuery.of(context).orientation),
-        children: [
-          // Back button
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: widget.backButtonBuilder != null
-                    ? widget.backButtonBuilder!(context, overlayState)
-                    : widget.customBackButton ??
-                        CameralyOverlayButton(
-                          size: 40,
-                          backgroundColor: const Color.fromARGB(77, 0, 0, 0),
-                          borderColor: const Color.fromARGB(179, 255, 255, 255),
-                          borderWidth: 1.0,
-                          margin: EdgeInsets.zero,
-                          onTap: _isFilePickerActive ? null : () => Navigator.pop(context),
-                          child: Icon(Icons.arrow_back, color: _isFilePickerActive ? Colors.white60 : Colors.white),
-                        ),
+      child: GestureDetector(
+        // Add pinch-to-zoom gesture detection
+        onScaleStart: (details) {
+          if (_controller == null || !_controller!.value.isInitialized || _isRecording) return;
+          _baseScale = 1.0;
+          _startZoom = _currentZoom;
+        },
+        onScaleUpdate: _handleScaleUpdate,
+        onScaleEnd: _handleScaleEnd,
+        child: Stack(
+          fit: StackFit.expand,
+          key: ValueKey<Orientation>(MediaQuery.of(context).orientation),
+          children: [
+            // Back button
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: widget.backButtonBuilder != null
+                      ? widget.backButtonBuilder!(context, overlayState)
+                      : widget.customBackButton ??
+                          CameralyOverlayButton(
+                            size: 40,
+                            backgroundColor: const Color.fromARGB(77, 0, 0, 0),
+                            borderColor: const Color.fromARGB(179, 255, 255, 255),
+                            borderWidth: 1.0,
+                            margin: EdgeInsets.zero,
+                            onTap: _isFilePickerActive ? null : () => Navigator.pop(context),
+                            child: Icon(Icons.arrow_back, color: _isFilePickerActive ? Colors.white60 : Colors.white),
+                          ),
+                ),
               ),
             ),
-          ),
 
-          // Main layout container
-          isLandscape ? buildLandscapeLayout(theme, size, padding) : buildPortraitLayout(theme, size, padding),
+            // Main layout container
+            isLandscape ? buildLandscapeLayout(theme, size, padding) : buildPortraitLayout(theme, size, padding),
 
-          // Floating recording pill at bottom
-          if (_isRecording)
-            Positioned(
-              bottom: isLandscape ? 16 : (getBottomAreaHeight(false) + 90), // Position above the capture button in portrait
-              left: 0,
-              right: 0,
-              child: Center(
-                child: buildRecordingPill(),
+            // Floating recording pill at bottom
+            if (_isRecording)
+              Positioned(
+                bottom: isLandscape ? 16 : (getBottomAreaHeight(false) + 90), // Position above the capture button in portrait
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: buildRecordingPill(),
+                ),
               ),
-            ),
-        ],
+
+            // Zoom ruler - positioned appropriately for portrait/landscape
+            if (_isZoomRulerVisible && !_isRecording && widget.showZoomControls)
+              Positioned(
+                // In portrait: centered horizontally, above bottom controls
+                // In landscape: centered horizontally, below top controls
+                left: 0,
+                right: 0,
+                top: isLandscape ? MediaQuery.of(context).padding.top + 80 : null,
+                bottom: isLandscape ? null : getBottomAreaHeight(false) + 140,
+                child: Center(
+                  child: ZoomRulerWidget(
+                    currentZoom: _currentZoom,
+                    minZoom: _minZoom,
+                    maxZoom: _maxZoom,
+                    availableZoomLevels: _availableZoomLevels,
+                    onZoomChanged: (zoom) {
+                      _setZoomLevel(zoom);
+                      if (widget.onZoomChanged != null) {
+                        widget.onZoomChanged!(zoom);
+                      }
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
