@@ -738,6 +738,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         if (mounted && _controller != null) {
           debugPrint('🎥 Starting camera recovery after orientation change');
 
+          // Set loading indicator state
+          setState(() {
+            _isFilePickerActive = true;
+          });
+
           // Use the controller's aggressive recovery method
           _controller!.handleCameraResume().then((_) {
             if (mounted) {
@@ -746,8 +751,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
               // Reset the orientation change flag
               _orientationChangeInProgress = false;
 
-              // Refresh the UI
-              setState(() {});
+              // Refresh the UI and explicitly reset loading state
+              setState(() {
+                _isFilePickerActive = false;
+              });
 
               // Update buttons and UI state
               _updateButtonStates();
@@ -757,6 +764,13 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
             // Reset the flag even if there's an error
             _orientationChangeInProgress = false;
+
+            // Reset loading state on error too
+            if (mounted) {
+              setState(() {
+                _isFilePickerActive = false;
+              });
+            }
 
             // Try one more time with a simple approach
             if (mounted && _controller != null && _controller!.cameraController != null) {
@@ -979,6 +993,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       debugPrint('🎥 Camera resumed with flash mode: $_flashMode, torch: $_torchEnabled');
     } catch (e) {
       debugPrint('🎥 Error resuming camera: $e');
+
+      // Always make sure to reset loading state on error
+      if (mounted) {
+        setState(() {
+          _isFilePickerActive = false;
+        });
+      }
+
       // Force a rebuild to help with recovery
       if (mounted) {
         setState(() {});
@@ -2388,6 +2410,12 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       // No need to check any specific condition - just ensure UI state is fresh
       setState(() {
         // This empty setState forces a UI rebuild
+
+        // Ensure the file picker active flag is reset when camera is ready
+        // This helps recover from any state where the flag might be stuck
+        if (_isFilePickerActive && !_isRecording && !_isProcessingVideo) {
+          _isFilePickerActive = false;
+        }
       });
     }
   }
