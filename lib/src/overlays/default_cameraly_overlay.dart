@@ -581,10 +581,14 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   bool _isProcessingVideo = false; // Track when video is being processed after recording
   FlashMode _flashMode = FlashMode.auto;
   bool _torchEnabled = false;
+
+  // Zoom related variables
   double _currentZoom = 1.0;
+  var _previousZoom = 1.0; // Track previous zoom to detect changes - using var to ensure it's mutable
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
   List<double> _availableZoomLevels = [1.0];
+
   Timer? _recordingTimer;
   Duration _recordingDuration = Duration.zero;
   final ImagePicker _imagePicker = ImagePicker();
@@ -607,7 +611,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
   Timer? _zoomRulerTimer;
 
   // Add variables to track pinch gesture
-  double _baseScale = 1.0;
+  final double _baseScale = 1.0;
   double _startZoom = 1.0;
 
   // Track if we're in a snap zone to prevent repeated haptic feedback
@@ -1118,6 +1122,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       // Update current zoom state immediately to ensure ruler position is correct
       setState(() {
         _currentZoom = targetZoom;
+        _previousZoom = targetZoom; // Update previous zoom
       });
 
       // If an animation is already running, stop it
@@ -1303,17 +1308,16 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           }
         }
 
-        // IMPORTANT: First update current zoom state and show ruler
+        // Show zoom ruler immediately at the start of zoom gesture - call the dedicated method
+        // instead of just setting the flag to ensure proper timer handling
+        _showZoomRuler();
+
+        // IMPORTANT: First update current zoom state
         // BEFORE actually changing camera zoom level
         if (mounted) {
           setState(() {
             _currentZoom = newZoom;
-
-            // Show zoom ruler during pinch gesture
-            _isZoomRulerVisible = true;
-
-            // Cancel any existing timer
-            _zoomRulerTimer?.cancel();
+            _previousZoom = newZoom; // Update previous zoom
           });
         }
 
@@ -1378,6 +1382,20 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         setState(() {
           _isVideoMode = true;
         });
+      }
+
+      // Check if zoom level has changed from the controller (from preview pinch gesture)
+      final newZoom = _controller!.value.zoomLevel;
+      if (_previousZoom != newZoom) {
+        debugPrint('🎥 Detected zoom change from controller: $_previousZoom -> $newZoom');
+
+        setState(() {
+          _currentZoom = newZoom;
+          _previousZoom = newZoom;
+        });
+
+        // Show zoom ruler when pinch zoom happens in the preview
+        _showZoomRuler();
       }
 
       // Also update recording state based on controller value
@@ -2429,81 +2447,71 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     // Wrap the result with DefaultCameralyOverlayScope to expose the state
     return DefaultCameralyOverlayScope(
       state: this,
-      child: GestureDetector(
-        // Add pinch-to-zoom gesture detection
-        onScaleStart: (details) {
-          if (_controller == null || !_controller!.value.isInitialized || _isRecording) return;
-          _baseScale = 1.0;
-          _startZoom = _currentZoom;
-        },
-        onScaleUpdate: _handleScaleUpdate,
-        onScaleEnd: _handleScaleEnd,
-        child: Stack(
-          fit: StackFit.expand,
-          key: ValueKey<Orientation>(MediaQuery.of(context).orientation),
-          children: [
-            // Back button
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: widget.backButtonBuilder != null
-                      ? widget.backButtonBuilder!(context, overlayState)
-                      : widget.customBackButton ??
-                          CameralyOverlayButton(
-                            size: 40,
-                            backgroundColor: const Color.fromARGB(77, 0, 0, 0),
-                            borderColor: const Color.fromARGB(179, 255, 255, 255),
-                            borderWidth: 1.0,
-                            margin: EdgeInsets.zero,
-                            onTap: _isFilePickerActive ? null : () => Navigator.pop(context),
-                            child: Icon(Icons.arrow_back, color: _isFilePickerActive ? Colors.white60 : Colors.white),
-                          ),
-                ),
+      child: Stack(
+        fit: StackFit.expand,
+        key: ValueKey<Orientation>(MediaQuery.of(context).orientation),
+        children: [
+          // Back button
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: widget.backButtonBuilder != null
+                    ? widget.backButtonBuilder!(context, overlayState)
+                    : widget.customBackButton ??
+                        CameralyOverlayButton(
+                          size: 40,
+                          backgroundColor: const Color.fromARGB(77, 0, 0, 0),
+                          borderColor: const Color.fromARGB(179, 255, 255, 255),
+                          borderWidth: 1.0,
+                          margin: EdgeInsets.zero,
+                          onTap: _isFilePickerActive ? null : () => Navigator.pop(context),
+                          child: Icon(Icons.arrow_back, color: _isFilePickerActive ? Colors.white60 : Colors.white),
+                        ),
+              ),
+            ),
+          ),
+
+          // Main layout container
+          isLandscape ? buildLandscapeLayout(theme, size, padding) : buildPortraitLayout(theme, size, padding),
+
+          // Floating recording pill at bottom
+          if (_isRecording)
+            Positioned(
+              bottom: isLandscape ? 16 : (getBottomAreaHeight(false) + 90), // Position above the capture button in portrait
+              left: 0,
+              right: 0,
+              child: Center(
+                child: buildRecordingPill(),
               ),
             ),
 
-            // Main layout container
-            isLandscape ? buildLandscapeLayout(theme, size, padding) : buildPortraitLayout(theme, size, padding),
-
-            // Floating recording pill at bottom
-            if (_isRecording)
-              Positioned(
-                bottom: isLandscape ? 16 : (getBottomAreaHeight(false) + 90), // Position above the capture button in portrait
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: buildRecordingPill(),
+          // Zoom ruler - positioned appropriately for portrait/landscape
+          if (_isZoomRulerVisible && !_isRecording && widget.showZoomControls)
+            Positioned(
+              // In portrait: centered horizontally, above bottom controls
+              // In landscape: centered horizontally, below top controls
+              left: 0,
+              right: 0,
+              top: isLandscape ? MediaQuery.of(context).padding.top + 80 : null,
+              bottom: isLandscape ? null : getBottomAreaHeight(false) + 140,
+              child: Center(
+                child: ZoomRulerWidget(
+                  currentZoom: _currentZoom,
+                  minZoom: _minZoom,
+                  maxZoom: _maxZoom,
+                  availableZoomLevels: _availableZoomLevels,
+                  onZoomChanged: (zoom) {
+                    _setZoomLevel(zoom);
+                    if (widget.onZoomChanged != null) {
+                      widget.onZoomChanged!(zoom);
+                    }
+                  },
                 ),
               ),
-
-            // Zoom ruler - positioned appropriately for portrait/landscape
-            if (_isZoomRulerVisible && !_isRecording && widget.showZoomControls)
-              Positioned(
-                // In portrait: centered horizontally, above bottom controls
-                // In landscape: centered horizontally, below top controls
-                left: 0,
-                right: 0,
-                top: isLandscape ? MediaQuery.of(context).padding.top + 80 : null,
-                bottom: isLandscape ? null : getBottomAreaHeight(false) + 140,
-                child: Center(
-                  child: ZoomRulerWidget(
-                    currentZoom: _currentZoom,
-                    minZoom: _minZoom,
-                    maxZoom: _maxZoom,
-                    availableZoomLevels: _availableZoomLevels,
-                    onZoomChanged: (zoom) {
-                      _setZoomLevel(zoom);
-                      if (widget.onZoomChanged != null) {
-                        widget.onZoomChanged!(zoom);
-                      }
-                    },
-                  ),
-                ),
-              ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

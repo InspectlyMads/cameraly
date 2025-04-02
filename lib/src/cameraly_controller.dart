@@ -1221,6 +1221,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
       // Apply the new zoom level
       await setZoomLevel(newZoom);
+
+      // Notify listeners specifically for pinch zoom, so the overlay can show the zoom ruler
+      notifyListeners();
     } on CameraException catch (e) {
       value = value.copyWith(error: e.description);
       rethrow;
