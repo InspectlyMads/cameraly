@@ -1128,7 +1128,15 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   Future<double> getMaxZoomLevel() async {
     if (!value.isInitialized) return 1.0;
     try {
-      return await _controller!.getMaxZoomLevel();
+      double maxZoom = await _controller!.getMaxZoomLevel();
+
+      // Cap maximum zoom to 8x on iOS to make the zoom ruler look better
+      if (Platform.isIOS && maxZoom > 8.0) {
+        debugPrint('📸 Capping iOS maximum zoom from $maxZoom to 8.0');
+        return 8.0;
+      }
+
+      return maxZoom;
     } on CameraException catch (e) {
       value = value.copyWith(error: e.description);
       return 1.0;
@@ -1174,25 +1182,34 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     if (!value.isInitialized) return;
 
     try {
-      // Get current zoom level and initial zoom level (if set)
-      final baseZoom = value.initialZoomLevel ?? value.zoomLevel;
+      // Get the initial zoom level from our stored value
+      final initialZoom = value.initialZoomLevel ?? value.zoomLevel;
 
-      // Get min/max zoom levels if not provided
-      final effectiveMinZoom = minZoom ?? await getMinZoomLevel();
-      final effectiveMaxZoom = maxZoom ?? await getMaxZoomLevel();
+      // Use provided min/max zoom or get from camera
+      final actualMinZoom = minZoom ?? await getMinZoomLevel();
+      var actualMaxZoom = maxZoom ?? await getMaxZoomLevel();
 
-      // Apply sensitivity adjustment to make zooming more controlled
-      // Use the initial zoom level as the base for calculations to prevent jumps
-      final newZoom = (baseZoom * scale).clamp(effectiveMinZoom, effectiveMaxZoom);
+      // Apply iOS-specific zoom cap
+      if (Platform.isIOS && actualMaxZoom > 8.0) {
+        actualMaxZoom = 8.0;
+      }
 
-      // Apply the new zoom level
-      await setZoomLevel(newZoom);
+      // Calculate new zoom level with sensitivity adjustment
+      final rawZoom = initialZoom * scale;
+      final newZoom = initialZoom + (rawZoom - initialZoom) * sensitivity;
+
+      // Constrain zoom to min/max values
+      final clampedZoom = newZoom.clamp(actualMinZoom, actualMaxZoom);
+
+      // Check if zoom has changed significantly to avoid unnecessary updates
+      if ((clampedZoom - value.zoomLevel).abs() > 0.01) {
+        await setZoomLevel(clampedZoom);
+      }
 
       // Notify listeners specifically for pinch zoom, so the overlay can show the zoom ruler
       notifyListeners();
-    } on CameraException catch (e) {
-      value = value.copyWith(error: e.description);
-      rethrow;
+    } catch (e) {
+      debugPrint('Error during zoom scale handling: $e');
     }
   }
 

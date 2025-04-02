@@ -391,6 +391,29 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
           debugPrint('🎥 Handling orientation change to: $currentOrientation');
 
+          // Special handling for iOS to avoid infinite loading
+          if (Platform.isIOS) {
+            debugPrint('🎥 iOS detected: Using direct orientation update');
+
+            // Update controller value with the new orientation
+            _controller!.value = _controller!.value.copyWith(deviceOrientation: currentOrientation);
+
+            // Short delay then remove the loading indicator
+            Future.delayed(const Duration(milliseconds: 300), () {
+              // Release global lock
+              _isAnyOrientationChangeInProgress = false;
+
+              if (mounted) {
+                setState(() {
+                  _isChangingOrientation = false;
+                  _cameraVisibleSince = DateTime.now();
+                });
+              }
+            });
+
+            return;
+          }
+
           // Add extreme timeout for stuck orientation changes - force reset after 5 seconds
           final longTimeoutTimer = Timer(const Duration(seconds: 5), () {
             if (mounted && _isChangingOrientation) {
@@ -412,6 +435,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
             }
           });
 
+          // Regular Android handling
           // For rapid landscape transitions, use special handling
           if (isRapidLandscapeTransition) {
             // Use higher priority for rapid landscape transitions
@@ -852,6 +876,29 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
         }
       });
 
+      // Special case for iOS - orientation handling is skipped but we still need to update the UI
+      // This addresses the infinite loader issue on iOS
+      if (Platform.isIOS) {
+        debugPrint('🎥 iOS detected: Using simplified orientation handling');
+        // Update controller value with the current orientation
+        _controller!.value = _controller!.value.copyWith(deviceOrientation: currentOrientation);
+
+        // Short delay to allow camera to stabilize, then clear the loading indicator
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            setState(() {
+              _isChangingOrientation = false;
+              _cameraVisibleSince = DateTime.now();
+            });
+
+            // Force lifecycle machine to ready state
+            _lifecycleMachine?.forceResetToReady();
+          }
+        });
+        return;
+      }
+
+      // Regular handling for Android and other platforms
       // Let the lifecycle machine handle orientation with the first-change flag
       // This ensures it treats it as a first orientation change
       _lifecycleMachine!.handleOrientationChange(currentOrientation).then((_) {
