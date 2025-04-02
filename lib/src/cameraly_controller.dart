@@ -10,7 +10,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:native_exif/native_exif.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
-import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
 import 'cameraly_value.dart';
 import 'types/camera_mode.dart';
@@ -1002,7 +1001,6 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       debugPrint('🎥 Skipping video compression (compressionQuality = none)');
 
       // Generate a thumbnail and return the uncompressed file
-      await _generateThumbnail(processedFile);
       return processedFile;
     }
 
@@ -1098,40 +1096,8 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       // Continue with the uncompressed file if compression fails
     }
 
-    // Generate a thumbnail for the video
-    await _generateThumbnail(processedFile);
-
     // Return the processed file
     return processedFile;
-  }
-
-  /// Helper method to generate a video thumbnail
-  Future<void> _generateThumbnail(XFile videoFile) async {
-    try {
-      // Determine the thumbnail path (same as video but with .jpg extension)
-      final String thumbnailPath = videoFile.path.replaceAll(RegExp(r'\.(mp4|mov|avi|temp)$', caseSensitive: false), '.jpg');
-
-      // Generate the thumbnail
-      debugPrint('Generating thumbnail for video: ${videoFile.path}');
-      final String? generatedThumbnailPath = await vt.VideoThumbnail.thumbnailFile(
-        video: videoFile.path,
-        thumbnailPath: thumbnailPath,
-        imageFormat: vt.ImageFormat.JPEG,
-        maxHeight: 200,
-        quality: 75,
-      );
-
-      if (generatedThumbnailPath != null) {
-        debugPrint('Thumbnail generated successfully: $generatedThumbnailPath');
-
-        // Store the thumbnail path in the media manager for later use
-        _mediaManager.setThumbnailForVideo(videoFile.path, generatedThumbnailPath);
-      } else {
-        debugPrint('Failed to generate thumbnail');
-      }
-    } catch (e) {
-      debugPrint('Error generating video thumbnail: $e');
-    }
   }
 
   /// Pauses video recording.
