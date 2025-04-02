@@ -216,7 +216,7 @@ class _ZoomRulerWidgetState extends State<ZoomRulerWidget> with SingleTickerProv
 
                       // Check if we need to snap to an integer value
                       final double originalZoom = newZoom;
-                      const double snapThreshold = 0.03; // 3% threshold
+                      const double snapThreshold = 0.01; // 1% threshold
                       final double fractionalPart = newZoom - newZoom.floor();
                       final double distanceToNextInteger = 1.0 - fractionalPart;
 
