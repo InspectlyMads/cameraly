@@ -687,6 +687,37 @@ class CameraLifecycleMachine {
     return await initialize();
   }
 
+  /// Force the state machine back to ready state
+  /// This is a last resort for fixing stuck transitions
+  void forceResetToReady() {
+    debugPrint('🎥 Forcing reset to ready state from $_currentState');
+
+    // Cancel any active operations first
+    for (final entry in _activeOperations.entries) {
+      if (!entry.value.isCompleted) {
+        debugPrint('🎥 Cancelling operation during force reset: ${entry.key}');
+        entry.value.complete(); // Complete without error to avoid cascading issues
+      }
+    }
+    _activeOperations.clear();
+
+    // Clear any error state
+    _lastError = null;
+    _lastErrorObject = null;
+    _operationInProgress = false;
+
+    // Force state to ready if not already
+    if (_currentState != CameraLifecycleState.ready) {
+      final oldState = _currentState;
+      _currentState = CameraLifecycleState.ready;
+
+      // Notify listeners of the forced state change
+      if (onStateChange != null) {
+        onStateChange!(oldState, CameraLifecycleState.ready);
+      }
+    }
+  }
+
   /// Clean up resources
   Future<void> dispose() async {
     _changeState(CameraLifecycleState.disposing);

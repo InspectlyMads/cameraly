@@ -245,11 +245,26 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           // Reset camera visible time to now
           _cameraVisibleSince = DateTime.now();
         });
+
+        // Clear any existing safety timer
+        _orientationDebounceTimer?.cancel();
       } else if ((newState == CameraLifecycleState.recreating || newState == CameraLifecycleState.resuming) && !_isChangingOrientation) {
         // Only set to true if it wasn't already true
         debugPrint('🎥 Camera is recreating/resuming - showing orientation change indicator');
         setState(() {
           _isChangingOrientation = true;
+        });
+
+        // Add a safety timeout to ensure the loading indicator doesn't stay forever
+        _orientationDebounceTimer?.cancel();
+        _orientationDebounceTimer = Timer(const Duration(seconds: 3), () {
+          debugPrint('🎥 Safety timeout reached - forcing orientation change indicator to hide');
+          if (mounted && _isChangingOrientation) {
+            setState(() {
+              _isChangingOrientation = false;
+              _cameraVisibleSince = DateTime.now();
+            });
+          }
         });
       }
     }
@@ -376,12 +391,35 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
           debugPrint('🎥 Handling orientation change to: $currentOrientation');
 
+          // Add extreme timeout for stuck orientation changes - force reset after 5 seconds
+          final longTimeoutTimer = Timer(const Duration(seconds: 5), () {
+            if (mounted && _isChangingOrientation) {
+              debugPrint('🎥 EXTREME TIMEOUT: Orientation change has been stuck for 5 seconds - force resetting');
+
+              // Force reset to ready state
+              _lifecycleMachine?.forceResetToReady();
+
+              // Release the global lock
+              _isAnyOrientationChangeInProgress = false;
+
+              // Update UI
+              if (mounted) {
+                setState(() {
+                  _isChangingOrientation = false;
+                  _cameraVisibleSince = DateTime.now();
+                });
+              }
+            }
+          });
+
           // For rapid landscape transitions, use special handling
           if (isRapidLandscapeTransition) {
             // Use higher priority for rapid landscape transitions
             _lifecycleMachine!.handleOrientationChange(currentOrientation, priority: true).then((_) {
+              longTimeoutTimer.cancel();
               _isAnyOrientationChangeInProgress = false;
             }).catchError((error) {
+              longTimeoutTimer.cancel();
               debugPrint('🎥 Error during rapid orientation change: $error');
               _isAnyOrientationChangeInProgress = false;
 
@@ -396,6 +434,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           } else {
             // Use standard handling for normal transitions
             _lifecycleMachine!.handleOrientationChange(currentOrientation).then((_) {
+              longTimeoutTimer.cancel();
               // Release global lock
               _isAnyOrientationChangeInProgress = false;
 
@@ -403,6 +442,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
               // No need for a timeout here as the lifecycle machine will call
               // _handleLifecycleStateChange with the ready state when done
             }).catchError((error) {
+              longTimeoutTimer.cancel();
               debugPrint('🎥 Error during orientation change: $error');
               _isAnyOrientationChangeInProgress = false;
 
@@ -747,8 +787,8 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
             ),
           ),
 
-        // Loading indicator - only show when needed and avoid showing it if camera has been visible for a while
-        if (!value.isInitialized || (_isChangingOrientation && !_isCameraStable()) || value.isChangingController)
+        // Loading indicator - only show when needed and with more reliable logic
+        if (!value.isInitialized || (_isChangingOrientation && (!_isCameraStable() || DateTime.now().difference(_cameraVisibleSince ?? DateTime.now()).inSeconds < 5)) || value.isChangingController)
           Container(
             key: const ValueKey('loading_overlay'),
             // Make overlay very transparent when camera is already initialized
@@ -799,6 +839,18 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
           : DeviceOrientation.portraitUp; // Default to up for portrait
 
       debugPrint('🎥 Initializing first orientation to: $currentOrientation');
+
+      // Add a safety timeout for first orientation change
+      _orientationDebounceTimer?.cancel();
+      _orientationDebounceTimer = Timer(const Duration(seconds: 3), () {
+        debugPrint('🎥 First orientation change safety timeout reached - forcing indicator to hide');
+        if (mounted && _isChangingOrientation) {
+          setState(() {
+            _isChangingOrientation = false;
+            _cameraVisibleSince = DateTime.now();
+          });
+        }
+      });
 
       // Let the lifecycle machine handle orientation with the first-change flag
       // This ensures it treats it as a first orientation change
