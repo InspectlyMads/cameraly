@@ -21,10 +21,10 @@ class ZoomRulerWidget extends StatefulWidget {
     this.rulerHeight = 50.0,
     this.rulerWidth = 300.0,
     this.fadeAnimationDuration = const Duration(milliseconds: 150),
-    this.showAngle = true,
-    this.angleValue = 5,
     this.trackColor = Colors.white,
     this.trackWidth = 2.0,
+    this.backgroundColor = Colors.black54,
+    this.pillPadding = const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0.0),
     super.key,
   });
 
@@ -58,17 +58,17 @@ class ZoomRulerWidget extends StatefulWidget {
   /// The duration of the fade animation.
   final Duration fadeAnimationDuration;
 
-  /// Whether to show the angle indicator.
-  final bool showAngle;
-
-  /// The angle value to display.
-  final int angleValue;
-
   /// The color of the ruler track.
   final Color trackColor;
 
   /// The width of the ruler track.
   final double trackWidth;
+
+  /// The background color of the pill-shaped ruler.
+  final Color backgroundColor;
+
+  /// The padding around the ruler within the pill.
+  final EdgeInsets pillPadding;
 
   @override
   State<ZoomRulerWidget> createState() => _ZoomRulerWidgetState();
@@ -309,31 +309,12 @@ class _ZoomRulerWidgetState extends State<ZoomRulerWidget> with SingleTickerProv
                       offset: _rulerOffset,
                       trackColor: widget.trackColor,
                       trackWidth: widget.trackWidth,
+                      backgroundColor: widget.backgroundColor,
+                      pillPadding: widget.pillPadding,
                     ),
                   ),
                 ),
               ),
-
-              // Fixed center indicator
-              if (widget.showAngle)
-                Container(
-                  width: widget.thumbIndicatorSize,
-                  height: widget.thumbIndicatorSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${widget.angleValue}°',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
 
               // Vertical center line
               Container(
@@ -371,6 +352,8 @@ class RulerPainter extends CustomPainter {
     required this.offset,
     required this.trackColor,
     required this.trackWidth,
+    required this.backgroundColor,
+    required this.pillPadding,
   });
 
   final double currentZoom;
@@ -380,6 +363,8 @@ class RulerPainter extends CustomPainter {
   final double offset;
   final Color trackColor;
   final double trackWidth;
+  final Color backgroundColor;
+  final EdgeInsets pillPadding;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -393,19 +378,32 @@ class RulerPainter extends CustomPainter {
       ..color = trackColor.withOpacity(0.3)
       ..style = PaintingStyle.fill;
 
+    // Background pill paint
+    final backgroundPaint = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.fill;
+
     final textStyle = TextStyle(
       color: trackColor,
       fontSize: 13,
       fontWeight: FontWeight.normal,
     );
 
-    // Draw the horizontal track line
-    final centerY = size.height / 2;
-    canvas.drawLine(
-      Offset(0, centerY),
-      Offset(size.width, centerY),
-      paint,
+    // Draw pill background - keep the 0.6 height but ensure ticks fit
+    final pillRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+          0,
+          size.height * 0.2, // Start 20% from the top to accommodate tall ticks
+          size.width,
+          size.height * 0.6 // Keep the 0.6 height as requested
+          ),
+      const Radius.circular(50.0),
     );
+
+    canvas.drawRRect(pillRect, backgroundPaint);
+
+    // Calculate the center Y position accounting for padding - adjust to match pill center
+    final centerY = size.height * 0.5; // Center of the entire canvas
 
     // Calculate the total scale width and range
     final totalWidth = size.width * 2.0;
@@ -420,20 +418,22 @@ class RulerPainter extends CustomPainter {
       final normalizedPosition = (zoomLevel - minZoom) / zoomRange;
       final xPos = normalizedPosition * totalWidth + offset;
 
-      // Only draw if in visible area
-      if (xPos >= 0 && xPos <= size.width) {
+      // Only draw if in visible area, accounting for padding
+      if (xPos >= pillPadding.left && xPos <= size.width - pillPadding.right) {
         // Check if this tick mark is close to current zoom
         final isCurrentZoom = (zoomLevel - currentZoom).abs() < 0.1;
+        final isIntegerZoom = zoomLevel % 1 == 0;
 
-        // Draw the tick mark (taller for current zoom)
-        final tickHeight = isCurrentZoom ? 15.0 : 10.0;
+        // Draw the tick mark (taller for integer zoom and current zoom, but asymmetric to fit within pill)
+        final tickHeightTop = isCurrentZoom ? 12.0 : (isIntegerZoom ? 10.0 : 6.0);
+        final tickHeightBottom = isCurrentZoom ? 8.0 : (isIntegerZoom ? 6.0 : 4.0);
 
-        // Use a thicker line for major ticks
-        paint.strokeWidth = isCurrentZoom ? trackWidth * 2.0 : trackWidth;
+        // Use a thicker line for integer ticks and current zoom
+        paint.strokeWidth = isCurrentZoom ? trackWidth * 2.0 : (isIntegerZoom ? trackWidth * 1.5 : trackWidth);
 
         canvas.drawLine(
-          Offset(xPos, centerY - tickHeight),
-          Offset(xPos, centerY + tickHeight),
+          Offset(xPos, centerY - tickHeightTop),
+          Offset(xPos, centerY + tickHeightBottom),
           paint,
         );
 
@@ -451,7 +451,7 @@ class RulerPainter extends CustomPainter {
           text: zoomLevel % 1 == 0 ? '${zoomLevel.toInt()}' : '.${(zoomLevel * 10).toInt()}',
           style: textStyle.copyWith(
             fontWeight: isCurrentZoom ? FontWeight.bold : FontWeight.normal,
-            fontSize: isCurrentZoom ? 14.0 : 13.0,
+            fontSize: isCurrentZoom ? 12.0 : 10.0, // Smaller text size to fit
           ),
         );
 
@@ -463,7 +463,7 @@ class RulerPainter extends CustomPainter {
         textPainter.layout();
         textPainter.paint(
           canvas,
-          Offset(xPos - textPainter.width / 2, centerY + 18),
+          Offset(xPos - textPainter.width / 2, centerY + tickHeightBottom + 2), // Position text closer to tick
         );
       }
     }
@@ -486,18 +486,19 @@ class RulerPainter extends CustomPainter {
       final normalizedPosition = (tickZoom - minZoom) / zoomRange;
       final xPos = normalizedPosition * totalWidth + offset;
 
-      // Only draw if in visible area
-      if (xPos >= 0 && xPos <= size.width) {
+      // Only draw if in visible area, accounting for padding
+      if (xPos >= pillPadding.left && xPos <= size.width - pillPadding.right) {
         // Check if this minor tick is close to current zoom
         final isCurrentZoom = (tickZoom - currentZoom).abs() < 0.05;
 
-        // Draw smaller tick mark
+        // Draw smaller tick mark with asymmetric heights
         paint.strokeWidth = isCurrentZoom ? trackWidth * 0.75 : trackWidth / 2;
-        final minorTickHeight = isCurrentZoom ? 8.0 : 5.0;
+        final minorTickHeightTop = isCurrentZoom ? 6.0 : 4.0;
+        final minorTickHeightBottom = isCurrentZoom ? 4.0 : 2.0;
 
         canvas.drawLine(
-          Offset(xPos, centerY - minorTickHeight),
-          Offset(xPos, centerY + minorTickHeight),
+          Offset(xPos, centerY - minorTickHeightTop),
+          Offset(xPos, centerY + minorTickHeightBottom),
           paint,
         );
 
