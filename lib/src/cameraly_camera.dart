@@ -766,7 +766,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
       child: CameralyPreview(
         controller: _controller!,
         overlay: _buildOverlay(_controller!),
-        loadingBuilder: (context, value) => _buildLoadingUI(),
+        loadingBuilder: (context, value) => const SizedBox.shrink(),
       ),
     );
   }

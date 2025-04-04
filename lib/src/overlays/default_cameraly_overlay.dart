@@ -2748,7 +2748,7 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  _isProcessingVideo ? 'Saving...' : 'Importing...',
+                  _isProcessingVideo ? 'Saving...' : '',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
