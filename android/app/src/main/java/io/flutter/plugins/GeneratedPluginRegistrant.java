@@ -41,6 +41,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin image_picker_android, io.flutter.plugins.imagepicker.ImagePickerPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new com.github.rmtmckenzie.native_device_orientation.NativeDeviceOrientationPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin native_device_orientation, com.github.rmtmckenzie.native_device_orientation.NativeDeviceOrientationPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.cloudacy.native_exif.NativeExifPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin native_exif, com.cloudacy.native_exif.NativeExifPlugin", e);

@@ -33,6 +33,7 @@ dependencies:
   native_exif: ^0.6.0
   exif: ^3.3.0
   provider: '>=6.0.0 <7.0.0'
+  native_device_orientation: ^2.0.3
 
 dev_dependencies:
   flutter_test:

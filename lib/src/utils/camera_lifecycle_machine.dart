@@ -106,17 +106,8 @@ class CameraLifecycleMachine {
     }
 
     try {
-      // Get the actual physical orientation from MediaQuery instead of using
-      // the controller's value, which might not be accurate
-      final window = WidgetsBinding.instance.window;
-      final physicalSize = window.physicalSize;
-      final isLandscape = physicalSize.width > physicalSize.height;
-
-      // Determine the current UI orientation more accurately
-      final uiOrientation = isLandscape ? (controller.value.deviceOrientation == DeviceOrientation.landscapeLeft ? DeviceOrientation.landscapeLeft : DeviceOrientation.landscapeRight) : DeviceOrientation.portraitUp;
-
       // Use this more accurate orientation value
-      _lockedOrientation = uiOrientation;
+      _lockedOrientation = controller.value.deviceOrientation;
 
       debugPrint('🎥 Locking orientation for recording to: $_lockedOrientation (corrected based on device physical orientation)');
 
