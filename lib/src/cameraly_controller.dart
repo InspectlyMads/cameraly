@@ -303,10 +303,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       // Listen for camera value changes to update our value
       _controller!.addListener(_updateValueFromController);
 
-      // Set initial orientation for Android
-      if (Platform.isAndroid) {
-        await handleDeviceOrientationChange();
-      }
+      await handleDeviceOrientationChange();
 
       // Default to assuming flash is available, we'll update this if we detect otherwise
       bool hasFlashCapability = true;
