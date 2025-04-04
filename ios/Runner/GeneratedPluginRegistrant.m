@@ -30,6 +30,12 @@
 @import image_picker_ios;
 #endif
 
+#if __has_include(<native_device_orientation/NativeDeviceOrientationPlugin.h>)
+#import <native_device_orientation/NativeDeviceOrientationPlugin.h>
+#else
+@import native_device_orientation;
+#endif
+
 #if __has_include(<native_exif/NativeExifPlugin.h>)
 #import <native_exif/NativeExifPlugin.h>
 #else
@@ -67,6 +73,7 @@
   [ImageCompressPlugin registerWithRegistrar:[registry registrarForPlugin:@"ImageCompressPlugin"]];
   [GeolocatorPlugin registerWithRegistrar:[registry registrarForPlugin:@"GeolocatorPlugin"]];
   [FLTImagePickerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTImagePickerPlugin"]];
+  [NativeDeviceOrientationPlugin registerWithRegistrar:[registry registrarForPlugin:@"NativeDeviceOrientationPlugin"]];
   [NativeExifPlugin registerWithRegistrar:[registry registrarForPlugin:@"NativeExifPlugin"]];
   [PathProviderPlugin registerWithRegistrar:[registry registrarForPlugin:@"PathProviderPlugin"]];
   [PermissionHandlerPlugin registerWithRegistrar:[registry registrarForPlugin:@"PermissionHandlerPlugin"]];

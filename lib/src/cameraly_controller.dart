@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:native_device_orientation/native_device_orientation.dart';
 import 'package:native_exif/native_exif.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
@@ -399,8 +400,20 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     _isHandlingOrientation = true;
 
     try {
-      final newOrientation = await _getDeviceOrientation();
+      DeviceOrientation? newOrientation;
+      final orientation = await NativeDeviceOrientationCommunicator().orientation(useSensor: true);
+      //Landscape orientation is reversed on iOS
+      if (Platform.isIOS && (orientation == NativeDeviceOrientation.landscapeLeft || orientation == NativeDeviceOrientation.landscapeRight)) {
+        if (orientation.deviceOrientation == DeviceOrientation.landscapeLeft) {
+          newOrientation = DeviceOrientation.landscapeRight;
+        } else if (orientation.deviceOrientation == DeviceOrientation.landscapeRight) {
+          newOrientation = DeviceOrientation.landscapeLeft;
+        }
+      } else {
+        newOrientation = orientation.deviceOrientation;
+      }
 
+      // debugPrint('📸 Handling device orientation change: $newOrientation');
       debugPrint('📸 Handling device orientation change: $newOrientation');
 
       // First update our local value
@@ -426,7 +439,8 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
             return;
           }
 
-          await setDeviceOrientation(newOrientation);
+          // await setDeviceOrientation(newOrientation);
+          if (newOrientation != null) await setDeviceOrientation(newOrientation);
 
           // Force camera resume to fix freezing issues on Android
           await Future.delayed(const Duration(milliseconds: 300));
@@ -445,7 +459,7 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       } else {
         // For iOS, just set the orientation
         try {
-          await setDeviceOrientation(newOrientation);
+          if (orientation.deviceOrientation != null) await setDeviceOrientation(orientation.deviceOrientation!);
         } catch (e) {
           debugPrint('❌ Error setting device orientation on iOS: $e');
         }
