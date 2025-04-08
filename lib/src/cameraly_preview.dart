@@ -1104,7 +1104,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   }
 
   // Add a dedicated method for first orientation update
-  void _initializeFirstOrientationUpdate() {
+  void _initializeFirstOrientationUpdate() async {
     if (mounted && _controller != null && _lifecycleMachine != null && _controller!.value.isInitialized) {
       // During first orientation update, always trigger the handler even if
       // we don't think the orientation changed - the API will determine this
@@ -1113,9 +1113,18 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       });
 
       // Get the current device orientation from MediaQuery for reliability
-      final currentOrientation = MediaQuery.of(context).orientation == Orientation.landscape
-          ? DeviceOrientation.landscapeRight // Default to right for first orientation
-          : DeviceOrientation.portraitUp; // Default to up for portrait
+      late DeviceOrientation currentOrientation;
+      final orientation = await NativeDeviceOrientationCommunicator().orientation(useSensor: true);
+      //Landscape orientation is reversed on iOS
+      if (Platform.isIOS && (orientation == NativeDeviceOrientation.landscapeLeft || orientation == NativeDeviceOrientation.landscapeRight)) {
+        if (orientation.deviceOrientation == DeviceOrientation.landscapeLeft) {
+          currentOrientation = DeviceOrientation.landscapeRight;
+        } else {
+          currentOrientation = DeviceOrientation.landscapeLeft;
+        }
+      } else {
+        currentOrientation = orientation.deviceOrientation!;
+      }
 
       debugPrint('🎥 Initializing first orientation to: $currentOrientation');
 
