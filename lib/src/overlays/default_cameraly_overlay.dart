@@ -2341,16 +2341,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
       try {
         // Make sure we have a controller
         if (_controller != null) {
-          final videoFile = await _controller!.stopVideoRecording();
+          await _controller!.stopVideoRecording();
           debugPrint('📹 Recording stopped successfully after reaching duration limit');
 
           // Make sure orientation is unlocked
           _controller?.lifecycleMachine?.unlockOrientationAfterRecording();
-
-          // Call onCapture callback if provided
-          if (widget.onCapture != null) {
-            widget.onCapture!(videoFile);
-          }
 
           // Also call onMaxDurationReached if provided
           if (widget.onMaxDurationReached != null) {
