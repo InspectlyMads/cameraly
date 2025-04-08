@@ -1845,7 +1845,10 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
     try {
       // If video-only mode, only show video picker
       if (controller.settings.cameraMode == CameraMode.videoOnly) {
-        final XFile? video = await _imagePicker.pickVideo(source: ImageSource.gallery);
+        final XFile? video = await _imagePicker.pickVideo(
+          source: ImageSource.gallery,
+          maxDuration: _maxVideoDuration,
+        );
 
         // If no video selected, clear active state and return
         if (video == null) {
