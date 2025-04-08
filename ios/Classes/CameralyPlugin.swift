@@ -9,6 +9,12 @@ public class CameralyPlugin: NSObject, FlutterPlugin {
     // Orientation-specific channel
     let orientationChannel = FlutterMethodChannel(name: "com.cameraly/orientation", binaryMessenger: registrar.messenger())
     
+    // Register video codec handler for H.264 support
+    VideoCodecHandler.register(with: registrar)
+    
+    // Register video transcoder for converting HEVC videos
+    VideoTranscoderHandler.register(with: registrar)
+    
     let instance = CameralyPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
     registrar.addMethodCallDelegate(instance, channel: orientationChannel)

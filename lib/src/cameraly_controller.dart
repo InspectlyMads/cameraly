@@ -18,6 +18,8 @@ import 'types/capture_settings.dart';
 import 'utils/camera_lifecycle_machine.dart';
 import 'utils/media_manager.dart';
 import 'utils/orientation_channel.dart';
+import 'utils/video_codec_channel.dart';
+import 'utils/video_transcoder.dart';
 
 /// Controller for the Cameraly camera interface.
 class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindingObserver {
@@ -283,6 +285,12 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     try {
       debugPrint('📸 Initializing camera with mode: ${_settings.cameraMode}');
       debugPrint('📸 Audio enabled: ${_settings.enableAudio}');
+
+      // Force H.264 encoding on iOS devices to avoid HEVC compatibility issues
+      if (Platform.isIOS) {
+        final h264Configured = await VideoCodecChannel.forceH264Encoding();
+        debugPrint('📸 H.264 encoding ${h264Configured ? 'configured' : 'configuration failed'} on iOS');
+      }
 
       _controller = CameraController(_description, _settings.resolution, enableAudio: _settings.enableAudio);
 
@@ -2093,25 +2101,37 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     XFile processedFile = file;
 
     try {
-      // First apply compression if needed
+      // First handle HEVC transcoding for videos (especially from gallery)
+      if (isVideo && Platform.isIOS) {
+        // Check and transcode HEVC videos to H.264 for better compatibility
+        debugPrint('🎥 Checking if video needs transcoding from HEVC to H.264: ${file.path}');
+        processedFile = await VideoTranscoder.ensureH264Encoding(file);
+
+        // If the path changed, it means transcoding happened
+        if (processedFile.path != file.path) {
+          debugPrint('🎥 Video was transcoded from HEVC to H.264');
+        }
+      }
+
+      // Then apply compression if needed
       if (isVideo) {
         // Video compression
         try {
           final info = await VideoCompress.compressVideo(
-            file.path,
+            processedFile.path, // Use potentially transcoded file
             quality: _convertToVideoQuality(_settings.videoQuality),
             deleteOrigin: false,
             includeAudio: true,
           );
 
           if (info?.path != null) {
-            processedFile = XFile(info!.path!);
-            debugPrint('🎬 Compressed video: ${file.path} -> ${processedFile.path}');
+            final compressedFile = XFile(info!.path!);
+            debugPrint('🎬 Compressed video: ${processedFile.path} -> ${compressedFile.path}');
+            processedFile = compressedFile;
           }
         } catch (e) {
           debugPrint('🎬 Error compressing video: $e');
-          // If compression fails, use the original file
-          processedFile = file;
+          // Continue with the transcoded or original file
         } finally {
           // Properly clean up VideoCompress resources to prevent memory leaks
           try {
