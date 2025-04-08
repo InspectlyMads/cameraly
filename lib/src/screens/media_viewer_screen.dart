@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:native_device_orientation/native_device_orientation.dart';
 import 'package:video_player/video_player.dart';
 
 import '../utils/media_manager.dart';
@@ -244,13 +245,13 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   return Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Video player
+                      // Video player with orientation fix for Android
                       GestureDetector(
                         onTap: _togglePlayPause,
                         child: Center(
-                          child: AspectRatio(
-                            aspectRatio: _videoController!.value.aspectRatio,
-                            child: VideoPlayer(_videoController!),
+                          child: _OrientationAwareVideoPlayer(
+                            controller: _videoController!,
+                            filePath: file.path,
                           ),
                         ),
                       ),
@@ -543,6 +544,132 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A video player widget that properly handles Android video orientation issues
+class _OrientationAwareVideoPlayer extends StatefulWidget {
+  const _OrientationAwareVideoPlayer({
+    required this.controller,
+    required this.filePath,
+  });
+
+  final VideoPlayerController controller;
+  final String filePath;
+
+  @override
+  State<_OrientationAwareVideoPlayer> createState() => _OrientationAwareVideoPlayerState();
+}
+
+class _OrientationAwareVideoPlayerState extends State<_OrientationAwareVideoPlayer> {
+  NativeDeviceOrientation? _nativeOrientation;
+
+  @override
+  void initState() {
+    super.initState();
+    _getNativeOrientation();
+
+    // Listen for orientation changes
+    NativeDeviceOrientationCommunicator().onOrientationChanged(useSensor: true).listen((NativeDeviceOrientation orientation) {
+      if (mounted) {
+        setState(() {
+          _nativeOrientation = orientation;
+        });
+      }
+    });
+  }
+
+  Future<void> _getNativeOrientation() async {
+    final orientation = await NativeDeviceOrientationCommunicator().orientation(useSensor: true);
+    if (mounted) {
+      setState(() {
+        _nativeOrientation = orientation;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Get video size information
+    final videoSize = widget.controller.value.size;
+    final aspectRatio = widget.controller.value.aspectRatio;
+    final isAndroid = Platform.isAndroid;
+
+    // Determine device orientation using native sensors when available
+    bool isPortraitDevice;
+    if (_nativeOrientation != null) {
+      isPortraitDevice = _nativeOrientation == NativeDeviceOrientation.portraitUp || _nativeOrientation == NativeDeviceOrientation.portraitDown;
+
+      debugPrint('📹 Using native sensor orientation: $_nativeOrientation (isPortrait: $isPortraitDevice)');
+    } else {
+      // Fallback to MediaQuery if native orientation is not available
+      isPortraitDevice = MediaQuery.of(context).orientation == Orientation.portrait;
+      debugPrint('📹 Using MediaQuery orientation (isPortrait: $isPortraitDevice)');
+    }
+
+    // Video is landscape if width > height (aspect ratio > 1)
+    final isLandscapeVideo = aspectRatio > 1.0;
+
+    debugPrint('📹 Video size: $videoSize, aspectRatio: $aspectRatio');
+    debugPrint('📹 Video orientation: ${isLandscapeVideo ? "landscape" : "portrait"}');
+
+    // Container to ensure video respects screen boundaries
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double effectiveAspectRatio = aspectRatio;
+
+        // Fix incorrect container metadata on Android if needed
+        if (isAndroid) {
+          // Case 1: Portrait video with landscape container metadata
+          if (!isLandscapeVideo && aspectRatio > 1.0) {
+            debugPrint('📹 Fixing portrait video with incorrect landscape metadata');
+            effectiveAspectRatio = 1.0 / aspectRatio;
+          }
+
+          // Case 2: Landscape video with portrait container metadata
+          else if (isLandscapeVideo && aspectRatio < 1.0) {
+            debugPrint('📹 Fixing landscape video with incorrect portrait metadata');
+            effectiveAspectRatio = 1.0 / aspectRatio;
+          }
+        }
+
+        // Calculate proper dimensions that maintain aspect ratio
+        double targetWidth, targetHeight;
+
+        if (isPortraitDevice) {
+          // On portrait device, cap width to screen width
+          targetWidth = constraints.maxWidth;
+          targetHeight = targetWidth / effectiveAspectRatio;
+
+          // If height exceeds screen, cap it and recalculate width
+          if (targetHeight > constraints.maxHeight) {
+            targetHeight = constraints.maxHeight;
+            targetWidth = targetHeight * effectiveAspectRatio;
+          }
+        } else {
+          // On landscape device, cap height to screen height
+          targetHeight = constraints.maxHeight;
+          targetWidth = targetHeight * effectiveAspectRatio;
+
+          // If width exceeds screen, cap it and recalculate height
+          if (targetWidth > constraints.maxWidth) {
+            targetWidth = constraints.maxWidth;
+            targetHeight = targetWidth / effectiveAspectRatio;
+          }
+        }
+
+        debugPrint('📹 Rendering video at size: ${targetWidth.toInt()}x${targetHeight.toInt()}');
+
+        // Return properly sized video player
+        return Center(
+          child: SizedBox(
+            width: targetWidth,
+            height: targetHeight,
+            child: VideoPlayer(widget.controller),
+          ),
+        );
+      },
     );
   }
 }

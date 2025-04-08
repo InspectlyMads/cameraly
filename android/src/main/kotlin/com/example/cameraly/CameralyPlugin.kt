@@ -8,10 +8,12 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import com.yourpackage.cameraly.VideoOrientationHandler
 
 class CameralyPlugin: FlutterPlugin, MethodCallHandler {
   private lateinit var channel: MethodChannel
   private lateinit var orientationChannel: MethodChannel
+  private lateinit var videoOrientationChannel: MethodChannel
   private lateinit var context: Context
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -21,7 +23,11 @@ class CameralyPlugin: FlutterPlugin, MethodCallHandler {
     
     // Orientation-specific channel
     orientationChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "com.cameraly/orientation")
-    orientationChannel.setMethodCallHandler(this)
+    orientationChannel.setMethodCallHandler(OrientationHandler(context))
+    
+    // Setup video orientation channel
+    videoOrientationChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "com.cameraly/video_orientation")
+    VideoOrientationHandler.register(context, videoOrientationChannel)
     
     // Save context for later use
     context = flutterPluginBinding.applicationContext
@@ -63,5 +69,6 @@ class CameralyPlugin: FlutterPlugin, MethodCallHandler {
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
     orientationChannel.setMethodCallHandler(null)
+    videoOrientationChannel.setMethodCallHandler(null)
   }
 } 

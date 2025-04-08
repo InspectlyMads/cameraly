@@ -45,7 +45,7 @@ class _InspectlyLimitedVideoScreenState extends State<InspectlyLimitedVideoScree
           // UI configuration
           showSwitchCameraButton: true,
           showFlashButton: true,
-          showMediaStack: false,
+          showMediaStack: true,
           showCaptureButton: true,
 
           // Theme customization

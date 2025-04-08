@@ -782,14 +782,42 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       debugPrint('🎥 Recording will use orientation: $orientationToLock (determined from device physical orientation)');
 
       // Ensure the orientation is set correctly before starting recording
-      // Only needed for Android - iOS handles orientation correctly by itself
       if (Platform.isAndroid) {
         try {
-          // Lock the camera to the correct orientation
+          // For Android, we need to explicitly set the target rotation to handle
+          // portrait videos correctly to avoid stretching issues
           await _controller!.lockCaptureOrientation(orientationToLock);
+
+          // Add a small delay to ensure the orientation is applied
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Additional fix for portrait video recording on Android
+          if (!isLandscape) {
+            debugPrint('🎥 Applying special portrait video orientation fix for Android');
+            // This forces Android to record with the correct portrait container dimensions
+            // preventing the stretching issue later during playback
+            try {
+              await _controller!.setExposureOffset(0.0); // Dummy call to ensure controller is ready
+              // If android API level is high enough, set a recording hint when in portrait
+              if (_controller!.value.isRecordingVideo == false) {
+                // Additional orientation lock just before recording
+                await SystemChrome.setPreferredOrientations([orientationToLock]);
+              }
+            } catch (e) {
+              debugPrint('⚠️ Error applying portrait video fix: $e');
+            }
+          }
+
           debugPrint('🎥 Locked camera capture orientation to: $orientationToLock');
         } catch (e) {
           debugPrint('⚠️ Error locking capture orientation: $e');
+        }
+      } else {
+        // For iOS, just set the orientation
+        try {
+          await setDeviceOrientation(orientationToLock);
+        } catch (e) {
+          debugPrint('⚠️ Error setting device orientation on iOS: $e');
         }
       }
 

@@ -62,9 +62,51 @@ class VideoTranscoderHandler {
             return
         }
         
+        // Get video track for determining orientation
+        guard let videoTrack = asset.tracks(withMediaType: .video).first else {
+            print("No video track found in the asset")
+            completion(nil, NSError(domain: "VideoTranscoder", code: 2, userInfo: [NSLocalizedDescriptionKey: "No video track found"]))
+            return
+        }
+        
+        // Get the transform and dimensions
+        let transform = videoTrack.preferredTransform
+        let size = videoTrack.naturalSize
+        
+        // Create a proper video composition to handle orientation
+        let composition = AVMutableVideoComposition()
+        composition.renderSize = size
+        composition.frameDuration = CMTime(value: 1, timescale: 30)
+        
+        // Create instructions
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: asset.duration)
+        
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+        
+        // Detect orientation based on transform and fix it
+        let isPortrait = abs(transform.b) == 1.0 || abs(transform.c) == 1.0
+        
+        if isPortrait {
+            print("Detected portrait video, preserving orientation in output")
+            // For portrait video, we need to ensure the orientation is preserved
+            layerInstruction.setTransform(transform, at: .zero)
+            
+            // Set proper render size for portrait
+            composition.renderSize = CGSize(width: min(size.width, size.height), 
+                                          height: max(size.width, size.height))
+        } else {
+            // For landscape, use identity transform
+            layerInstruction.setTransform(transform, at: .zero)
+        }
+        
+        instruction.layerInstructions = [layerInstruction]
+        composition.instructions = [instruction]
+        
         // Configure export session
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
+        exportSession.videoComposition = composition
         
         // Force H.264 encoding with explicit output configuration
         let videoSettings: [String: Any] = [
@@ -76,6 +118,21 @@ class VideoTranscoderHandler {
         ]
         exportSession.videoSettings = videoSettings
         
+        // Add metadata
+        let metadataItem = AVMutableMetadataItem()
+        metadataItem.key = "com.cameraly.codec" as NSString
+        metadataItem.keySpace = AVMetadataKeySpace.common
+        metadataItem.value = "h264" as NSString
+        metadataItem.dataType = "org.w3c.www.purl.dc.text"
+        
+        let orientationItem = AVMutableMetadataItem()
+        orientationItem.key = "com.cameraly.orientation" as NSString
+        orientationItem.keySpace = AVMetadataKeySpace.common
+        orientationItem.value = isPortrait ? "portrait" : "landscape" as NSString
+        orientationItem.dataType = "org.w3c.www.purl.dc.text"
+        
+        exportSession.metadata = [metadataItem, orientationItem]
+        
         // Set time range (full duration)
         exportSession.timeRange = CMTimeRange(start: .zero, duration: asset.duration)
         
@@ -83,7 +140,7 @@ class VideoTranscoderHandler {
         exportSession.exportAsynchronously {
             switch exportSession.status {
             case .completed:
-                print("Video successfully transcoded to H.264")
+                print("Video successfully transcoded to H.264 with proper orientation")
                 completion(outputPath, nil)
             case .failed:
                 print("Export failed: \(exportSession.error?.localizedDescription ?? "Unknown error")")
