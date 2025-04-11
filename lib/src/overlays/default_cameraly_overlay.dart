@@ -1874,7 +1874,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
         }
 
         // Process the video with compression (loading state stays active)
-        final processedVideo = await controller.processMediaFile(video, true);
+        final processedVideo = await controller.processMediaFile(
+          video,
+          isVideo: true,
+          isFromCamera: false,
+        );
         controller.mediaManager.addMedia(processedVideo, isVideo: true);
 
         // Ensure the loading state is visible for a minimum time
@@ -1929,7 +1933,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
 
           // Process each image (all are guaranteed to be photos)
           for (final image in images) {
-            final processedFile = await controller.processMediaFile(image, false);
+            final processedFile = await controller.processMediaFile(
+              image,
+              isVideo: false,
+              isFromCamera: false,
+            );
             controller.mediaManager.addMedia(processedFile, isVideo: false);
           }
 
@@ -1968,7 +1976,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           }
 
           // Process the image with compression
-          final processedImage = await controller.processMediaFile(image, false);
+          final processedImage = await controller.processMediaFile(
+            image,
+            isVideo: false,
+            isFromCamera: false,
+          );
           controller.mediaManager.addMedia(processedImage, isVideo: false);
 
           // Ensure the loading state is visible for a minimum time
@@ -2014,7 +2026,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
             final isVideo = file.path.toLowerCase().endsWith('.mp4') || file.path.toLowerCase().endsWith('.mov') || file.path.toLowerCase().endsWith('.avi');
 
             // Process the media file with appropriate compression
-            final processedFile = await controller.processMediaFile(file, isVideo);
+            final processedFile = await controller.processMediaFile(
+              file,
+              isVideo: isVideo,
+              isFromCamera: false,
+            );
             controller.mediaManager.addMedia(processedFile, isVideo: isVideo);
           }
 
@@ -2076,7 +2092,11 @@ class _DefaultCameralyOverlayState extends State<DefaultCameralyOverlay> with Wi
           }
 
           // Process the file with appropriate compression
-          final processedFile = await controller.processMediaFile(selectedFile, isVideo);
+          final processedFile = await controller.processMediaFile(
+            selectedFile,
+            isVideo: isVideo,
+            isFromCamera: false,
+          );
           controller.mediaManager.addMedia(processedFile, isVideo: isVideo);
 
           // Ensure the loading state is visible for a minimum time

@@ -2,6 +2,7 @@ import 'package:cameraly/cameraly.dart';
 import 'package:cameraly_example/screens/camera_screen.dart';
 import 'package:cameraly_example/screens/custom_display_screen.dart';
 import 'package:cameraly_example/screens/custom_overlay_example.dart';
+import 'package:cameraly_example/screens/exif_viewer_screen.dart';
 import 'package:cameraly_example/screens/limited_video_example.dart';
 import 'package:cameraly_example/screens/orientation_debug_screen.dart';
 import 'package:cameraly_example/screens/simple_camera_screen.dart';
@@ -101,6 +102,14 @@ class HomeScreen extends StatelessWidget {
             icon: Icons.screen_rotation,
             color: Colors.deepOrange,
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const OrientationDebugScreen())),
+          ),
+          _buildExampleTile(
+            context,
+            title: 'EXIF Metadata Viewer',
+            subtitle: 'Capture photos and view EXIF metadata',
+            icon: Icons.info_outline,
+            color: Colors.cyan,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ExifViewerScreen())),
           ),
 
           const Divider(height: 40, thickness: 2),

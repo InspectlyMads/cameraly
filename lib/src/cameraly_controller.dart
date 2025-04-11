@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:native_device_orientation/native_device_orientation.dart';
-import 'package:native_exif/native_exif.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
 
@@ -16,6 +15,7 @@ import 'cameraly_value.dart';
 import 'types/camera_mode.dart';
 import 'types/capture_settings.dart';
 import 'utils/camera_lifecycle_machine.dart';
+import 'utils/exif_manager.dart';
 import 'utils/media_manager.dart';
 import 'utils/orientation_channel.dart';
 import 'utils/video_codec_channel.dart';
@@ -65,6 +65,33 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
   Position? _lastKnownLocation;
   DateTime? _lastLocationTime;
   bool _isGettingLocation = false;
+  Timer? _locationUpdateTimer;
+
+  /// Initializes location tracking with periodic updates.
+  ///
+  /// This starts a timer that periodically updates the location in the background
+  /// to avoid delays when capturing images.
+  void _initializeLocationTracking() {
+    // Skip if location metadata is not enabled
+    if (!_settings.addLocationMetadata) {
+      return;
+    }
+
+    // Get initial location
+    _getCurrentLocation();
+
+    // Set up a timer to update location periodically (every 30 seconds)
+    _locationUpdateTimer?.cancel();
+    _locationUpdateTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _getCurrentLocation();
+    });
+  }
+
+  /// Stops location tracking timer.
+  void _stopLocationTracking() {
+    _locationUpdateTimer?.cancel();
+    _locationUpdateTimer = null;
+  }
 
   /// Gets the current location if enabled in settings.
   ///
@@ -139,60 +166,69 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
   /// Adds location metadata to an image file if location services are enabled.
   ///
-  /// This adds GPS latitude, longitude, altitude, and timestamp to the EXIF data.
+  /// This adds GPS latitude, longitude, altitude, and timestamp directly to the image's EXIF data.
+  /// If direct embedding fails, falls back to a sidecar file.
   Future<XFile> _addLocationMetadataToImage(XFile imageFile, Position? location) async {
     // Skip if no location data or location metadata is disabled
     if (location == null || !_settings.addLocationMetadata) {
+      debugPrint('📍 Skipping metadata addition: ${location == null ? "No location data" : "Metadata disabled"}');
       return imageFile;
     }
 
+    debugPrint('🔍 EXIF Debug: Location services enabled? ${await Geolocator.isLocationServiceEnabled()}');
+    debugPrint('🔍 EXIF Debug: Location permission status: ${await Geolocator.checkPermission()}');
+    debugPrint('🔍 EXIF Debug: Current location available: ${location.latitude}, ${location.longitude}');
+
     try {
-      // Initialize native exif editor
-      final exif = await Exif.fromPath(imageFile.path);
+      debugPrint('📍 Adding location metadata to ${imageFile.path}');
+      debugPrint('📍 Location: lat=${location.latitude}, lng=${location.longitude}, alt=${location.altitude}');
 
-      // Format latitude according to EXIF standards (DMS format)
-      final latitude = location.latitude;
-      final latDegrees = latitude.abs().floor();
-      final latMinutes = ((latitude.abs() - latDegrees) * 60).floor();
-      final latSeconds = ((latitude.abs() - latDegrees - latMinutes / 60) * 3600).round();
-
-      // Format longitude according to EXIF standards (DMS format)
-      final longitude = location.longitude;
-      final longDegrees = longitude.abs().floor();
-      final longMinutes = ((longitude.abs() - longDegrees) * 60).floor();
-      final longSeconds = ((longitude.abs() - longDegrees - longMinutes / 60) * 3600).round();
-
-      // Set latitude values
-      await exif.writeAttribute('GPSLatitudeRef', latitude >= 0 ? 'N' : 'S');
-      await exif.writeAttribute('GPSLatitude', '$latDegrees/1,$latMinutes/1,$latSeconds/100');
-
-      // Set longitude values
-      await exif.writeAttribute('GPSLongitudeRef', longitude >= 0 ? 'E' : 'W');
-      await exif.writeAttribute('GPSLongitude', '$longDegrees/1,$longMinutes/1,$longSeconds/100');
-
-      // Add altitude if available
-      if (location.altitude != 0) {
-        await exif.writeAttribute('GPSAltitudeRef', '0'); // 0 = above sea level
-        await exif.writeAttribute('GPSAltitude', '${location.altitude.abs().round()}/1');
+      // Check if file exists and is accessible
+      final file = File(imageFile.path);
+      if (!await file.exists()) {
+        debugPrint('⚠️ Cannot add metadata - file does not exist: ${imageFile.path}');
+        return imageFile;
       }
 
-      // Add timestamp
-      final now = DateTime.now();
-      await exif.writeAttribute('GPSDateStamp', '${now.year}:${now.month.toString().padLeft(2, '0')}:${now.day.toString().padLeft(2, '0')}');
-      await exif.writeAttribute('GPSTimeStamp', '${now.hour}/1,${now.minute}/1,${now.second}/1');
+      // Use ExifManager to handle location data (prioritizes direct EXIF embedding)
+      final success = await ExifManager.addGpsMetadata(
+        filePath: imageFile.path,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        altitude: location.altitude,
+        timestamp: DateTime.now(),
+      );
 
-      // Save the updated EXIF data
-      // No need to call saveAttributes as writeAttribute already saves
+      if (success) {
+        debugPrint('✅ Successfully added location metadata to image');
+      } else {
+        debugPrint('⚠️ Failed to add location metadata - both direct embedding and sidecar creation failed');
+      }
 
-      // Close the exif interface
-      await exif.close();
-
-      debugPrint('📍 Added location metadata to image: ${location.latitude}, ${location.longitude}');
       return imageFile;
     } catch (e) {
-      debugPrint('Error adding location metadata: $e');
-      // Return the original file if adding metadata fails
+      // Log any errors but don't fail the photo capture process
+      debugPrint('⚠️ Error adding location metadata: $e');
       return imageFile;
+    }
+  }
+
+  /// Creates a sidecar file with location data for an image
+  ///
+  /// This provides a fallback mechanism when direct EXIF editing fails
+  @Deprecated('Use ExifManager.addGpsMetadata instead')
+  Future<void> _createLocationSidecarFile(String imagePath, Position location) async {
+    try {
+      // Use ExifManager to create sidecar file
+      await ExifManager.addGpsMetadata(
+        filePath: imagePath,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        altitude: location.altitude,
+        timestamp: DateTime.now(),
+      );
+    } catch (e) {
+      debugPrint('⚠️ Error creating location sidecar file: $e');
     }
   }
 
@@ -286,6 +322,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       debugPrint('📸 Initializing camera with mode: ${_settings.cameraMode}');
       debugPrint('📸 Audio enabled: ${_settings.enableAudio}');
 
+      // Metadata is now handled through ExifManager
+      debugPrint('📸 Using ExifManager for metadata handling');
+
       // Force H.264 encoding on iOS devices to avoid HEVC compatibility issues
       if (Platform.isIOS) {
         final h264Configured = await VideoCodecChannel.forceH264Encoding();
@@ -295,6 +334,11 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       _controller = CameraController(_description, _settings.resolution, enableAudio: _settings.enableAudio);
 
       await _controller!.initialize();
+
+      // Initialize location tracking if enabled in settings
+      if (_settings.addLocationMetadata) {
+        _initializeLocationTracking();
+      }
 
       // Create the lifecycle machine after controller is initialized
       _lifecycleMachine = CameraLifecycleMachine(
@@ -529,8 +573,12 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
       // Take the picture
       final XFile pictureFile = await _controller!.takePicture();
 
-      // Process the image file (compression according to settings)
-      final XFile processedFile = await _processImageFile(pictureFile);
+      // Process the image file with unified method (indicating camera source)
+      final XFile processedFile = await processMediaFile(
+        pictureFile,
+        isVideo: false,
+        isFromCamera: true,
+      );
 
       // Add the captured media to the media manager
       _mediaManager.addMedia(processedFile, isVideo: false);
@@ -543,150 +591,266 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
   }
 
-  /// Processes and compresses an image file based on the resolution settings
-  Future<XFile> _processImageFile(XFile originalFile) async {
+  /// Unified method to process media files (images and videos) from any source.
+  ///
+  /// Handles compression, metadata addition, and video transcoding in a consistent way.
+  ///
+  /// Parameters:
+  /// - [file]: The media file to process
+  /// - [isVideo]: Whether the file is a video (true) or image (false)
+  /// - [isFromCamera]: Whether the file came from camera capture (vs gallery import)
+  /// - [addMetadata]: Override for metadata addition (defaults to settings value)
+  ///
+  /// Returns the processed file.
+  Future<XFile> processMediaFile(
+    XFile file, {
+    required bool isVideo,
+    bool isFromCamera = false,
+    bool? addMetadata,
+  }) async {
+    XFile processedFile = file;
+
     try {
-      // Skip compression if set to none
-      if (_settings.compressionQuality == CompressionQuality.none) {
-        debugPrint('📸 Skipping image compression (compressionQuality = none)');
-        return originalFile;
-      }
+      // Determine whether to add metadata
+      final shouldAddMetadata = addMetadata ?? _settings.addLocationMetadata;
 
-      // Map resolution preset to target dimensions based on compression quality
-      int targetWidth;
-      int targetHeight;
-      int quality;
+      if (isVideo) {
+        // Video processing logic - first handle HEVC transcoding especially for iOS
+        if (Platform.isIOS) {
+          // Check and transcode HEVC videos to H.264 for better compatibility
+          debugPrint('🎥 Checking if video needs transcoding from HEVC to H.264: ${file.path}');
+          processedFile = await VideoTranscoder.ensureH264Encoding(file);
 
-      // Determine quality setting
-      switch (_settings.compressionQuality) {
-        case CompressionQuality.light:
-          quality = _settings.imageQuality.clamp(85, 95);
-          break;
-        case CompressionQuality.medium:
-          quality = _settings.imageQuality.clamp(75, 85);
-          break;
-        case CompressionQuality.high:
-          quality = _settings.imageQuality.clamp(60, 75);
-          break;
-        case CompressionQuality.auto:
-          // Auto quality based on resolution
-          switch (_settings.resolution) {
-            case ResolutionPreset.low:
-              quality = 75;
+          // If the path changed, it means transcoding happened
+          if (processedFile.path != file.path) {
+            debugPrint('🎥 Video was transcoded from HEVC to H.264');
+          }
+        }
+
+        // Video compression
+        try {
+          final info = await VideoCompress.compressVideo(
+            processedFile.path, // Use potentially transcoded file
+            quality: _convertToVideoQuality(_settings.videoQuality),
+            deleteOrigin: false,
+            includeAudio: true,
+          );
+
+          if (info?.path != null) {
+            final compressedFile = XFile(info!.path!);
+            debugPrint('🎬 Compressed video: ${processedFile.path} -> ${compressedFile.path}');
+            processedFile = compressedFile;
+          }
+        } catch (e) {
+          debugPrint('🎬 Error compressing video: $e');
+          // Continue with the transcoded or original file
+        } finally {
+          // Properly clean up VideoCompress resources to prevent memory leaks
+          try {
+            await VideoCompress.cancelCompression();
+          } catch (e) {
+            debugPrint('🎬 Error canceling video compression: $e');
+          }
+        }
+      } else {
+        // Image processing logic
+        // Skip compression if set to none
+        if (_settings.compressionQuality == CompressionQuality.none) {
+          debugPrint('📸 Skipping image compression (compressionQuality = none)');
+        } else {
+          // Map resolution preset to target dimensions based on compression quality
+          int targetWidth;
+          int targetHeight;
+          int quality;
+
+          // Determine quality setting
+          switch (_settings.compressionQuality) {
+            case CompressionQuality.light:
+              quality = _settings.imageQuality.clamp(85, 95);
               break;
-            case ResolutionPreset.medium:
-              quality = 80;
+            case CompressionQuality.medium:
+              quality = _settings.imageQuality.clamp(75, 85);
               break;
-            case ResolutionPreset.high:
-              quality = 85;
+            case CompressionQuality.high:
+              quality = _settings.imageQuality.clamp(60, 75);
               break;
-            case ResolutionPreset.veryHigh:
-              quality = 90;
+            case CompressionQuality.auto:
+              // Auto quality based on resolution
+              switch (_settings.resolution) {
+                case ResolutionPreset.low:
+                  quality = 75;
+                  break;
+                case ResolutionPreset.medium:
+                  quality = 80;
+                  break;
+                case ResolutionPreset.high:
+                  quality = 85;
+                  break;
+                case ResolutionPreset.veryHigh:
+                  quality = 90;
+                  break;
+                case ResolutionPreset.ultraHigh:
+                case ResolutionPreset.max:
+                  quality = 95;
+                  break;
+              }
               break;
-            case ResolutionPreset.ultraHigh:
-            case ResolutionPreset.max:
-              quality = 95;
+            case CompressionQuality.none:
+              // This should not happen as we check for this earlier
+              quality = _settings.imageQuality;
               break;
           }
-          break;
-        case CompressionQuality.none:
-          // This should not happen as we check for this earlier
-          quality = _settings.imageQuality;
-          break;
-      }
 
-      // Determine target dimensions based on resolution and compression
-      switch (_settings.resolution) {
-        case ResolutionPreset.low:
-          targetWidth = 640;
-          targetHeight = 480;
-          break;
-        case ResolutionPreset.medium:
-          targetWidth = 1280;
-          targetHeight = 720;
-          break;
-        case ResolutionPreset.high:
-          targetWidth = 1920;
-          targetHeight = 1080;
-          break;
-        case ResolutionPreset.veryHigh:
-          targetWidth = 2560;
-          targetHeight = 1440;
-          break;
-        case ResolutionPreset.ultraHigh:
-          targetWidth = 3840;
-          targetHeight = 2160;
-          break;
-        case ResolutionPreset.max:
-          // For max, we'll keep original dimensions but might still compress a bit
-          targetWidth = 0; // 0 means keep original dimension
-          targetHeight = 0;
-          break;
-      }
+          // Determine target dimensions based on resolution and compression
+          switch (_settings.resolution) {
+            case ResolutionPreset.low:
+              targetWidth = 640;
+              targetHeight = 480;
+              break;
+            case ResolutionPreset.medium:
+              targetWidth = 1280;
+              targetHeight = 720;
+              break;
+            case ResolutionPreset.high:
+              targetWidth = 1920;
+              targetHeight = 1080;
+              break;
+            case ResolutionPreset.veryHigh:
+              targetWidth = 2560;
+              targetHeight = 1440;
+              break;
+            case ResolutionPreset.ultraHigh:
+              targetWidth = 3840;
+              targetHeight = 2160;
+              break;
+            case ResolutionPreset.max:
+              // For max, we'll keep original dimensions but might still compress a bit
+              targetWidth = 0; // 0 means keep original dimension
+              targetHeight = 0;
+              break;
+          }
 
-      debugPrint('📸 Compressing image to ${targetWidth}x$targetHeight with quality $quality%');
+          debugPrint('📸 Compressing image to ${targetWidth}x$targetHeight with quality $quality%');
 
-      // Create a compressed file path with a timestamp to avoid conflicts
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final originalPath = originalFile.path;
-      final directory = File(originalPath).parent;
-      final extension = originalPath.split('.').last;
-      final compressedPath = '${directory.path}/compressed_$timestamp.$extension';
+          // For camera-captured images, use the direct file path approach
+          if (isFromCamera) {
+            // Create a compressed file path with a timestamp to avoid conflicts
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            final originalPath = file.path;
+            final directory = File(originalPath).parent;
+            final extension = originalPath.split('.').last;
+            final compressedPath = '${directory.path}/compressed_$timestamp.$extension';
 
-      // Compress the image
-      final result = await FlutterImageCompress.compressAndGetFile(
-        originalFile.path,
-        compressedPath,
-        quality: quality,
-        minWidth: targetWidth > 0 ? targetWidth : 3840, // Default to high resolution if 0
-        minHeight: targetHeight > 0 ? targetHeight : 2160, // Default to high resolution if 0
-        // Keep EXIF data (important for image orientation)
-        keepExif: true,
-      );
+            // Compress the image
+            final result = await FlutterImageCompress.compressAndGetFile(
+              file.path,
+              compressedPath,
+              quality: quality,
+              minWidth: targetWidth > 0 ? targetWidth : 3840, // Default to high resolution if 0
+              minHeight: targetHeight > 0 ? targetHeight : 2160, // Default to high resolution if 0
+              // Keep EXIF data (important for image orientation)
+              keepExif: true,
+            );
 
-      if (result != null) {
-        // Check if compression actually reduced the file size
-        final originalFile = File(originalPath);
-        final compressedFile = File(result.path);
+            if (result != null) {
+              // Check if compression actually reduced the file size
+              final originalFile = File(originalPath);
+              final compressedFile = File(result.path);
 
-        if (await compressedFile.exists()) {
-          final originalSize = await originalFile.length();
-          final compressedSize = await compressedFile.length();
+              if (await compressedFile.exists()) {
+                final originalSize = await originalFile.length();
+                final compressedSize = await compressedFile.length();
 
-          debugPrint('📸 Original size: ${originalSize ~/ 1024}KB, Compressed size: ${compressedSize ~/ 1024}KB');
+                debugPrint('📸 Original size: ${originalSize ~/ 1024}KB, Compressed size: ${compressedSize ~/ 1024}KB');
 
-          // If compressed file is actually smaller, use it
-          if (compressedSize < originalSize) {
-            // Delete the original file if it's different from the compressed file
-            if (originalPath != result.path) {
-              try {
-                await originalFile.delete();
-                debugPrint('📸 Deleted original image file after compression');
-              } catch (e) {
-                debugPrint('Warning: Could not delete original image file: $e');
+                // If compressed file is actually smaller, use it
+                if (compressedSize < originalSize) {
+                  // Delete the original file if it's different from the compressed file
+                  if (originalPath != result.path) {
+                    try {
+                      await originalFile.delete();
+                      debugPrint('📸 Deleted original image file after compression');
+                    } catch (e) {
+                      debugPrint('Warning: Could not delete original image file: $e');
+                    }
+                  }
+
+                  processedFile = XFile(result.path, mimeType: 'image/${extension.toLowerCase()}');
+                } else {
+                  // If compression didn't help, delete compressed file and use original
+                  try {
+                    await compressedFile.delete();
+                    debugPrint('📸 Compression didn\'t reduce file size, using original');
+                  } catch (e) {
+                    debugPrint('Warning: Could not delete unused compressed file: $e');
+                  }
+                }
               }
             }
-
-            return XFile(result.path, mimeType: 'image/${extension.toLowerCase()}');
           } else {
-            // If compression didn't help, delete compressed file and use original
+            // For gallery images, use memory-based compression to temporary file
             try {
-              await compressedFile.delete();
-              debugPrint('📸 Compression didn\'t reduce file size, using original');
+              final result = await FlutterImageCompress.compressWithFile(
+                file.path,
+                quality: quality,
+                minWidth: targetWidth > 0 ? targetWidth : 1080,
+                minHeight: targetHeight > 0 ? targetHeight : 1080,
+              );
+
+              if (result != null) {
+                // Save compressed result to a temporary file
+                final dir = await getTemporaryDirectory();
+                final timestamp = DateTime.now().millisecondsSinceEpoch;
+                final targetPath = '${dir.path}/compressed_$timestamp.jpg';
+
+                final tempFile = File(targetPath);
+                await tempFile.writeAsBytes(result);
+                processedFile = XFile(targetPath);
+
+                debugPrint('🖼️ Compressed image: ${file.path} -> ${processedFile.path}');
+
+                // Register the temp file for cleanup when the app closes
+                _registerTempFileForCleanup(tempFile);
+              }
             } catch (e) {
-              debugPrint('Warning: Could not delete unused compressed file: $e');
+              debugPrint('🖼️ Error compressing image: $e');
+              // If compression fails, use the original file
             }
           }
         }
       }
 
-      // Return the original file if compression failed or didn't help
-      return originalFile;
+      // Add location metadata to images (both from camera and gallery)
+      if (!isVideo && shouldAddMetadata) {
+        try {
+          // Use the already cached location instead of waiting for a new location
+          final location = _lastKnownLocation;
+
+          // Only try to get a new location if we don't have a cached one
+          if (location == null) {
+            // Get current location as fallback if no cached location exists
+            final newLocation = await _getCurrentLocation();
+            // Add location metadata to the image if we got a valid location
+            if (newLocation != null) {
+              processedFile = await _addLocationMetadataToImage(processedFile, newLocation);
+              debugPrint('📍 Added fresh location metadata to image${isFromCamera ? ' from camera' : ' from gallery'}');
+            }
+          } else {
+            // Use cached location (much faster)
+            processedFile = await _addLocationMetadataToImage(processedFile, location);
+            debugPrint('📍 Added cached location metadata to image${isFromCamera ? ' from camera' : ' from gallery'}');
+          }
+        } catch (e) {
+          debugPrint('📍 Error adding location metadata: $e');
+        }
+      }
     } catch (e) {
-      debugPrint('⚠️ Error compressing image: $e');
-      // Return the original file if compression fails
-      return originalFile;
+      debugPrint('⚠️ Error processing media file: $e');
+      // Return the original file if any part of processing fails
+      return file;
     }
+
+    return processedFile;
   }
 
   /// Sets the flash mode.
@@ -1753,6 +1917,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     _isDisposing = true;
     WidgetsBinding.instance.removeObserver(this);
 
+    // Cancel location tracking timer
+    _stopLocationTracking();
+
     // Cancel any ongoing operations
     _recordingTimer?.cancel();
 
@@ -2122,110 +2289,6 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     }
   }
 
-  /// Processes media files by applying compression settings and adding location metadata if needed.
-  ///
-  /// Returns the processed file.
-  Future<XFile> processMediaFile(XFile file, bool isVideo) async {
-    XFile processedFile = file;
-
-    try {
-      // First handle HEVC transcoding for videos (especially from gallery)
-      if (isVideo && Platform.isIOS) {
-        // Check and transcode HEVC videos to H.264 for better compatibility
-        debugPrint('🎥 Checking if video needs transcoding from HEVC to H.264: ${file.path}');
-        processedFile = await VideoTranscoder.ensureH264Encoding(file);
-
-        // If the path changed, it means transcoding happened
-        if (processedFile.path != file.path) {
-          debugPrint('🎥 Video was transcoded from HEVC to H.264');
-        }
-      }
-
-      // Then apply compression if needed
-      if (isVideo) {
-        // Video compression
-        try {
-          final info = await VideoCompress.compressVideo(
-            processedFile.path, // Use potentially transcoded file
-            quality: _convertToVideoQuality(_settings.videoQuality),
-            deleteOrigin: false,
-            includeAudio: true,
-          );
-
-          if (info?.path != null) {
-            final compressedFile = XFile(info!.path!);
-            debugPrint('🎬 Compressed video: ${processedFile.path} -> ${compressedFile.path}');
-            processedFile = compressedFile;
-          }
-        } catch (e) {
-          debugPrint('🎬 Error compressing video: $e');
-          // Continue with the transcoded or original file
-        } finally {
-          // Properly clean up VideoCompress resources to prevent memory leaks
-          try {
-            await VideoCompress.cancelCompression();
-          } catch (e) {
-            debugPrint('🎬 Error canceling video compression: $e');
-          }
-        }
-      } else {
-        // Image compression
-        if (_settings.imageQuality != null || _settings.compressionQuality != null) {
-          final quality = _settings.imageQuality ?? 80;
-          final compressionQuality = _settings.compressionQuality ?? 0.8;
-          File? tempFile;
-
-          try {
-            final result = await FlutterImageCompress.compressWithFile(
-              file.path,
-              quality: quality,
-              minWidth: 1080,
-              minHeight: 1080,
-            );
-
-            if (result != null) {
-              // Save compressed result to a temporary file
-              final dir = await getTemporaryDirectory();
-              final timestamp = DateTime.now().millisecondsSinceEpoch;
-              final targetPath = '${dir.path}/compressed_$timestamp.jpg';
-
-              tempFile = File(targetPath);
-              await tempFile.writeAsBytes(result);
-              processedFile = XFile(targetPath);
-
-              debugPrint('🖼️ Compressed image: ${file.path} -> ${processedFile.path}');
-
-              // Register the temp file for cleanup when the app closes
-              _registerTempFileForCleanup(tempFile);
-            }
-          } catch (e) {
-            debugPrint('🖼️ Error compressing image: $e');
-            // If compression fails, use the original file
-            processedFile = file;
-          }
-        }
-      }
-
-      // Add location metadata to images
-      if (!isVideo && _settings.addLocationMetadata) {
-        try {
-          // Get current location
-          final location = await _getCurrentLocation();
-          // Add location metadata to the image
-          processedFile = await _addLocationMetadataToImage(processedFile, location);
-        } catch (e) {
-          debugPrint('Error adding location metadata: $e');
-        }
-      }
-    } catch (e) {
-      debugPrint('Error processing media file: $e');
-      // Return the original file if any part of processing fails
-      return file;
-    }
-
-    return processedFile;
-  }
-
   // List to track temporary files for cleanup
   static final List<File> _tempFiles = [];
 
@@ -2400,6 +2463,9 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
   /// Free up resources to prevent leaks
   void _freeResources({bool fullCleanup = false}) {
+    // Stop location tracking
+    _stopLocationTracking();
+
     // Cancel any ongoing video compression
     try {
       VideoCompress.cancelCompression();

@@ -224,10 +224,14 @@ class CaptureSettings {
       flashMode: settings.flashMode,
       resolution: settings.resolution,
       maxVideoDuration: settings.videoDurationLimit,
-      // Use defaults for other properties
-      exposureMode: ExposureMode.auto,
-      focusMode: FocusMode.auto,
-      deviceOrientation: DeviceOrientation.portraitUp,
+      compressionQuality: settings.compressionQuality,
+      imageQuality: settings.imageQuality,
+      videoQuality: settings.videoQuality,
+      addLocationMetadata: settings.addLocationMetadata,
+      locationAccuracy: settings.locationAccuracy,
+      exposureMode: settings.exposureMode,
+      focusMode: settings.focusMode,
+      deviceOrientation: settings.deviceOrientation,
     );
   }
 
