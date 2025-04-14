@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'cameraly_controller.dart';
 import 'cameraly_preview.dart';
@@ -56,6 +58,20 @@ class CameraPreviewSettings {
     this.loadingIndicatorColor = Colors.white,
     this.loadingTextColor = Colors.white,
     this.loadingText = 'Initializing camera...',
+
+    // Error texts (for localization)
+    this.errorCameraPermissionTitle = 'Camera Permission Required',
+    this.errorCameraPermissionMessage = 'The app needs camera access to function properly. Please grant camera permission to continue.',
+    this.errorMicrophonePermissionTitle = 'Microphone Permission Denied',
+    this.errorMicrophonePermissionMessage = 'Microphone access was denied. You can continue using the camera without audio recording, or enable microphone access in settings.',
+    this.errorCameraInitFailedTitle = 'Camera Initialization Failed',
+    this.errorCameraInitFailedMessage = 'Unable to initialize the camera. This could be due to a hardware issue or the camera is in use by another app.',
+    this.errorSettingsButtonText = 'Open Settings',
+    this.errorRetryButtonText = 'Retry',
+    this.errorContinueWithoutAudioText = 'Continue Without Audio',
+    this.errorBackButtonText = 'Back',
+    this.errorHowToEnableText = 'How to enable:',
+    this.appName = 'App',
 
     // Custom position widgets
     this.customRightButton,
@@ -146,6 +162,42 @@ class CameraPreviewSettings {
 
   /// Text to display while the camera is initializing.
   final String loadingText;
+
+  /// Title text for camera permission error
+  final String errorCameraPermissionTitle;
+
+  /// Message text for camera permission error
+  final String errorCameraPermissionMessage;
+
+  /// Title text for microphone permission error
+  final String errorMicrophonePermissionTitle;
+
+  /// Message text for microphone permission error
+  final String errorMicrophonePermissionMessage;
+
+  /// Title text for camera initialization failure
+  final String errorCameraInitFailedTitle;
+
+  /// Message text for camera initialization failure
+  final String errorCameraInitFailedMessage;
+
+  /// Text for the settings button on error screens
+  final String errorSettingsButtonText;
+
+  /// Text for the retry button on error screens
+  final String errorRetryButtonText;
+
+  /// Text for the continue without audio button
+  final String errorContinueWithoutAudioText;
+
+  /// Text for the back button on error screens
+  final String errorBackButtonText;
+
+  /// Text for the "How to enable" header in permission instructions
+  final String errorHowToEnableText;
+
+  /// App name to use in permission instructions (replaces '[App Name]' placeholder)
+  final String appName;
 
   /// Custom widget to display in the right button position.
   ///
@@ -387,6 +439,18 @@ class CameraPreviewSettings {
     Color? loadingIndicatorColor,
     Color? loadingTextColor,
     String? loadingText,
+    String? errorCameraPermissionTitle,
+    String? errorCameraPermissionMessage,
+    String? errorMicrophonePermissionTitle,
+    String? errorMicrophonePermissionMessage,
+    String? errorCameraInitFailedTitle,
+    String? errorCameraInitFailedMessage,
+    String? errorSettingsButtonText,
+    String? errorRetryButtonText,
+    String? errorContinueWithoutAudioText,
+    String? errorBackButtonText,
+    String? errorHowToEnableText,
+    String? appName,
     Widget? customRightButton,
     Widget? customLeftButton,
     Widget? topLeftWidget,
@@ -437,6 +501,18 @@ class CameraPreviewSettings {
       loadingIndicatorColor: loadingIndicatorColor ?? this.loadingIndicatorColor,
       loadingTextColor: loadingTextColor ?? this.loadingTextColor,
       loadingText: loadingText ?? this.loadingText,
+      errorCameraPermissionTitle: errorCameraPermissionTitle ?? this.errorCameraPermissionTitle,
+      errorCameraPermissionMessage: errorCameraPermissionMessage ?? this.errorCameraPermissionMessage,
+      errorMicrophonePermissionTitle: errorMicrophonePermissionTitle ?? this.errorMicrophonePermissionTitle,
+      errorMicrophonePermissionMessage: errorMicrophonePermissionMessage ?? this.errorMicrophonePermissionMessage,
+      errorCameraInitFailedTitle: errorCameraInitFailedTitle ?? this.errorCameraInitFailedTitle,
+      errorCameraInitFailedMessage: errorCameraInitFailedMessage ?? this.errorCameraInitFailedMessage,
+      errorSettingsButtonText: errorSettingsButtonText ?? this.errorSettingsButtonText,
+      errorRetryButtonText: errorRetryButtonText ?? this.errorRetryButtonText,
+      errorContinueWithoutAudioText: errorContinueWithoutAudioText ?? this.errorContinueWithoutAudioText,
+      errorBackButtonText: errorBackButtonText ?? this.errorBackButtonText,
+      errorHowToEnableText: errorHowToEnableText ?? this.errorHowToEnableText,
+      appName: appName ?? this.appName,
       customRightButton: customRightButton ?? this.customRightButton,
       customLeftButton: customLeftButton ?? this.customLeftButton,
       customRightButtonBuilder: customRightButtonBuilder ?? customRightButtonBuilder,
@@ -565,11 +641,93 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
     }
   }
 
-  Future<void> _initializeCamera() async {
+  // Check camera permission status directly
+  Future<Map<String, PermissionStatus>> _checkPermissionStatuses() async {
+    try {
+      final cameraStatus = await Permission.camera.status;
+      final microphoneStatus = await Permission.microphone.status;
+
+      debugPrint('Camera permission status: $cameraStatus');
+      debugPrint('Microphone permission status: $microphoneStatus');
+
+      return {
+        'camera': cameraStatus,
+        'microphone': microphoneStatus,
+      };
+    } catch (e) {
+      debugPrint('Error checking permission status: $e');
+      return {
+        'camera': PermissionStatus.denied,
+        'microphone': PermissionStatus.denied,
+      };
+    }
+  }
+
+  Future<bool> _checkPermissionStatus() async {
+    try {
+      final status = await Permission.camera.status;
+      debugPrint('Current camera permission status: $status');
+      return status == PermissionStatus.permanentlyDenied;
+    } catch (e) {
+      debugPrint('Error checking permission status: $e');
+      return false;
+    }
+  }
+
+  Future<void> _initializeCamera({bool forceWithoutAudio = false}) async {
     try {
       setState(() {
         _isInitializing = true;
       });
+
+      // Check permission statuses
+      final permissionStatuses = await _checkPermissionStatuses();
+      final cameraStatus = permissionStatuses['camera']!;
+      final microphoneStatus = permissionStatuses['microphone']!;
+
+      // Handle camera permission issues
+      if (cameraStatus == PermissionStatus.permanentlyDenied) {
+        _handleError('initCamera', 'Camera permission permanently denied. Please enable in settings.', null, false);
+        if (mounted) {
+          _showSettingsDialog(isCamera: true);
+        }
+        return;
+      }
+
+      if (cameraStatus == PermissionStatus.denied) {
+        // Request camera permission
+        final cameraRequestResult = await Permission.camera.request();
+        if (cameraRequestResult == PermissionStatus.denied || cameraRequestResult == PermissionStatus.permanentlyDenied) {
+          _handleError('initCamera', 'Camera permission denied.', null, false);
+          return;
+        }
+      }
+
+      // Check if we need microphone permission
+      final needsMicrophone = widget.settings.cameraMode != CameraMode.photoOnly && widget.settings.enableAudio && !forceWithoutAudio;
+
+      // Handle microphone permission issues if needed
+      if (needsMicrophone) {
+        if (microphoneStatus == PermissionStatus.permanentlyDenied) {
+          _handleError('initCamera', 'Microphone permission permanently denied.', null, false);
+          if (mounted) {
+            _showMicrophonePermissionDialog();
+          }
+          return;
+        }
+
+        if (microphoneStatus == PermissionStatus.denied) {
+          // Request microphone permission
+          final microphoneRequestResult = await Permission.microphone.request();
+          if (microphoneRequestResult == PermissionStatus.denied || microphoneRequestResult == PermissionStatus.permanentlyDenied) {
+            _handleError('initCamera', 'Microphone permission denied.', null, false);
+            if (mounted) {
+              _showMicrophonePermissionDialog();
+            }
+            return;
+          }
+        }
+      }
 
       // Initialize media manager
       _mediaManager = CameralyMediaManager(
@@ -595,7 +753,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
       // Create controller and initialize it
       _controller = CameralyController(
         description: cameraDescription,
-        settings: _createCaptureSettings(),
+        settings: _createCaptureSettings(forceWithoutAudio: forceWithoutAudio),
         mediaManager: _mediaManager,
       );
 
@@ -623,6 +781,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         setState(() {
           _isInitializing = false;
           _selectedCameraIndex = cameraIndex;
+          _errorMessage = null; // Clear any error messages
         });
       }
     } catch (e, stackTrace) {
@@ -674,34 +833,225 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
   }
 
   Widget _buildErrorUI() {
+    // Check if this is a permission-related error
+    final bool isPermissionError = _errorMessage?.toLowerCase().contains('permission') ?? false;
+    final bool isMicrophoneError = _errorMessage?.toLowerCase().contains('microphone') ?? false;
+    final bool isCameraError = isPermissionError && !isMicrophoneError;
+
+    // Get the appropriate colors from theme
+    final themeColor = Theme.of(context).primaryColor;
+    final errorColor = Theme.of(context).colorScheme.error;
+
+    // Color to use based on error type
+    final Color accentColor = isPermissionError ? themeColor : errorColor;
+
     return Container(
       color: widget.settings.loadingBackgroundColor,
-      child: Center(
+      child: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.error_outline,
-              color: widget.settings.loadingIndicatorColor,
-              size: 48,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage ?? 'Unknown camera error',
-              style: TextStyle(
+            // Add back button in header
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back),
                 color: widget.settings.loadingTextColor,
+                onPressed: () {
+                  if (widget.settings.onClose != null) {
+                    widget.settings.onClose!();
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
+                tooltip: widget.settings.errorBackButtonText,
               ),
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _initializeCamera,
-              child: const Text('Retry'),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Card(
+                    color: widget.settings.loadingBackgroundColor.withOpacity(0.8),
+                    elevation: 5,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: accentColor.withOpacity(0.5),
+                        width: 2,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: accentColor.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isCameraError ? Icons.no_photography : (isMicrophoneError ? Icons.mic_off : Icons.error_outline),
+                                color: accentColor,
+                                size: 64,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              isCameraError ? widget.settings.errorCameraPermissionTitle : (isMicrophoneError ? widget.settings.errorMicrophonePermissionTitle : widget.settings.errorCameraInitFailedTitle),
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    color: widget.settings.loadingTextColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              isCameraError ? widget.settings.errorCameraPermissionMessage : (isMicrophoneError ? widget.settings.errorMicrophonePermissionMessage : _errorMessage ?? widget.settings.errorCameraInitFailedMessage),
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: widget.settings.loadingTextColor,
+                                  ),
+                              textAlign: TextAlign.center,
+                            ),
+                            if (isPermissionError) ...[
+                              const SizedBox(height: 24),
+                              _buildPermissionInstructions(isCameraPermission: isCameraError),
+                            ],
+                            const SizedBox(height: 24),
+                            FutureBuilder<Map<String, PermissionStatus>>(
+                                future: _checkPermissionStatuses(),
+                                builder: (context, snapshot) {
+                                  final permissionStatuses = snapshot.data ?? {'camera': PermissionStatus.denied, 'microphone': PermissionStatus.denied};
+
+                                  final cameraStatus = permissionStatuses['camera']!;
+                                  final microphoneStatus = permissionStatuses['microphone']!;
+
+                                  final bool cameraPermDenied = cameraStatus == PermissionStatus.permanentlyDenied;
+                                  final bool microphonePermDenied = microphoneStatus == PermissionStatus.permanentlyDenied;
+
+                                  // If this is a microphone error and camera is granted, show both buttons
+                                  if (isMicrophoneError && cameraStatus == PermissionStatus.granted) {
+                                    return Column(
+                                      children: [
+                                        ElevatedButton.icon(
+                                          onPressed: microphonePermDenied ? _openAppSettings : _initializeCamera,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: themeColor,
+                                            foregroundColor: widget.settings.loadingBackgroundColor,
+                                            minimumSize: const Size(double.infinity, 48),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          icon: Icon(microphonePermDenied ? Icons.settings : Icons.refresh),
+                                          label: Text(microphonePermDenied ? widget.settings.errorSettingsButtonText : widget.settings.errorRetryButtonText),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        TextButton.icon(
+                                          onPressed: () => _initializeCamera(forceWithoutAudio: true),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: widget.settings.loadingTextColor,
+                                            minimumSize: const Size(double.infinity, 48),
+                                          ),
+                                          icon: const Icon(Icons.videocam_off),
+                                          label: Text(widget.settings.errorContinueWithoutAudioText),
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  // Otherwise, just show the primary action button
+                                  return ElevatedButton.icon(
+                                    onPressed: (isPermissionError && (cameraPermDenied || microphonePermDenied)) ? _openAppSettings : _initializeCamera,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: isPermissionError ? themeColor : Theme.of(context).colorScheme.secondary,
+                                      foregroundColor: widget.settings.loadingBackgroundColor,
+                                      minimumSize: const Size(double.infinity, 48),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    icon: Icon(isPermissionError && (cameraPermDenied || microphonePermDenied) ? Icons.settings : Icons.refresh),
+                                    label: Text(isPermissionError && (cameraPermDenied || microphonePermDenied) ? widget.settings.errorSettingsButtonText : widget.settings.errorRetryButtonText),
+                                  );
+                                }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildPermissionInstructions({bool isCameraPermission = true}) {
+    // Get the theme color
+    final themeColor = Theme.of(context).primaryColor;
+
+    String instructions;
+    if (Platform.isAndroid) {
+      instructions = 'To enable ${isCameraPermission ? 'camera' : 'microphone'} access:\n'
+          '1. Open device Settings\n'
+          '2. Go to Apps or Application Manager\n'
+          '3. Find ${widget.settings.appName}\n'
+          '4. Tap Permissions\n'
+          '5. Enable ${isCameraPermission ? 'Camera' : 'Microphone'}';
+    } else if (Platform.isIOS) {
+      instructions = 'To enable ${isCameraPermission ? 'camera' : 'microphone'} access:\n'
+          '1. Open device Settings\n'
+          '2. Find ${widget.settings.appName} in the list\n'
+          '3. Tap on the app name\n'
+          '4. Enable ${isCameraPermission ? 'Camera' : 'Microphone'} access';
+    } else {
+      instructions = 'Please enable ${isCameraPermission ? 'camera' : 'microphone'} permissions in your device settings.';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: themeColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.settings.errorHowToEnableText,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: widget.settings.loadingTextColor,
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            instructions,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: widget.settings.loadingTextColor,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isPermanentlyDenied() {
+    return _errorMessage?.toLowerCase().contains('permanent') ?? false;
+  }
+
+  Future<void> _openAppSettings() async {
+    try {
+      await openAppSettings();
+    } catch (e) {
+      debugPrint('Error opening app settings: $e');
+    }
   }
 
   Widget _buildOverlay(CameralyController controller) {
@@ -774,12 +1124,12 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
   // Add these missing helper methods
 
   // Convert CameraPreviewSettings to CaptureSettings
-  CaptureSettings _createCaptureSettings() {
+  CaptureSettings _createCaptureSettings({bool forceWithoutAudio = false}) {
     return CaptureSettings(
       cameraMode: widget.settings.cameraMode,
       resolution: widget.settings.resolution,
       flashMode: widget.settings.flashMode,
-      enableAudio: widget.settings.enableAudio,
+      enableAudio: forceWithoutAudio ? false : widget.settings.enableAudio,
       compressionQuality: widget.settings.compressionQuality,
       imageQuality: widget.settings.imageQuality,
       videoQuality: widget.settings.videoQuality,
@@ -839,5 +1189,153 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
     if (_controller != null && _lifecycleMachine != null) {
       _lifecycleMachine!.handleAppLifecycleChange(state);
     }
+  }
+
+  // Show a dialog for microphone permission issues
+  Future<void> _showMicrophonePermissionDialog() async {
+    // Get the theme color
+    final themeColor = Theme.of(context).primaryColor;
+
+    final statuses = await _checkPermissionStatuses();
+    final micStatus = statuses['microphone']!;
+    final isPermanentlyDenied = micStatus == PermissionStatus.permanentlyDenied;
+
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            widget.settings.errorMicrophonePermissionTitle,
+            style: TextStyle(
+              color: Theme.of(context).textTheme.titleLarge?.color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text(isPermanentlyDenied ? 'Microphone permission has been permanently denied.' : 'Microphone permission is required for video recording with audio.'),
+                const SizedBox(height: 8),
+                const Text('You can continue without audio recording, or enable microphone access in settings.'),
+                if (isPermanentlyDenied) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: themeColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      Platform.isAndroid ? 'Go to: Settings → Apps → ${widget.settings.appName} → Permissions → Microphone' : 'Go to: Settings → ${widget.settings.appName} → Microphone',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: themeColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text(widget.settings.errorContinueWithoutAudioText),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _initializeCamera(forceWithoutAudio: true);
+              },
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: themeColor,
+              ),
+              child: Text(isPermanentlyDenied ? widget.settings.errorSettingsButtonText : widget.settings.errorRetryButtonText),
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (isPermanentlyDenied) {
+                  _openAppSettings();
+                } else {
+                  _initializeCamera();
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Show a dialog prompting the user to go to settings
+  Future<void> _showSettingsDialog({bool isCamera = true}) async {
+    // Get the theme color
+    final themeColor = Theme.of(context).primaryColor;
+
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            isCamera ? widget.settings.errorCameraPermissionTitle : widget.settings.errorMicrophonePermissionTitle,
+            style: TextStyle(
+              color: Theme.of(context).textTheme.titleLarge?.color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text('${isCamera ? 'Camera' : 'Microphone'} permission has been permanently denied.'),
+                const SizedBox(height: 8),
+                Text('You need to enable it in your device settings to ${isCamera ? 'use the camera' : 'record audio'}.'),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: themeColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    Platform.isAndroid ? 'Go to: Settings → Apps → ${widget.settings.appName} → Permissions → ${isCamera ? 'Camera' : 'Microphone'}' : 'Go to: Settings → ${widget.settings.appName} → ${isCamera ? 'Camera' : 'Microphone'}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: themeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            if (!isCamera) ...[
+              TextButton(
+                child: Text(widget.settings.errorContinueWithoutAudioText),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _initializeCamera(forceWithoutAudio: true);
+                },
+              ),
+            ],
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: themeColor,
+              ),
+              child: Text(widget.settings.errorSettingsButtonText),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _openAppSettings();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 }

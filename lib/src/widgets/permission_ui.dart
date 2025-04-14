@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../utils/permission_manager.dart';
@@ -134,40 +136,104 @@ class _InitialPermissionRequestUI extends StatelessWidget {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  needsMicrophone ? Icons.videocam : Icons.camera_alt,
-                  size: 64,
-                  color: iconColor,
+            child: Card(
+              color: backgroundColor.withOpacity(0.8),
+              elevation: 5,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: buttonColor.withOpacity(0.5),
+                  width: 2,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  needsMicrophone ? 'Camera & Microphone Access' : 'Camera Access Required',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: textColor,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: iconColor.withOpacity(0.1),
+                        shape: BoxShape.circle,
                       ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  needsMicrophone ? 'Please allow access to your camera and microphone to enable video recording with audio.' : 'Please allow access to your camera to take photos.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: textColor,
+                      child: Icon(
+                        needsMicrophone ? Icons.videocam : Icons.camera_alt,
+                        size: 64,
+                        color: iconColor,
                       ),
-                  textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      needsMicrophone ? 'Camera & Microphone Access' : 'Camera Access Required',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: textColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      needsMicrophone ? 'Please allow access to your camera and microphone to enable video recording with audio.' : 'Please allow access to your camera to take photos.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: textColor,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: buttonColor.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: buttonColor,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Why we need this:',
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                        color: textColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            needsMicrophone ? 'Camera access is needed to take photos and videos. Microphone access is required to record audio with your videos.' : 'Camera access is needed to take photos.',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: textColor,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => permissionManager.requestPermissions(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: buttonColor,
+                        foregroundColor: backgroundColor,
+                        minimumSize: const Size(double.infinity, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: Text(needsMicrophone ? 'Grant Permissions' : 'Grant Camera Permission'),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => permissionManager.requestPermissions(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: buttonColor,
-                    foregroundColor: backgroundColor,
-                  ),
-                  child: const Text('Grant Permission'),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -204,50 +270,77 @@ class _DeniedPermissionUI extends StatelessWidget {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isCamera ? Icons.no_photography : Icons.mic_off,
-                  size: 64,
-                  color: iconColor,
+            child: Card(
+              color: backgroundColor.withOpacity(0.8),
+              elevation: 5,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: iconColor.withOpacity(0.5),
+                  width: 2,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  isCamera ? 'Camera Access Denied' : 'Microphone Access Denied',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: textColor,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: iconColor.withOpacity(0.1),
+                        shape: BoxShape.circle,
                       ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isCamera ? 'The camera is needed to take photos and videos. Please grant camera access to use this feature.' : 'The microphone is needed to record audio with your videos. Please grant microphone access for full functionality.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: textColor,
+                      child: Icon(
+                        isCamera ? Icons.no_photography : Icons.mic_off,
+                        size: 64,
+                        color: iconColor,
                       ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => isCamera ? permissionManager.requestCameraPermission() : permissionManager.requestMicrophonePermission(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: buttonColor,
-                    foregroundColor: backgroundColor,
-                  ),
-                  child: Text(isCamera ? 'Grant Camera Access' : 'Grant Microphone Access'),
-                ),
-                if (canContinueWithoutMic) ...[
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => permissionManager.dismissPermissionUI(),
-                    style: TextButton.styleFrom(
-                      foregroundColor: textColor.withAlpha(179),
                     ),
-                    child: const Text('Continue Without Microphone'),
-                  ),
-                ],
-              ],
+                    const SizedBox(height: 16),
+                    Text(
+                      isCamera ? 'Camera Access Denied' : 'Microphone Access Denied',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: textColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      isCamera ? 'The camera is needed to take photos and videos. Please grant camera access to use this feature.' : 'The microphone is needed to record audio with your videos. Please grant microphone access for full functionality.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: textColor,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => isCamera ? permissionManager.requestCameraPermission() : permissionManager.requestMicrophonePermission(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: buttonColor,
+                        foregroundColor: backgroundColor,
+                        minimumSize: const Size(double.infinity, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: Icon(isCamera ? Icons.camera_alt : Icons.mic),
+                      label: Text(isCamera ? 'Grant Camera Permission' : 'Grant Microphone Permission'),
+                    ),
+                    if (canContinueWithoutMic) ...[
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => permissionManager.dismissPermissionUI(),
+                        style: TextButton.styleFrom(
+                          foregroundColor: textColor.withAlpha(179),
+                        ),
+                        child: const Text('Continue Without Microphone'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -274,6 +367,41 @@ class _PermanentlyDeniedUI extends StatelessWidget {
   final Color iconColor;
   final bool isCamera;
 
+  String get _permissionSettingInstructions {
+    if (isCamera) {
+      if (Platform.isAndroid) {
+        return 'To enable the camera permission:\n'
+            '1. Open device Settings\n'
+            '2. Go to Apps or Application Manager\n'
+            '3. Find this app\n'
+            '4. Tap Permissions\n'
+            '5. Enable Camera';
+      } else if (Platform.isIOS) {
+        return 'To enable the camera permission:\n'
+            '1. Open device Settings\n'
+            '2. Scroll down and find this app\n'
+            '3. Tap on the app name\n'
+            '4. Enable Camera access';
+      }
+    } else {
+      if (Platform.isAndroid) {
+        return 'To enable the microphone permission:\n'
+            '1. Open device Settings\n'
+            '2. Go to Apps or Application Manager\n'
+            '3. Find this app\n'
+            '4. Tap Permissions\n'
+            '5. Enable Microphone';
+      } else if (Platform.isIOS) {
+        return 'To enable the microphone permission:\n'
+            '1. Open device Settings\n'
+            '2. Scroll down and find this app\n'
+            '3. Tap on the app name\n'
+            '4. Enable Microphone access';
+      }
+    }
+    return 'Please enable the required permission in your device settings.';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -282,54 +410,109 @@ class _PermanentlyDeniedUI extends StatelessWidget {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isCamera ? Icons.no_photography : Icons.mic_off,
-                  size: 64,
-                  color: iconColor,
+            child: Card(
+              color: backgroundColor.withOpacity(0.8),
+              elevation: 5,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: iconColor.withOpacity(0.5),
+                  width: 2,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  isCamera ? 'Camera Access Permanently Denied' : 'Microphone Access Permanently Denied',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: textColor,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: iconColor.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isCamera ? Icons.no_photography : Icons.mic_off,
+                          size: 64,
+                          color: iconColor,
+                        ),
                       ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isCamera
-                      ? 'You have permanently denied camera access. Please enable it in your device settings to use this feature.'
-                      : 'You have permanently denied microphone access. Please enable it in your device settings for full functionality.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: textColor,
+                      const SizedBox(height: 16),
+                      Text(
+                        isCamera ? 'Camera Permission Required' : 'Microphone Permission Required',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: textColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                        textAlign: TextAlign.center,
                       ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () async {
-                    await permissionManager.openSettings();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: buttonColor,
-                    foregroundColor: backgroundColor,
+                      const SizedBox(height: 16),
+                      Text(
+                        isCamera ? 'You\'ve denied camera access. This permission is needed to take photos and videos.' : 'You\'ve denied microphone access. This permission is needed to record audio with your videos.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: textColor,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: iconColor.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'How to enable:',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: textColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _permissionSettingInstructions,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: textColor,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          await permissionManager.openSettings();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: buttonColor,
+                          foregroundColor: backgroundColor,
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(Icons.settings),
+                        label: const Text('Open Settings'),
+                      ),
+                      if (!isCamera) ...[
+                        const SizedBox(height: 16),
+                        TextButton.icon(
+                          onPressed: () => permissionManager.dismissPermissionUI(),
+                          style: TextButton.styleFrom(
+                            foregroundColor: textColor.withAlpha(179),
+                          ),
+                          icon: const Icon(Icons.close),
+                          label: const Text('Continue Without Microphone'),
+                        ),
+                      ],
+                    ],
                   ),
-                  child: const Text('Open Settings'),
                 ),
-                if (!isCamera) ...[
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => permissionManager.dismissPermissionUI(),
-                    style: TextButton.styleFrom(
-                      foregroundColor: textColor.withAlpha(179),
-                    ),
-                    child: const Text('Continue Without Microphone'),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
         ),
