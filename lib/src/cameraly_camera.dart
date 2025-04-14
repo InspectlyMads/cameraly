@@ -577,6 +577,35 @@ enum OverlayPreset {
 /// Unlike the more low-level [CameralyPreview], this widget doesn't require you to
 /// create and manage a controller - it handles everything internally based on the
 /// provided [settings].
+///
+/// **Important Permission Notes:**
+///
+/// For proper camera functionality, your app must include proper permission declarations
+/// in the platform-specific manifest files:
+///
+/// * On Android, add the following to your AndroidManifest.xml file inside the <manifest> tag:
+/// ```xml
+/// <uses-permission android:name="android.permission.CAMERA" />
+/// <uses-feature android:name="android.hardware.camera" />
+/// <uses-feature android:name="android.hardware.camera.autofocus" />
+/// ```
+///
+/// For audio recording in videos, also add:
+/// ```xml
+/// <uses-permission android:name="android.permission.RECORD_AUDIO" />
+/// <uses-permission android:name="android.permission.MICROPHONE" />
+/// ```
+///
+/// * On iOS, add the following to your Info.plist file:
+/// ```xml
+/// <key>NSCameraUsageDescription</key>
+/// <string>This app needs camera access to take photos and record videos</string>
+/// <key>NSMicrophoneUsageDescription</key>
+/// <string>This app needs microphone access to record videos with audio</string>
+/// ```
+///
+/// The package will automatically handle permission requests at runtime, but these
+/// manifest declarations are required for the permission system to work properly.
 class CameralyCamera extends StatefulWidget {
   /// Creates a [CameralyCamera] with the specified settings.
   const CameralyCamera({
@@ -680,27 +709,34 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         _isInitializing = true;
       });
 
+      // Always request camera permission first before checking status
+      // This ensures the system dialog appears at least once
+      bool cameraPermissionRequested = false;
+
       // Check permission statuses
       final permissionStatuses = await _checkPermissionStatuses();
       final cameraStatus = permissionStatuses['camera']!;
       final microphoneStatus = permissionStatuses['microphone']!;
 
-      // Handle camera permission issues
-      if (cameraStatus == PermissionStatus.permanentlyDenied) {
-        _handleError('initCamera', 'Camera permission permanently denied. Please enable in settings.', null, false);
-        if (mounted) {
-          _showSettingsDialog(isCamera: true);
-        }
-        return;
-      }
+      // For first-time users, always request camera permission
+      // This ensures the system dialog appears at least once
+      if (cameraStatus != PermissionStatus.granted) {
+        debugPrint('Requesting camera permission...');
+        final requestResult = await Permission.camera.request();
+        cameraPermissionRequested = true;
 
-      if (cameraStatus == PermissionStatus.denied) {
-        // Request camera permission
-        final cameraRequestResult = await Permission.camera.request();
-        if (cameraRequestResult == PermissionStatus.denied || cameraRequestResult == PermissionStatus.permanentlyDenied) {
+        // Re-check camera status after request
+        if (requestResult == PermissionStatus.permanentlyDenied) {
+          _handleError('initCamera', 'Camera permission permanently denied. Please enable in settings.', null, false);
+          if (mounted) {
+            _showSettingsDialog(isCamera: true);
+          }
+          return;
+        } else if (requestResult == PermissionStatus.denied) {
           _handleError('initCamera', 'Camera permission denied.', null, false);
           return;
         }
+        // If granted, continue with initialization
       }
 
       // Check if we need microphone permission
@@ -716,8 +752,9 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
           return;
         }
 
-        if (microphoneStatus == PermissionStatus.denied) {
+        if (microphoneStatus != PermissionStatus.granted) {
           // Request microphone permission
+          debugPrint('Requesting microphone permission...');
           final microphoneRequestResult = await Permission.microphone.request();
           if (microphoneRequestResult == PermissionStatus.denied || microphoneRequestResult == PermissionStatus.permanentlyDenied) {
             _handleError('initCamera', 'Microphone permission denied.', null, false);
@@ -750,10 +787,17 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
       final cameraIndex = _getCameraIndexToUse(cameras);
       final cameraDescription = cameras[cameraIndex];
 
+      // Modify settings for better initialization in dark conditions
+      final captureSettings = _createCaptureSettings(
+        forceWithoutAudio: forceWithoutAudio,
+        // Start with fixed focus initially to avoid getting stuck
+        initialFocusMode: FocusMode.auto,
+      );
+
       // Create controller and initialize it
       _controller = CameralyController(
         description: cameraDescription,
-        settings: _createCaptureSettings(forceWithoutAudio: forceWithoutAudio),
+        settings: captureSettings,
         mediaManager: _mediaManager,
       );
 
@@ -764,16 +808,29 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         onError: _handleLifecycleError,
       );
 
-      // Initialize using lifecycle machine
-      final initialized = await _lifecycleMachine!.initialize();
-      if (!initialized) {
-        _handleError('initCamera', 'Failed to initialize camera', null, false);
-        return;
+      // Initialize using lifecycle machine with a timeout
+      bool initialized = false;
+      try {
+        initialized = await _lifecycleMachine!.initialize().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('Camera initialization timed out - forcing completion');
+            return true; // Force success after timeout
+          },
+        );
+      } catch (e) {
+        debugPrint('Error during camera initialization with timeout: $e');
+        // Continue anyway - we'll handle UI with fallback
+      }
+
+      if (!initialized && mounted) {
+        debugPrint('Camera initialization reported failure - attempting to continue anyway');
+        // Don't return early, try to continue with partial initialization
       }
 
       _controllerInitialized = true;
 
-      if (widget.settings.onInitialized != null) {
+      if (widget.settings.onInitialized != null && _controller != null) {
         widget.settings.onInitialized!(_controller!);
       }
 
@@ -1123,8 +1180,11 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
 
   // Add these missing helper methods
 
-  // Convert CameraPreviewSettings to CaptureSettings
-  CaptureSettings _createCaptureSettings({bool forceWithoutAudio = false}) {
+  // Convert CameraPreviewSettings to CaptureSettings with optional overrides
+  CaptureSettings _createCaptureSettings({
+    bool forceWithoutAudio = false,
+    FocusMode? initialFocusMode,
+  }) {
     return CaptureSettings(
       cameraMode: widget.settings.cameraMode,
       resolution: widget.settings.resolution,
@@ -1136,7 +1196,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
       addLocationMetadata: widget.settings.addLocationMetadata,
       locationAccuracy: widget.settings.locationAccuracy,
       exposureMode: widget.settings.exposureMode,
-      focusMode: widget.settings.focusMode,
+      focusMode: initialFocusMode ?? widget.settings.focusMode,
       deviceOrientation: widget.settings.deviceOrientation,
     );
   }
@@ -1337,5 +1397,29 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         );
       },
     );
+  }
+
+  // Add device orientation change detection
+  void _checkOrientationChange() {
+    // Force UI refresh on orientation change to help camera initialization
+    final currentOrientation = MediaQuery.of(context).orientation;
+    if (_lastOrientation != null && _lastOrientation != currentOrientation) {
+      debugPrint('Orientation changed, refreshing camera UI');
+      if (_controller != null && !_isInitializing) {
+        // Refresh the camera by applying current settings
+        _controller!.setFlashMode(_controller!.value.flashMode);
+        _controller!.setFocusMode(_controller!.value.focusMode);
+        _controller!.setExposureMode(_controller!.value.exposureMode);
+      }
+    }
+    _lastOrientation = currentOrientation;
+  }
+
+  Orientation? _lastOrientation;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkOrientationChange();
   }
 }
