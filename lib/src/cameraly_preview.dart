@@ -166,9 +166,6 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
   // Add a variable to track first orientation change
   bool _isFirstOrientationChange = true;
 
-  // Add a variable to track physical dimensions for better orientation detection
-  Size? _lastPhysicalSize;
-
   // Add a method to check if camera has been visible long enough
   bool _isCameraStable() {
     if (_cameraVisibleSince == null) return false;
@@ -360,45 +357,16 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
   @override
   void dispose() {
-    debugPrint('CameralyPreview: Disposing state');
-
     // Clean up the lifecycle machine
     _lifecycleMachine?.dispose();
 
-    // Cancel any timers
+    // Only remove listener if controller exists
+    if (_controller != null) {
+      _controller!.removeListener(_handleControllerUpdate);
+    }
+    WidgetsBinding.instance.removeObserver(this);
     _focusTimer?.cancel();
     _orientationDebounceTimer?.cancel();
-
-    // Explicitly stop and release camera resources
-    if (_controller != null) {
-      // First force release camera hardware
-      try {
-        debugPrint('CameralyPreview: Force releasing camera hardware');
-        // Use fire-and-forget pattern with the new method
-        _controller!.forceReleaseCamera().timeout(const Duration(seconds: 1), onTimeout: () {
-          debugPrint('CameralyPreview: Force release timed out');
-          return;
-        }).then((_) {
-          debugPrint('CameralyPreview: Successfully force released camera');
-        }).catchError((e) {
-          debugPrint('CameralyPreview: Error in force release: $e');
-        });
-      } catch (e) {
-        debugPrint('CameralyPreview: Error initiating force release: $e');
-      }
-
-      // Then remove listener to prevent callbacks during disposal
-      _controller!.removeListener(_handleControllerUpdate);
-
-      // Mark controller as not associated with this widget
-      debugPrint('CameralyPreview: Removing controller association');
-      _controller = null;
-    }
-
-    // Remove widget binding observer
-    WidgetsBinding.instance.removeObserver(this);
-
-    debugPrint('CameralyPreview: Dispose complete');
     super.dispose();
   }
 
@@ -879,6 +847,75 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     return previewRatio;
   }
 
+  Widget _buildCameraPreview(CameralyValue value, BoxConstraints constraints) {
+    // First check if controller and camera controller are valid
+    if (_controller == null || _controller!.cameraController == null) {
+      // Return a placeholder if controller is null or not fully initialized
+      return Container(
+        color: Colors.black,
+        child: const Center(
+          child: Text(
+            'Camera initializing...',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
+    // Get the current orientation
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    // Get the camera's natural aspect ratio
+
+    final cameraAspectRatio = getPreviewRatio();
+
+    // In portrait mode, we need to invert the aspect ratio
+    // This is because the camera sensor is naturally in landscape orientation
+    final previewRatio = isLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
+
+    // Check if front camera by using both the value and the lens direction
+    // This double-verification approach ensures mirroring works even if the value isn't updated correctly
+    final bool isFrontCameraByLens = _controller!.description.lensDirection == CameraLensDirection.front;
+    final bool isFrontCamera = isFrontCameraByLens || value.isFrontCamera;
+
+    // Platform-specific mirroring logic
+    bool shouldMirror = false;
+
+    if (isFrontCamera) {
+      if (Platform.isAndroid) {
+        // On Android: Front camera preview should be mirrored (default behavior is already mirrored)
+        shouldMirror = true;
+      } else if (Platform.isIOS) {
+        // On iOS: Is mirrored by default
+        shouldMirror = false;
+      }
+    }
+
+    // Debug logs for mirroring diagnosis
+    debugPrint('🎥 PREVIEW BUILDING:');
+    debugPrint('🎥 Camera type: ${_controller!.description.lensDirection}');
+    debugPrint('🎥 isFrontCamera value: ${value.isFrontCamera}');
+    debugPrint('🎥 isFrontCamera by lens: $isFrontCameraByLens');
+    debugPrint('🎥 Platform: ${Platform.isAndroid ? 'Android' : Platform.isIOS ? 'iOS' : 'Other'}');
+    debugPrint('🎥 Should mirror: $shouldMirror');
+    debugPrint('🎥 scaleX will be: ${shouldMirror ? -1.0 : 1.0}');
+
+    // Generate a unique key based on orientation to force recreation when orientation changes
+    final previewKey = ValueKey('camera_preview_${value.deviceOrientation}_$isLandscape');
+
+    // Use the standard preview with the correct aspect ratio for the current orientation
+    return AspectRatio(
+      aspectRatio: previewRatio,
+      child: Transform.scale(
+        scaleX: shouldMirror ? -1.0 : 1.0, // Flip based on platform-specific logic
+        scaleY: 1.0,
+        child: Container(
+          key: previewKey,
+          child: _controller!.cameraController != null ? CameraPreview(_controller!.cameraController!) : Container(color: Colors.black), // Fallback if controller becomes null
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // If controller exists, wrap everything in the provider and use ValueListenableBuilder
@@ -1302,27 +1339,6 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     // Get the current orientation
     final currentOrientation = _controller!.value.deviceOrientation;
 
-    // For tablets, check physical size directly to determine if orientation actually changed
-    final physicalSize = PlatformDispatcher.instance.views.first.physicalSize;
-    final isTablet = physicalSize.shortestSide > 900;
-
-    if (isTablet) {
-      // For tablets, compare the physical aspect ratio before and after
-      // This is more reliable than relying on DeviceOrientation enum
-      final physicallyChanged = _isPhysicalOrientationChanged();
-
-      if (physicallyChanged) {
-        debugPrint('🎥 Tablet physical orientation changed - treating as significant');
-        return true;
-      }
-
-      // If the reported orientation changed but physical dimensions didn't,
-      // this might be a false positive - log but still process normally
-      if (currentOrientation != newOrientation) {
-        debugPrint('🎥 Tablet orientation reported change ($currentOrientation → $newOrientation) but physical dimensions unchanged');
-      }
-    }
-
     // Changes between portrait and landscape are always significant
     final isCurrentPortrait = currentOrientation == DeviceOrientation.portraitUp || currentOrientation == DeviceOrientation.portraitDown;
     final isNewPortrait = newOrientation == DeviceOrientation.portraitUp || newOrientation == DeviceOrientation.portraitDown;
@@ -1348,52 +1364,6 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
     return currentOrientation != newOrientation;
   }
 
-  // Helper method to check if physical dimensions indicate orientation change
-  bool _isPhysicalOrientationChanged() {
-    // Need at least two data points to compare
-    if (_cameraVisibleSince == null) return false;
-
-    // Get current physical dimensions
-    final currentSize = PlatformDispatcher.instance.views.first.physicalSize;
-
-    // Store current size for comparison if not already stored
-    if (_lastPhysicalSize == null) {
-      _lastPhysicalSize = currentSize;
-      return false;
-    }
-
-    // Compare width/height ratios rather than absolute dimensions
-    // This accounts for possible scale changes while preserving orientation detection
-    final lastRatio = _lastPhysicalSize!.width / _lastPhysicalSize!.height;
-    final currentRatio = currentSize.width / currentSize.height;
-
-    // If ratio changed from >1 to <1 or vice versa, orientation changed
-    final wasLandscape = lastRatio > 1.0;
-    final isLandscape = currentRatio > 1.0;
-
-    // Store current size for next comparison
-    _lastPhysicalSize = currentSize;
-
-    // Report change if orientation changed
-    if (wasLandscape != isLandscape) {
-      debugPrint('📱 Physical orientation changed: wasLandscape=$wasLandscape, isLandscape=$isLandscape');
-      debugPrint('📱 Size change: $_lastPhysicalSize → $currentSize');
-      return true;
-    }
-
-    // Also report significant aspect ratio changes within same orientation
-    // This catches rotation within landscape or portrait modes
-    final ratioDifference = (lastRatio - currentRatio).abs();
-    final significantChange = ratioDifference > 0.1; // Threshold for determining significant change
-
-    if (significantChange) {
-      debugPrint('📱 Significant aspect ratio change: $lastRatio → $currentRatio');
-      return true;
-    }
-
-    return false;
-  }
-
   // Get appropriate debounce time based on conditions
   int _getOrientationDebounceTime(bool isFirstChange, DeviceOrientation oldOrientation, DeviceOrientation newOrientation) {
     // First metric change needs longer debounce
@@ -1409,107 +1379,5 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
     // Standard debounce - slightly longer to avoid unneeded changes
     return 300;
-  }
-
-  Widget _buildCameraPreview(CameralyValue value, BoxConstraints constraints) {
-    // First check if controller and camera controller are valid
-    if (_controller == null || _controller!.cameraController == null) {
-      // Return a placeholder if controller is null or not fully initialized
-      return Container(
-        color: Colors.black,
-        child: const Center(
-          child: Text(
-            'Camera initializing...',
-            style: TextStyle(color: Colors.white70),
-          ),
-        ),
-      );
-    }
-
-    // Get the current orientation from MediaQuery
-    final mediaQueryData = MediaQuery.of(context);
-    final isLandscape = mediaQueryData.orientation == Orientation.landscape;
-
-    // Get additional orientation information for debugging
-    final deviceOrientation = value.deviceOrientation;
-    final windowSize = PlatformDispatcher.instance.views.first.physicalSize;
-    final physicallyInLandscape = windowSize.width > windowSize.height;
-
-    // Add detailed logging for orientation issues
-    debugPrint('🔄 Orientation Debug: MediaQuery=${mediaQueryData.orientation}, '
-        'DeviceOrientation=$deviceOrientation, '
-        'PhysicallyInLandscape=$physicallyInLandscape, '
-        'PhysicalSize=$windowSize');
-
-    // Handle special case for tablets - ensure orientation is properly detected
-    final isTablet = PlatformDispatcher.instance.views.first.physicalSize.shortestSide > 900;
-
-    // Determine the actual orientation to use
-    bool effectiveIsLandscape = isLandscape;
-
-    if (isTablet) {
-      debugPrint('📱 Tablet detected: Ensuring correct orientation based on physical size');
-      // For tablets, use physical dimensions as source of truth for orientation
-      if (isLandscape != physicallyInLandscape) {
-        debugPrint('⚠️ Orientation mismatch detected! MediaQuery=$isLandscape, Physical=$physicallyInLandscape');
-        // Use physical dimensions to determine actual orientation for tablets
-        effectiveIsLandscape = physicallyInLandscape;
-      }
-    }
-
-    // Get the camera's natural aspect ratio
-    final cameraAspectRatio = getPreviewRatio();
-
-    // In portrait mode, we need to invert the aspect ratio
-    // This is because the camera sensor is naturally in landscape orientation
-    final previewRatio = effectiveIsLandscape ? cameraAspectRatio : 1.0 / cameraAspectRatio;
-
-    // Check if front camera by using both the value and the lens direction
-    // This double-verification approach ensures mirroring works even if the value isn't updated correctly
-    final bool isFrontCameraByLens = _controller!.description.lensDirection == CameraLensDirection.front;
-    final bool isFrontCamera = isFrontCameraByLens || value.isFrontCamera;
-
-    // Platform-specific mirroring logic
-    bool shouldMirror = false;
-
-    if (isFrontCamera) {
-      if (Platform.isAndroid) {
-        // On Android: Front camera preview should be mirrored (default behavior is already mirrored)
-        shouldMirror = true;
-      } else if (Platform.isIOS) {
-        // On iOS: Is mirrored by default
-        shouldMirror = false;
-      }
-    }
-
-    // Debug logs for mirroring diagnosis
-    debugPrint('🎥 PREVIEW BUILDING:');
-    debugPrint('🎥 Camera type: ${_controller!.description.lensDirection}');
-    debugPrint('🎥 isFrontCamera value: ${value.isFrontCamera}');
-    debugPrint('🎥 isFrontCamera by lens: $isFrontCameraByLens');
-    debugPrint('🎥 Platform: ${Platform.isAndroid ? 'Android' : Platform.isIOS ? 'iOS' : 'Other'}');
-    debugPrint('🎥 Should mirror: $shouldMirror');
-    debugPrint('🎥 scaleX will be: ${shouldMirror ? -1.0 : 1.0}');
-
-    // Generate a unique key based on orientation and window size to force recreation when orientation changes
-    final previewKey = ValueKey('camera_preview_${value.deviceOrientation}_${effectiveIsLandscape}_${windowSize.width}x${windowSize.height}');
-
-    // For tablets, ensure we handle orientation correctly
-    if (isTablet) {
-      debugPrint('📊 Tablet preview: AspectRatio=$previewRatio, EffectiveIsLandscape=$effectiveIsLandscape, MediaQuery=$isLandscape, PhysicallyInLandscape=$physicallyInLandscape');
-    }
-
-    // Use the standard preview with the correct aspect ratio for the current orientation
-    return AspectRatio(
-      aspectRatio: previewRatio,
-      child: Transform.scale(
-        scaleX: shouldMirror ? -1.0 : 1.0, // Flip based on platform-specific logic
-        scaleY: 1.0,
-        child: Container(
-          key: previewKey,
-          child: _controller!.cameraController != null ? CameraPreview(_controller!.cameraController!) : Container(color: Colors.black), // Fallback if controller becomes null
-        ),
-      ),
-    );
   }
 }

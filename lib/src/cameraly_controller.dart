@@ -1917,12 +1917,6 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
     _isDisposing = true;
     WidgetsBinding.instance.removeObserver(this);
 
-    // First force release the camera hardware
-    await forceReleaseCamera().timeout(const Duration(seconds: 1), onTimeout: () {
-      debugPrint('📸 Force release timed out, continuing with disposal');
-      return;
-    });
-
     // Cancel location tracking timer
     _stopLocationTracking();
 
@@ -1941,20 +1935,21 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
     try {
       if (_controller != null) {
-        // Use a timeout to prevent hanging
-        await _controller!.dispose().timeout(
-          const Duration(seconds: 2),
-          onTimeout: () {
-            debugPrint('📸 Camera controller disposal timed out, continuing anyway');
-            return;
-          },
-        );
+        // Pause preview first to prevent frame access errors
+        try {
+          if (Platform.isAndroid && _controller!.value.isInitialized) {
+            await _controller!.pausePreview();
+          }
+        } catch (e) {
+          debugPrint('📸 Error pausing preview during dispose: $e');
+        }
+
+        await Future.delayed(const Duration(milliseconds: 50));
+        await _controller!.dispose();
         _controller = null;
       }
     } catch (e) {
       debugPrint('📸 Error disposing camera controller: $e');
-      // Still set controller to null to prevent memory leaks
-      _controller = null;
     } finally {
       // Clean up temp files created by this instance
       _cleanupOldTempFiles();
@@ -2492,44 +2487,5 @@ class CameralyController extends ValueNotifier<CameralyValue> with WidgetsBindin
 
     // Force a small GC-encouraging delay
     Future.delayed(const Duration(milliseconds: 50));
-  }
-
-  /// Explicitly force-releases the camera hardware resources.
-  /// This should be called when the camera is no longer needed, especially when
-  /// navigating away from the camera screen.
-  Future<void> forceReleaseCamera() async {
-    debugPrint('📸 Explicitly force-releasing camera hardware resources');
-
-    // Stop any active recording
-    if (value.isRecordingVideo) {
-      try {
-        debugPrint('📸 Stopping active recording during force release');
-        await stopVideoRecordingWithoutSave().timeout(const Duration(seconds: 1), onTimeout: () {
-          debugPrint('📸 Recording stop timed out during force release');
-          return;
-        });
-      } catch (e) {
-        debugPrint('📸 Error stopping recording during force release: $e');
-      }
-    }
-
-    // Pause preview to release camera sensor
-    if (_controller != null && _controller!.value.isInitialized) {
-      try {
-        debugPrint('📸 Pausing camera preview during force release');
-        await _controller!.pausePreview().timeout(const Duration(milliseconds: 500), onTimeout: () {
-          debugPrint('📸 Preview pause timed out during force release');
-          return;
-        });
-      } catch (e) {
-        debugPrint('📸 Error pausing preview during force release: $e');
-      }
-    }
-
-    // Set flags to indicate camera resources are released
-    value = value.copyWith(isInitialized: false);
-
-    // Notify listeners that camera has been released
-    notifyListeners();
   }
 }
