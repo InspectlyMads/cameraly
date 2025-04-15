@@ -616,8 +616,12 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
     debugPrint('CameralyCamera dispose called');
     _controllerDisposed = true;
 
-    // Clean up all controllers
-    _cleanupExistingControllers();
+    // Start cleanup but don't block dispose
+    _cleanupExistingControllers().then((_) {
+      debugPrint('Camera cleanup completed after dispose');
+    }).catchError((e) {
+      debugPrint('Error during camera cleanup: $e');
+    });
 
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -1251,7 +1255,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         // Both permissions granted or only camera needed - proceed with initialization
         if (mounted) {
           // Clean up any existing controllers first
-          _cleanupExistingControllers();
+          await _cleanupExistingControllers();
 
           setState(() {
             _isInitializing = true;
@@ -1288,19 +1292,42 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
   }
 
   // Clean up any existing camera controllers
-  void _cleanupExistingControllers() {
+  Future<void> _cleanupExistingControllers() async {
     try {
       // Clean up lifecycle machine
       if (_lifecycleMachine != null) {
         debugPrint('Disposing lifecycle machine');
-        _lifecycleMachine!.dispose();
+        await _lifecycleMachine!.dispose();
         _lifecycleMachine = null;
       }
 
       // Dispose of controller if we initialized it
       if (_controllerInitialized && _controller != null && !_controllerDisposed) {
         debugPrint('Disposing old camera controller');
-        _controller!.dispose();
+
+        // First force release camera hardware resources
+        try {
+          // Call the new method to explicitly release camera hardware
+          await _controller!.forceReleaseCamera().timeout(const Duration(seconds: 1), onTimeout: () {
+            debugPrint('Force release timed out during cleanup');
+            return;
+          });
+          debugPrint('Successfully force released camera hardware');
+        } catch (e) {
+          debugPrint('Error force releasing camera hardware: $e');
+        }
+
+        // Add a small delay to ensure any pending frame operations complete
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        // Use a timeout to prevent hanging on disposal
+        await _controller!.dispose().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () {
+            debugPrint('Camera controller disposal timed out, continuing anyway');
+            return;
+          },
+        );
         _controller = null;
       }
 
@@ -1308,6 +1335,10 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
     } catch (e) {
       debugPrint('Error cleaning up controllers: $e');
       // Just log, don't crash
+
+      // Still set controller to null to prevent memory leaks
+      _controller = null;
+      _controllerInitialized = false;
     }
   }
 
