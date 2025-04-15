@@ -613,16 +613,11 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
 
   @override
   void dispose() {
+    debugPrint('CameralyCamera dispose called');
     _controllerDisposed = true;
 
-    // Clean up lifecycle machine
-    _lifecycleMachine?.dispose();
-
-    // Dispose of controller if we initialized it
-    if (_controllerInitialized && _controller != null) {
-      _controller!.dispose();
-      _controller = null;
-    }
+    // Clean up all controllers
+    _cleanupExistingControllers();
 
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -650,100 +645,58 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
 
       debugPrint('Starting camera initialization process...');
 
-      // Request camera permission first - this is a prerequisite
-      try {
-        debugPrint('Requesting camera permission...');
-
-        // iOS-specific camera permission handling approach
-        if (Platform.isIOS) {
-          debugPrint('Using iOS-specific permission request approach');
-
-          // On iOS, directly try to access the camera, which will trigger the system permission dialog
-          final cameras = await availableCameras();
-          debugPrint('Found ${cameras.length} cameras on iOS');
-
-          if (cameras.isNotEmpty) {
-            // Create a temporary controller just to trigger the permission dialog
-            final tempController = CameraController(
-              cameras.first,
-              ResolutionPreset.low,
-              // Important: We need to enable audio here to trigger the microphone permission dialog
-              enableAudio: widget.settings.cameraMode != CameraMode.photoOnly && widget.settings.enableAudio && !forceWithoutAudio,
-            );
-
-            try {
-              debugPrint('Initializing temporary camera to trigger iOS permission dialogs');
-              await tempController.initialize();
-              await Future.delayed(const Duration(milliseconds: 500));
-              await tempController.dispose();
-              debugPrint('Temporary camera initialized and disposed successfully');
-            } catch (e) {
-              debugPrint('Error with temp controller: $e');
-              // Continue with normal flow even if this fails
-            }
-
-            // On iOS, after requesting permission, we need a short delay to ensure
-            // the system has registered the permission change
-            await Future.delayed(const Duration(milliseconds: 500));
-          }
-        } else {
-          // Standard permission request for Android and other platforms
-          final cameraStatus = await Permission.camera.request();
-          debugPrint('Camera permission request result: $cameraStatus');
-        }
-      } catch (e) {
-        debugPrint('Error in camera permission request: $e');
-        // Continue with regular flow even if this fails
-      }
-
-      // Check camera permission status before proceeding
+      // First check if permissions are already granted without triggering dialogs
       final cameraStatus = await Permission.camera.status;
-      debugPrint('Camera status after initial request: $cameraStatus');
+      final micStatus = widget.settings.cameraMode != CameraMode.photoOnly && widget.settings.enableAudio && !forceWithoutAudio ? await Permission.microphone.status : PermissionStatus.granted;
 
-      // If camera permission is denied, show error and return
-      if (cameraStatus == PermissionStatus.denied || cameraStatus == PermissionStatus.permanentlyDenied) {
-        if (cameraStatus == PermissionStatus.permanentlyDenied) {
-          _handleError('initCamera', 'Camera permission permanently denied. Please enable in settings.', null, false);
-        } else {
-          _handleError('initCamera', 'Camera permission denied.', null, false);
-        }
+      debugPrint('Initial camera status: $cameraStatus, mic status: $micStatus');
+
+      // If permissions are already granted, proceed with initialization
+      if (cameraStatus == PermissionStatus.granted && (micStatus == PermissionStatus.granted || forceWithoutAudio || widget.settings.cameraMode == CameraMode.photoOnly)) {
+        debugPrint('Permissions already granted, proceeding with initialization');
+        await _initializeCameraDirectly(forceWithoutAudio);
         return;
       }
 
-      // Now specifically handle microphone permission if needed
-      if (widget.settings.cameraMode != CameraMode.photoOnly && widget.settings.enableAudio && !forceWithoutAudio) {
-        debugPrint('Camera permission granted, now requesting microphone permission...');
+      // Handle camera permission
+      if (cameraStatus != PermissionStatus.granted) {
+        if (cameraStatus == PermissionStatus.permanentlyDenied) {
+          _handleError('initCamera', 'Camera permission permanently denied. Please enable in settings.', null, false);
+          return;
+        }
 
-        try {
-          // Request microphone permission explicitly
-          final micStatus = await Permission.microphone.status;
-          debugPrint('Current microphone status: $micStatus');
+        // Request camera permission
+        debugPrint('Requesting camera permission...');
+        final cameraResult = await Permission.camera.request();
+        debugPrint('Camera permission request result: $cameraResult');
 
-          if (micStatus != PermissionStatus.granted) {
-            // Force a microphone permission request
-            final requestResult = await Permission.microphone.request();
-            debugPrint('Microphone permission request result: $requestResult');
-
-            // Check the result of the permission request
-            if (requestResult == PermissionStatus.denied || requestResult == PermissionStatus.permanentlyDenied) {
-              debugPrint('Microphone permission request was denied');
-
-              // Show error screen directly instead of dialog
-              if (requestResult == PermissionStatus.permanentlyDenied) {
-                _handleError('initCamera', 'Microphone permission permanently denied. Please enable in settings.', null, false);
-              } else {
-                _handleError('initCamera', 'Microphone permission denied. You can continue without audio or retry.', null, false);
-              }
-              return;
-            }
-          }
-        } catch (e) {
-          debugPrint('Error requesting microphone permission: $e');
-          // Continue even if this fails
+        if (cameraResult != PermissionStatus.granted) {
+          _handleError('initCamera', 'Camera permission denied.', null, false);
+          return;
         }
       }
 
-      // If we've reached here, continue with camera initialization
+      // Camera permission is now granted, check microphone if needed
+      if (widget.settings.cameraMode != CameraMode.photoOnly && widget.settings.enableAudio && !forceWithoutAudio) {
+        if (micStatus != PermissionStatus.granted) {
+          if (micStatus == PermissionStatus.permanentlyDenied) {
+            _handleError('initCamera', 'Microphone permission permanently denied. Please enable in settings.', null, false);
+            return;
+          }
+
+          // Request microphone permission
+          debugPrint('Requesting microphone permission...');
+          final micResult = await Permission.microphone.request();
+          debugPrint('Microphone permission request result: $micResult');
+
+          if (micResult != PermissionStatus.granted) {
+            _handleError('initCamera', 'Microphone permission denied. You can continue without audio or retry.', null, false);
+            return;
+          }
+        }
+      }
+
+      // If we've reached here, all required permissions are granted
       await _initializeCameraDirectly(forceWithoutAudio);
     } catch (e, stackTrace) {
       _handleError('initCamera', 'Error initializing camera', e, true, stackTrace);
@@ -1038,7 +991,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
                               if (isMicrophoneError) ...[
                                 const SizedBox(height: 12),
                                 TextButton.icon(
-                                  onPressed: () => _initializeCamera(forceWithoutAudio: true),
+                                  onPressed: _initializeWithoutAudio,
                                   style: TextButton.styleFrom(
                                     foregroundColor: widget.settings.loadingTextColor,
                                     minimumSize: const Size(double.infinity, 48),
@@ -1055,7 +1008,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
                                     onPressed: _initializeCamera,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: themeColor,
-                                      foregroundColor: widget.settings.loadingBackgroundColor,
+                                      foregroundColor: Colors.white,
                                       minimumSize: const Size(double.infinity, 48),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(8),
@@ -1066,7 +1019,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
                                   ),
                                   const SizedBox(height: 12),
                                   TextButton.icon(
-                                    onPressed: () => _initializeCamera(forceWithoutAudio: true),
+                                    onPressed: _initializeWithoutAudio,
                                     style: TextButton.styleFrom(
                                       foregroundColor: widget.settings.loadingTextColor,
                                       minimumSize: const Size(double.infinity, 48),
@@ -1160,26 +1113,211 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
     return _errorMessage?.toLowerCase().contains('permanent') ?? false;
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('App lifecycle state changed to: $state');
+
+    // When the app is inactive or paused, we need to clean up resources
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      debugPrint('App paused or inactive, ensuring cleanup');
+
+      // Reset any pending operations
+      _isChangingController = false;
+
+      // On iOS, when app is backgrounded, we need special handling
+      if (Platform.isIOS) {
+        // This helps prevent crashes when returning from system permission screens
+        debugPrint('iOS: App backgrounded, performing iOS-specific cleanup');
+      }
+    }
+
+    // When app is being detached/terminated
+    if (state == AppLifecycleState.detached) {
+      debugPrint('App is being detached, cleaning up resources');
+      // No specific actions needed - the dispose method will handle cleanup
+    }
+
+    // Handle app resuming from background
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('App resumed - checking for permission changes');
+
+      // Use a guarded delay to prevent issues if the app is closing
+      // or if the widget is unmounted during the delay
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (!mounted || _controllerDisposed) {
+          debugPrint('App disposed during delayed resume check, aborting');
+          return;
+        }
+
+        // Only try to recover if we're in an error state that might be permission-related
+        // or if we don't have an active controller
+        if (_errorMessage != null || _controller == null || !_controllerInitialized) {
+          debugPrint('Camera needs reinitialization after resume');
+
+          // Safely reinitialize camera after permissions may have changed
+          _safelyReinitializeAfterResume();
+        } else {
+          debugPrint('Camera appears functional after resume, checking state');
+          // Camera already seems to be working, just ensure it's active
+          _ensureCameraIsActive();
+        }
+      });
+    }
+
+    // Only handle camera controller lifecycle changes if everything is properly initialized
+    if (_controller != null && _lifecycleMachine != null && !_controllerDisposed) {
+      try {
+        _lifecycleMachine!.handleAppLifecycleChange(state);
+      } catch (e) {
+        debugPrint('Error handling lifecycle change in machine: $e');
+        // Log but don't crash
+      }
+    }
+  }
+
+  // Safely reinitialize camera after app resume
+  Future<void> _safelyReinitializeAfterResume() async {
+    if (!mounted) return;
+
+    try {
+      debugPrint('Safely reinitializing camera after app resume');
+
+      // Check permissions first
+      await _checkAndReinitializeIfNeeded();
+    } catch (e) {
+      debugPrint('Error during post-resume reinitialization: $e');
+      // Show a recoverable error
+      _handleError('resumeInitialize', 'Unable to initialize camera after resuming app', e, true);
+    }
+  }
+
+  // Ensure camera is active and working
+  Future<void> _ensureCameraIsActive() async {
+    if (!mounted || _controller == null || _controllerDisposed) return;
+
+    try {
+      // Check if the controller is still responsive
+      final isInitialized = _controller!.value.isInitialized;
+
+      debugPrint('Camera initialized status after resume: $isInitialized');
+
+      if (!isInitialized) {
+        debugPrint('Camera controller not initialized after resume, reinitializing');
+        // Reinitialize if needed
+        _safelyReinitializeAfterResume();
+      }
+    } catch (e) {
+      debugPrint('Error checking camera state after resume: $e');
+      // Camera controller might be in a bad state, reinitialize
+      _safelyReinitializeAfterResume();
+    }
+  }
+
+  // Safely check permissions and reinitialize if needed
+  Future<void> _checkAndReinitializeIfNeeded() async {
+    if (!mounted) return;
+
+    try {
+      debugPrint('Checking if permissions are now granted...');
+      final cameraStatus = await Permission.camera.status;
+      final micStatus = widget.settings.cameraMode != CameraMode.photoOnly && widget.settings.enableAudio ? await Permission.microphone.status : PermissionStatus.granted;
+
+      debugPrint('Current permissions: Camera = $cameraStatus, Mic = $micStatus');
+
+      // If camera permission is now granted, evaluate next steps
+      if (cameraStatus == PermissionStatus.granted) {
+        debugPrint('Camera permission is granted');
+
+        // Check microphone permission if needed
+        if (widget.settings.cameraMode != CameraMode.photoOnly && widget.settings.enableAudio) {
+          if (micStatus != PermissionStatus.granted) {
+            debugPrint('Microphone permission still not granted - showing mic error screen');
+
+            // Show microphone permission error instead of automatically proceeding
+            if (mounted) {
+              setState(() {
+                _isInitializing = false;
+                if (micStatus == PermissionStatus.permanentlyDenied) {
+                  _errorMessage = 'Microphone permission permanently denied. Please enable in settings.';
+                } else {
+                  _errorMessage = 'Microphone permission denied. You can continue without audio or retry.';
+                }
+              });
+            }
+            return;
+          }
+        }
+
+        // Both permissions granted or only camera needed - proceed with initialization
+        if (mounted) {
+          // Clean up any existing controllers first
+          _cleanupExistingControllers();
+
+          setState(() {
+            _isInitializing = true;
+            _errorMessage = null;
+          });
+
+          // Use a small delay to ensure iOS has fully registered the permission change
+          if (Platform.isIOS) {
+            await Future.delayed(const Duration(milliseconds: 300));
+          }
+
+          // Proceed with normal initialization with audio
+          await _initializeCamera(forceWithoutAudio: false);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking permissions: $e');
+      // Don't crash the app, just log the error
+    }
+  }
+
+  // Override to initialize camera without audio when user explicitly chooses to
+  void _initializeWithoutAudio() {
+    if (!mounted) return;
+
+    debugPrint('User explicitly chose to continue without audio');
+
+    setState(() {
+      _isInitializing = true;
+      _errorMessage = null;
+    });
+
+    _initializeCamera(forceWithoutAudio: true);
+  }
+
+  // Clean up any existing camera controllers
+  void _cleanupExistingControllers() {
+    try {
+      // Clean up lifecycle machine
+      if (_lifecycleMachine != null) {
+        debugPrint('Disposing lifecycle machine');
+        _lifecycleMachine!.dispose();
+        _lifecycleMachine = null;
+      }
+
+      // Dispose of controller if we initialized it
+      if (_controllerInitialized && _controller != null && !_controllerDisposed) {
+        debugPrint('Disposing old camera controller');
+        _controller!.dispose();
+        _controller = null;
+      }
+
+      _controllerInitialized = false;
+    } catch (e) {
+      debugPrint('Error cleaning up controllers: $e');
+      // Just log, don't crash
+    }
+  }
+
   Future<void> _openAppSettings() async {
     try {
+      debugPrint('Opening app settings');
       final result = await openAppSettings();
       debugPrint('App settings opened successfully: $result');
 
-      // Add a listener for when the app is resumed after settings
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Wait a moment after coming back from settings, then retry
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          debugPrint('Resumed from settings, retrying camera initialization');
-          if (mounted) {
-            // Try to initialize again after returning from settings
-            setState(() {
-              _isInitializing = true;
-              _errorMessage = null;
-            });
-            _initializeCamera();
-          }
-        });
-      });
+      // We'll let didChangeAppLifecycleState handle the return from settings
     } catch (e) {
       debugPrint('Error opening app settings: $e');
     }
@@ -1312,13 +1450,5 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
 
     // Call error callback
     widget.settings.onError?.call(source, message, error: error, isRecoverable: isRecoverable);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Only handle app lifecycle changes if controller is initialized
-    if (_controller != null && _lifecycleMachine != null) {
-      _lifecycleMachine!.handleAppLifecycleChange(state);
-    }
   }
 }
