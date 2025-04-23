@@ -600,6 +600,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
   bool _controllerInitialized = false;
   bool _controllerDisposed = false;
   bool _isChangingController = false;
+  int _selectedCameraIndex = 0;
 
   // Add lifecycle machine
   CameraLifecycleMachine? _lifecycleMachine;
@@ -874,27 +875,19 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         widget.settings.onInitialized!(_controller!);
       }
 
+      // We'll let the lifecycle state changes handle the UI updates from here
+      // This avoids multiple setState calls that cause flickering
       if (mounted) {
         setState(() {
-          _isInitializing = false;
           _selectedCameraIndex = cameraIndex;
           _errorMessage = null; // Clear any error messages
+          // Don't set _isInitializing = false here, let lifecycle handle it
         });
 
-        // Force a second setState after a small delay to ensure the preview appears
-        // This is critical to ensure the camera view is visible immediately
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            setState(() {
-              // Empty setState to force rebuild after controller is fully ready
-            });
-
-            // Make sure camera has correct orientation
-            if (_controller != null && _controller!.value.isInitialized) {
-              _controller!.setDeviceOrientation(widget.settings.deviceOrientation);
-            }
-          }
-        });
+        // Make sure camera has correct orientation
+        if (_controller != null && _controller!.value.isInitialized) {
+          _controller!.setDeviceOrientation(widget.settings.deviceOrientation);
+        }
       }
     } catch (e, stackTrace) {
       _handleError('initCameraDirectly', 'Error initializing camera', e, true, stackTrace);
@@ -905,25 +898,27 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
   void _handleLifecycleStateChange(CameraLifecycleState oldState, CameraLifecycleState newState) {
     debugPrint('CameralyCamera: Lifecycle state changed from $oldState to $newState');
 
-    if (mounted) {
+    // Further reduce rebuilds by only handling essential state transitions
+    bool shouldUpdateUI = false;
+
+    if (newState == CameraLifecycleState.ready && oldState != CameraLifecycleState.ready) {
+      // Only update when entering ready state from non-ready state
+      shouldUpdateUI = true;
+      debugPrint('Camera is ready - completing initialization');
+      _isInitializing = false;
+    } else if (newState == CameraLifecycleState.error && oldState != CameraLifecycleState.error) {
+      // Only update when entering error state
+      shouldUpdateUI = true;
+    } else if (_isChangingController != (newState == CameraLifecycleState.initializing || newState == CameraLifecycleState.resuming || newState == CameraLifecycleState.recreating || newState == CameraLifecycleState.switching)) {
+      // Only update when changing controller state changes
+      shouldUpdateUI = true;
+    }
+
+    // Only trigger setState when actually needed
+    if (mounted && shouldUpdateUI) {
       setState(() {
-        // Update loading state based on lifecycle transitions
         _isChangingController = newState == CameraLifecycleState.initializing || newState == CameraLifecycleState.resuming || newState == CameraLifecycleState.recreating || newState == CameraLifecycleState.switching;
       });
-
-      // Force a rebuild when the camera enters the "ready" state to ensure preview is shown
-      if (newState == CameraLifecycleState.ready) {
-        debugPrint('Camera is ready - forcing UI refresh');
-
-        // Use a small delay to ensure camera frame has time to render
-        Future.delayed(const Duration(milliseconds: 50), () {
-          if (mounted) {
-            setState(() {
-              // Just trigger a state refresh
-            });
-          }
-        });
-      }
     }
   }
 
@@ -1260,28 +1255,40 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
-    // Loading state
-    if (_isInitializing) {
-      return _buildLoadingUI();
-    }
-
-    // Error state
-    if (_errorMessage != null || _controller == null) {
-      return _buildErrorUI();
-    }
-
     // Debug log to track each build of the camera view
     debugPrint('Building camera preview with controller: ${_controller?.value.isInitialized}');
 
     // Camera initialized, show preview with overlay
-    return CameralyControllerProvider(
-      controller: _controller!,
-      child: CameralyPreview(
-        controller: _controller!,
-        overlay: _buildOverlay(_controller!),
-        loadingBuilder: (context, value) => const SizedBox.shrink(),
-        key: ValueKey('camera_preview_${DateTime.now().millisecondsSinceEpoch}'),
-      ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Main camera view
+        if (!_isInitializing && _controller != null && _errorMessage == null)
+          CameralyControllerProvider(
+            controller: _controller!,
+            child: CameralyPreview(
+              controller: _controller!,
+              overlay: _buildOverlay(_controller!),
+              loadingBuilder: (context, value) => const SizedBox.shrink(),
+            ),
+          ),
+
+        // Loading state with smooth transition
+        AnimatedOpacity(
+          opacity: _isInitializing ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          child: _isInitializing ? _buildLoadingUI() : const SizedBox.shrink(),
+        ),
+
+        // Error state with smooth transition
+        AnimatedOpacity(
+          opacity: _errorMessage != null ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          child: _errorMessage != null ? _buildErrorUI() : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 
@@ -1320,9 +1327,6 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
 
     return cameraIndex;
   }
-
-  // Selected camera index
-  int _selectedCameraIndex = 0;
 
   // Handle errors consistently
   void _handleError(String source, String message, Object? error, bool isRecoverable, [StackTrace? stackTrace]) {

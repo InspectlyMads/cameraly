@@ -890,17 +890,19 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
       }
     }
 
-    // Debug logs for mirroring diagnosis
-    debugPrint('🎥 PREVIEW BUILDING:');
-    debugPrint('🎥 Camera type: ${_controller!.description.lensDirection}');
-    debugPrint('🎥 isFrontCamera value: ${value.isFrontCamera}');
-    debugPrint('🎥 isFrontCamera by lens: $isFrontCameraByLens');
-    debugPrint('🎥 Platform: ${Platform.isAndroid ? 'Android' : Platform.isIOS ? 'iOS' : 'Other'}');
-    debugPrint('🎥 Should mirror: $shouldMirror');
-    debugPrint('🎥 scaleX will be: ${shouldMirror ? -1.0 : 1.0}');
+    // Reduce the debug logs to minimize performance impact
+    // Only log when absolutely necessary for debugging
+    // debugPrint('🎥 PREVIEW BUILDING:');
+    // debugPrint('🎥 Camera type: ${_controller!.description.lensDirection}');
+    // debugPrint('🎥 isFrontCamera value: ${value.isFrontCamera}');
+    // debugPrint('🎥 isFrontCamera by lens: $isFrontCameraByLens');
+    // debugPrint('🎥 Platform: ${Platform.isAndroid ? 'Android' : Platform.isIOS ? 'iOS' : 'Other'}');
+    // debugPrint('🎥 Should mirror: $shouldMirror');
+    // debugPrint('🎥 scaleX will be: ${shouldMirror ? -1.0 : 1.0}');
 
-    // Generate a unique key based on orientation to force recreation when orientation changes
-    final previewKey = ValueKey('camera_preview_${value.deviceOrientation}_$isLandscape');
+    // Generate a stable key based on camera lens and orientation, not a dynamic timestamp
+    // This prevents unnecessary widget rebuilds
+    final previewKey = ValueKey('camera_${_controller!.description.name}_${value.deviceOrientation.index}_$isLandscape');
 
     // Use the standard preview with the correct aspect ratio for the current orientation
     return AspectRatio(
@@ -1009,9 +1011,12 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
             ),
           ),
 
-        // Loading indicator - much more selective about when to show it
-        if (_shouldShowLoadingIndicator(value))
-          Positioned.fill(
+        // Use AnimatedOpacity for smoother loading indicator transitions
+        Positioned.fill(
+          child: AnimatedOpacity(
+            opacity: _shouldShowLoadingIndicator(value) ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
             child: IgnorePointer(
               ignoring: true, // Don't intercept touch events
               child: Container(
@@ -1057,6 +1062,7 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
               ),
             ),
           ),
+        ),
       ],
     );
 
@@ -1076,28 +1082,38 @@ class _CameralyPreviewState extends State<CameralyPreview> with WidgetsBindingOb
 
   // Helper method to decide when to show loading indicator
   bool _shouldShowLoadingIndicator(CameralyValue value) {
-    // Always show loading if camera is not initialized
+    // Always show loading if camera is not initialized at all
     if (!value.isInitialized) return true;
 
-    // Always show loading during controller changes
-    if (value.isChangingController) return true;
+    // Skip loading indicator if camera is initialized and we're not in a special state
+    if (value.isInitialized && !_isChangingOrientation && !value.isChangingController) {
+      return false;
+    }
+
+    // Always show loading during controller changes, but only if camera isn't already visible
+    if (value.isChangingController) {
+      // If camera has been visible for a while, don't show loading for minor updates
+      if (_cameraVisibleSince != null) {
+        final visibleTime = DateTime.now().difference(_cameraVisibleSince!).inMilliseconds;
+        if (visibleTime > 1000) return false;
+      }
+      return true;
+    }
 
     // For first orientation change on Android, always show loading
     if (_isFirstOrientationChange && _isChangingOrientation && Platform.isAndroid) return true;
 
+    // For iOS, rarely show loading indicator as transitions are usually very fast
+    if (Platform.isIOS && !_isFirstOrientationChange) return false;
+
     // For subsequent orientation changes, only show loading if:
     // 1. We're in the changing state AND
-    // 2. It's been less than 500ms since the change started OR
+    // 2. It's been less than 350ms since the change started OR
     // 3. It's a major orientation change (portrait <-> landscape)
     if (_isChangingOrientation) {
-      // Don't show loading indicator on iOS after the first change - it's too quick
-      if (Platform.isIOS && !_isFirstOrientationChange) return false;
-
-      // For minor orientation changes (e.g., landscape left <-> landscape right)
-      // only show loader briefly to avoid constant loading on small adjustments
       final changeStartTime = _cameraVisibleSince ?? DateTime.now();
       final changeTimeMs = DateTime.now().difference(changeStartTime).inMilliseconds;
-      return changeTimeMs < 500;
+      return changeTimeMs < 350; // Shorter time to reduce blinks
     }
 
     return false;
