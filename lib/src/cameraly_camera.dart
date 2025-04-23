@@ -880,6 +880,21 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
           _selectedCameraIndex = cameraIndex;
           _errorMessage = null; // Clear any error messages
         });
+
+        // Force a second setState after a small delay to ensure the preview appears
+        // This is critical to ensure the camera view is visible immediately
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            setState(() {
+              // Empty setState to force rebuild after controller is fully ready
+            });
+
+            // Make sure camera has correct orientation
+            if (_controller != null && _controller!.value.isInitialized) {
+              _controller!.setDeviceOrientation(widget.settings.deviceOrientation);
+            }
+          }
+        });
       }
     } catch (e, stackTrace) {
       _handleError('initCameraDirectly', 'Error initializing camera', e, true, stackTrace);
@@ -895,6 +910,20 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         // Update loading state based on lifecycle transitions
         _isChangingController = newState == CameraLifecycleState.initializing || newState == CameraLifecycleState.resuming || newState == CameraLifecycleState.recreating || newState == CameraLifecycleState.switching;
       });
+
+      // Force a rebuild when the camera enters the "ready" state to ensure preview is shown
+      if (newState == CameraLifecycleState.ready) {
+        debugPrint('Camera is ready - forcing UI refresh');
+
+        // Use a small delay to ensure camera frame has time to render
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted) {
+            setState(() {
+              // Just trigger a state refresh
+            });
+          }
+        });
+      }
     }
   }
 
@@ -1241,6 +1270,9 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
       return _buildErrorUI();
     }
 
+    // Debug log to track each build of the camera view
+    debugPrint('Building camera preview with controller: ${_controller?.value.isInitialized}');
+
     // Camera initialized, show preview with overlay
     return CameralyControllerProvider(
       controller: _controller!,
@@ -1248,6 +1280,7 @@ class _CameralyCameraState extends State<CameralyCamera> with WidgetsBindingObse
         controller: _controller!,
         overlay: _buildOverlay(_controller!),
         loadingBuilder: (context, value) => const SizedBox.shrink(),
+        key: ValueKey('camera_preview_${DateTime.now().millisecondsSinceEpoch}'),
       ),
     );
   }
