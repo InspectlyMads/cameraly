@@ -97,4 +97,7 @@ export 'src/utils/exif_manager.dart';
 export 'src/utils/media_manager.dart';
 // Export the new permission management system
 export 'src/utils/permission_manager.dart';
+// Export video codec utilities
+export 'src/utils/video_codec_channel.dart';
+export 'src/utils/video_transcoder.dart';
 export 'src/widgets/permission_ui.dart';

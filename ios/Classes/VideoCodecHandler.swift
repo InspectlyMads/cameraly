@@ -2,18 +2,13 @@ import Flutter
 import AVFoundation
 
 class VideoCodecHandler {
-    static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(name: "com.cameraly/video_codec", binaryMessenger: registrar.messenger())
-        channel.setMethodCallHandler { (call, result) in
-            if call.method == "forceH264Encoding" {
-                VideoCodecHandler.forceH264Encoding(result: result)
-            } else {
-                result(FlutterMethodNotImplemented)
-            }
+    static func forceH264Encoding(result: @escaping FlutterResult) {
+        forceH264Encoding { success in
+            result(success)
         }
     }
     
-    static func forceH264Encoding(result: @escaping FlutterResult) {
+    static func forceH264Encoding(completion: @escaping (Bool) -> Void) {
         // This works on iOS 11.0 and higher
         if #available(iOS 11.0, *) {
             // Get the AVCaptureSession used by the camera plugin
@@ -23,7 +18,7 @@ class VideoCodecHandler {
             
             // Try to get the default video device
             guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .unspecified) else {
-                result(false)
+                completion(false)
                 return
             }
             
@@ -52,7 +47,7 @@ class VideoCodecHandler {
                     try videoDevice.lockForConfiguration()
                     videoDevice.activeFormat = format
                     videoDevice.unlockForConfiguration()
-                    result(true)
+                    completion(true)
                     return
                 } catch {
                     print("Failed to lock device for configuration: \(error)")
@@ -61,10 +56,65 @@ class VideoCodecHandler {
             
             // If we got here, we couldn't configure the device specifically,
             // but we still set the user defaults which should influence new sessions
-            result(true)
+            completion(true)
         } else {
             // For iOS < 11, H.264 is the default anyway
-            result(true)
+            completion(true)
         }
+    }
+    
+    // Check if a video file uses HEVC encoding
+    static func isVideoHevc(path: String, result: @escaping FlutterResult) {
+        let url = URL(fileURLWithPath: path)
+        let asset = AVAsset(url: url)
+        
+        guard let videoTrack = asset.tracks(withMediaType: .video).first else {
+            result(FlutterError(code: "NO_VIDEO_TRACK", message: "No video track found", details: nil))
+            return
+        }
+        
+        guard let formatDescription = videoTrack.formatDescriptions.first as? CMFormatDescription else {
+            result(FlutterError(code: "NO_FORMAT_DESCRIPTION", message: "Cannot get format description", details: nil))
+            return
+        }
+        
+        let mediaSubType = CMFormatDescriptionGetMediaSubType(formatDescription)
+        let isHevc = mediaSubType == kCMVideoCodecType_HEVC || mediaSubType == FourCharCode(1752589105) // 'hvc1' in integer
+        
+        result(isHevc)
+    }
+    
+    // Transcodes HEVC video to H.264
+    static func transcodeHevcToH264(path: String, result: @escaping FlutterResult) {
+        let inputURL = URL(fileURLWithPath: path)
+        
+        // Create a temporary file path for the output
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let tempDir = NSTemporaryDirectory()
+        let outputPath = "\(tempDir)/h264_\(timestamp).mp4"
+        let outputURL = URL(fileURLWithPath: outputPath)
+        
+        // Remove any existing file
+        do {
+            if FileManager.default.fileExists(atPath: outputPath) {
+                try FileManager.default.removeItem(at: outputURL)
+            }
+        } catch {
+            print("Error removing existing file: \(error)")
+        }
+        
+        // Use VideoTranscoderHandler to do the actual transcoding
+        VideoTranscoderHandler.transcodeToH264(
+            inputPath: path,
+            outputPath: outputPath,
+            quality: "high",
+            completion: { path, error in
+                if let error = error {
+                    result(FlutterError(code: "TRANSCODE_FAILED", message: error.localizedDescription, details: nil))
+                } else {
+                    result(path)
+                }
+            }
+        )
     }
 } 

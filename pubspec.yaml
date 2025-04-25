@@ -1,6 +1,7 @@
 name: cameraly
 description: A powerful and flexible camera package for Flutter that enhances the official camera plugin with a developer-friendly API, advanced features, and better error handling. Includes customizable overlays, media management, and comprehensive examples.
 version: 0.1.0
+publish_to: none
 homepage: https://github.com/InspectlyMads/cameraly
 repository: https://github.com/InspectlyMads/cameraly
 issue_tracker: https://github.com/InspectlyMads/cameraly/issues
@@ -34,6 +35,11 @@ dependencies:
   exif: ^3.3.0
   provider: '>=6.0.0 <7.0.0'
   native_device_orientation: ^2.0.3
+  ffmpeg_kit_flutter_full_gpl:
+    git:
+      url: https://github.com/Sahad2701/ffmpeg_kit_flutter_full_gpl.git
+      ref: flutter-upgrade/remove-v1-embedding
+
 
 dev_dependencies:
   flutter_test:

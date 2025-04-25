@@ -2,41 +2,6 @@ import Flutter
 import AVFoundation
 
 class VideoTranscoderHandler {
-    static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(name: "com.cameraly/video_transcoder", binaryMessenger: registrar.messenger())
-        channel.setMethodCallHandler { (call, result) in
-            if call.method == "transcodeToH264" {
-                guard let args = call.arguments as? [String: Any],
-                      let inputPath = args["inputPath"] as? String,
-                      let outputPath = args["outputPath"] as? String else {
-                    result(FlutterError(code: "INVALID_ARGS", 
-                                       message: "Input and output paths are required", 
-                                       details: nil))
-                    return
-                }
-                
-                let quality = args["quality"] as? String ?? "medium"
-                
-                VideoTranscoderHandler.transcodeToH264(
-                    inputPath: inputPath,
-                    outputPath: outputPath,
-                    quality: quality,
-                    completion: { path, error in
-                        if let error = error {
-                            result(FlutterError(code: "TRANSCODE_FAILED", 
-                                              message: error.localizedDescription, 
-                                              details: nil))
-                        } else {
-                            result(path)
-                        }
-                    }
-                )
-            } else {
-                result(FlutterMethodNotImplemented)
-            }
-        }
-    }
-    
     static func transcodeToH264(inputPath: String, outputPath: String, quality: String, completion: @escaping (String?, Error?) -> Void) {
         // Create file URL for input video
         let inputURL = URL(fileURLWithPath: inputPath)
