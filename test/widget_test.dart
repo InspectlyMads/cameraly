@@ -15,7 +15,7 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: CameraTestApp()));
 
     // Verify that our app shows the correct title.
-    expect(find.text('Camera Test MVP'), findsOneWidget);
+    expect(find.text('Camera Test'), findsOneWidget);
     expect(find.text('Camera Orientation Testing'), findsOneWidget);
 
     // Verify that we have camera mode options

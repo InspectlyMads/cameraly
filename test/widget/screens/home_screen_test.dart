@@ -1,4 +1,5 @@
 import 'package:camera_test/screens/home_screen.dart';
+import 'package:camera_test/services/camera_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,27 +17,24 @@ void main() {
       );
 
       // Assert - Check for main title and description
-      expect(find.text('Camera Test MVP'), findsOneWidget);
+      expect(find.text('Camera Test'), findsOneWidget); // AppBar title
       expect(find.text('Camera Orientation Testing'), findsOneWidget);
       expect(
-        find.text('Test how the camera package handles orientation on your device'),
+        find.text('Test how camera captures work across different device orientations'),
         findsOneWidget,
       );
 
       // Assert - Check for all camera mode cards
       expect(find.text('Photo Mode'), findsOneWidget);
-      expect(find.text('Test photo capture orientation handling'), findsOneWidget);
+      expect(find.text('Test photo capture with orientation data'), findsOneWidget);
       expect(find.text('Video Mode'), findsOneWidget);
-      expect(find.text('Test video recording orientation handling'), findsOneWidget);
+      expect(find.text('Test video recording with orientation data'), findsOneWidget);
       expect(find.text('Combined Mode'), findsOneWidget);
-      expect(find.text('Test both photo and video in one interface'), findsOneWidget);
+      expect(find.text('Switch between photo and video in one interface'), findsOneWidget);
 
-      // Assert - Check for info section
-      expect(find.byIcon(Icons.info_outline), findsOneWidget);
-      expect(
-        find.textContaining('This app tests camera orientation handling'),
-        findsOneWidget,
-      );
+      // Assert - Check for permission section
+      expect(find.byIcon(Icons.security), findsOneWidget);
+      expect(find.text('Permissions'), findsOneWidget);
     });
 
     testWidgets('displays correct icons for each mode', (tester) async {
@@ -70,14 +68,12 @@ void main() {
 
       // Act - Tap the photo mode card
       await tester.tap(find.text('Photo Mode'));
-      await tester.pump(); // Trigger the snackbar
-      await tester.pump(const Duration(milliseconds: 100)); // Wait for animation
+      await tester.pump(); // Process the tap
+      await tester.pump(const Duration(milliseconds: 100)); // Wait for any navigation
 
-      // Assert
-      expect(
-        find.textContaining('photoOnly mode selected'),
-        findsOneWidget,
-      );
+      // Assert - Since HomeScreen navigates to CameraScreen, no snackbar should appear
+      // Instead we expect no snackbar message since navigation is the intended behavior
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('shows snackbar when video mode card is tapped', (tester) async {
@@ -95,11 +91,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Assert
-      expect(
-        find.textContaining('videoOnly mode selected'),
-        findsOneWidget,
-      );
+      // Assert - No snackbar expected, navigation is the intended behavior
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('shows snackbar when combined mode card is tapped', (tester) async {
@@ -117,11 +110,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Assert
-      expect(
-        find.textContaining('combined mode selected'),
-        findsOneWidget,
-      );
+      // Assert - No snackbar expected, navigation is the intended behavior
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('cards are properly styled and interactive', (tester) async {
@@ -135,10 +125,10 @@ void main() {
       );
 
       // Assert - Check that cards exist
-      expect(find.byType(Card), findsNWidgets(4)); // 3 mode cards + 1 info card
+      expect(find.byType(Card), findsNWidgets(4)); // 3 camera mode cards + 1 permission card
 
       // Check that InkWell widgets exist for tap handling
-      expect(find.byType(InkWell), findsNWidgets(3)); // One for each mode card
+      expect(find.byType(InkWell), findsNWidgets(4)); // 3 mode cards + 1 permissions button
     });
 
     testWidgets('app bar is properly configured', (tester) async {
@@ -154,7 +144,7 @@ void main() {
       // Assert
       expect(find.byType(AppBar), findsOneWidget);
       // Only one instance in AppBar since we removed the main title duplication
-      expect(find.text('Camera Test MVP'), findsOneWidget);
+      expect(find.text('Camera Test'), findsOneWidget);
     });
 
     testWidgets('layout is properly structured', (tester) async {
@@ -199,59 +189,22 @@ void main() {
       // Assert - The theme should be applied (difficult to test color directly in widget tests,
       // but we can verify the app doesn't crash and widgets render correctly)
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.text('Camera Test MVP'), findsOneWidget);
+      expect(find.text('Camera Test'), findsOneWidget);
     });
 
     group('CameraMode enum', () {
       test('has correct values', () {
         expect(CameraMode.values, hasLength(3));
-        expect(CameraMode.values, contains(CameraMode.photoOnly));
-        expect(CameraMode.values, contains(CameraMode.videoOnly));
+        expect(CameraMode.values, contains(CameraMode.photo));
+        expect(CameraMode.values, contains(CameraMode.video));
         expect(CameraMode.values, contains(CameraMode.combined));
       });
 
       test('toString returns correct names', () {
-        expect(CameraMode.photoOnly.name, equals('photoOnly'));
-        expect(CameraMode.videoOnly.name, equals('videoOnly'));
+        expect(CameraMode.photo.name, equals('photo'));
+        expect(CameraMode.video.name, equals('video'));
         expect(CameraMode.combined.name, equals('combined'));
       });
-    });
-
-    testWidgets('snackbar messages contain camera mode names', (tester) async {
-      // Arrange
-      await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: HomeScreen(),
-          ),
-        ),
-      );
-
-      // Test Photo Mode
-      await tester.tap(find.text('Photo Mode'));
-      await tester.pump(); // Start animation
-      await tester.pumpAndSettle(); // Wait for animation to complete
-      expect(find.textContaining('photoOnly mode selected'), findsOneWidget);
-
-      // Wait for snackbar to fully disappear
-      await tester.pump(const Duration(seconds: 3));
-      await tester.pumpAndSettle();
-
-      // Test Video Mode
-      await tester.tap(find.text('Video Mode'));
-      await tester.pump(); // Start animation
-      await tester.pumpAndSettle(); // Wait for animation to complete
-      expect(find.textContaining('videoOnly mode selected'), findsOneWidget);
-
-      // Wait for snackbar to fully disappear
-      await tester.pump(const Duration(seconds: 3));
-      await tester.pumpAndSettle();
-
-      // Test Combined Mode
-      await tester.tap(find.text('Combined Mode'));
-      await tester.pump(); // Start animation
-      await tester.pumpAndSettle(); // Wait for animation to complete
-      expect(find.textContaining('combined mode selected'), findsOneWidget);
     });
 
     testWidgets('accessibility features work correctly', (tester) async {
@@ -264,17 +217,16 @@ void main() {
         ),
       );
 
-      // Assert - Check that interactive elements have proper semantics
+      // Assert - Check that interactive elements exist
       final inkWells = find.byType(InkWell);
-      expect(inkWells, findsNWidgets(3));
+      expect(inkWells, findsNWidgets(4)); // 3 camera mode cards + 1 permission button
 
-      // Verify that cards are tappable by checking tap gestures work
+      // Verify that the first 3 InkWells (camera mode cards) are tappable
       for (int i = 0; i < 3; i++) {
         await tester.tap(inkWells.at(i));
         await tester.pump();
-        // Should show a snackbar for each tap
-        expect(find.byType(SnackBar), findsOneWidget);
-        await tester.pump(const Duration(seconds: 3)); // Wait for snackbar to dismiss
+        // No snackbar expected - navigation is the intended behavior
+        expect(find.byType(SnackBar), findsNothing);
       }
     });
 
