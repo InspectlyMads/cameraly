@@ -7,29 +7,48 @@ import 'package:video_player/video_player.dart';
 import '../models/media_item.dart';
 
 class MediaViewer extends StatefulWidget {
-  final MediaItem mediaItem;
+  final List<MediaItem> mediaItems;
+  final int initialIndex;
 
   const MediaViewer({
     super.key,
-    required this.mediaItem,
+    required this.mediaItems,
+    this.initialIndex = 0,
   });
+
+  // Factory constructor for single item (backward compatibility)
+  factory MediaViewer.single({
+    Key? key,
+    required MediaItem mediaItem,
+  }) {
+    return MediaViewer(
+      key: key,
+      mediaItems: [mediaItem],
+      initialIndex: 0,
+    );
+  }
 
   @override
   State<MediaViewer> createState() => _MediaViewerState();
 }
 
 class _MediaViewerState extends State<MediaViewer> {
-  VideoPlayerController? _videoController;
-  bool _isVideoInitialized = false;
-  bool _isVideoPlaying = false;
+  late PageController _pageController;
+  late int _currentIndex;
+  final Map<int, VideoPlayerController> _videoControllers = {};
+  final Map<int, bool> _videoInitialized = {};
+  final Map<int, bool> _videoPlaying = {};
   bool _showControls = true;
 
   @override
   void initState() {
     super.initState();
-    if (widget.mediaItem.type == MediaType.video) {
-      _initializeVideoController();
-    }
+
+    _currentIndex = widget.initialIndex.clamp(0, widget.mediaItems.length - 1);
+    _pageController = PageController(initialPage: _currentIndex);
+
+    // Initialize video controller for current item if it's a video
+    _initializeVideoForIndex(_currentIndex);
 
     // Hide system UI for immersive experience
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
@@ -37,29 +56,34 @@ class _MediaViewerState extends State<MediaViewer> {
 
   @override
   void dispose() {
-    _videoController?.dispose();
+    for (var controller in _videoControllers.values) {
+      controller.dispose();
+    }
     // Restore system UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
-  Future<void> _initializeVideoController() async {
+  Future<void> _initializeVideoForIndex(int index) async {
     try {
-      _videoController = VideoPlayerController.file(File(widget.mediaItem.path));
-      await _videoController!.initialize();
+      final mediaItem = widget.mediaItems[index];
+      if (mediaItem.type == MediaType.video) {
+        _videoControllers[index] = VideoPlayerController.file(File(mediaItem.path));
+        await _videoControllers[index]!.initialize();
 
-      _videoController!.addListener(() {
+        _videoControllers[index]!.addListener(() {
+          if (mounted) {
+            setState(() {
+              _videoPlaying[index] = _videoControllers[index]!.value.isPlaying;
+            });
+          }
+        });
+
         if (mounted) {
           setState(() {
-            _isVideoPlaying = _videoController!.value.isPlaying;
+            _videoInitialized[index] = true;
           });
         }
-      });
-
-      if (mounted) {
-        setState(() {
-          _isVideoInitialized = true;
-        });
       }
     } catch (e) {
       debugPrint('Error initializing video controller: $e');
@@ -81,7 +105,7 @@ class _MediaViewerState extends State<MediaViewer> {
           if (_showControls) _buildControlsOverlay(),
 
           // Video controls for videos
-          if (widget.mediaItem.type == MediaType.video && _showControls) _buildVideoControls(),
+          if (widget.mediaItems[_currentIndex].type == MediaType.video && _showControls) _buildVideoControls(),
         ],
       ),
     );
@@ -94,16 +118,24 @@ class _MediaViewerState extends State<MediaViewer> {
           _showControls = !_showControls;
         });
       },
-      child: widget.mediaItem.type == MediaType.photo ? _buildPhotoViewer() : _buildVideoViewer(),
+      child: PageView.builder(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        itemCount: widget.mediaItems.length,
+        itemBuilder: (context, index) {
+          final mediaItem = widget.mediaItems[index];
+          return mediaItem.type == MediaType.photo ? _buildPhotoViewer(mediaItem) : _buildVideoViewer(index);
+        },
+      ),
     );
   }
 
-  Widget _buildPhotoViewer() {
+  Widget _buildPhotoViewer(MediaItem mediaItem) {
     return InteractiveViewer(
       minScale: 0.5,
       maxScale: 3.0,
       child: Image.file(
-        File(widget.mediaItem.path),
+        File(mediaItem.path),
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) {
           return const Center(
@@ -128,16 +160,16 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
-  Widget _buildVideoViewer() {
-    if (!_isVideoInitialized || _videoController == null) {
+  Widget _buildVideoViewer(int index) {
+    if (!(_videoInitialized[index] ?? false) || _videoControllers[index] == null) {
       return const Center(
         child: CircularProgressIndicator(color: Colors.white),
       );
     }
 
     return AspectRatio(
-      aspectRatio: _videoController!.value.aspectRatio,
-      child: VideoPlayer(_videoController!),
+      aspectRatio: _videoControllers[index]!.value.aspectRatio,
+      child: VideoPlayer(_videoControllers[index]!),
     );
   }
 
@@ -182,7 +214,7 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   Widget _buildVideoControls() {
-    if (!_isVideoInitialized || _videoController == null) {
+    if (!(_videoInitialized[_currentIndex] ?? false) || _videoControllers[_currentIndex] == null) {
       return const SizedBox.shrink();
     }
 
@@ -209,29 +241,20 @@ class _MediaViewerState extends State<MediaViewer> {
           children: [
             // Progress bar
             VideoProgressIndicator(
-              _videoController!,
+              _videoControllers[_currentIndex]!,
               allowScrubbing: true,
               colors: VideoProgressColors(
                 playedColor: Theme.of(context).primaryColor,
                 bufferedColor: Colors.grey,
-                backgroundColor: Colors.white30,
+                backgroundColor: Colors.grey[800]!,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
 
             // Control buttons
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                IconButton(
-                  icon: Icon(
-                    _isVideoPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                  onPressed: _toggleVideoPlayback,
-                ),
-                const SizedBox(width: 16),
                 IconButton(
                   icon: const Icon(
                     Icons.replay,
@@ -240,11 +263,17 @@ class _MediaViewerState extends State<MediaViewer> {
                   ),
                   onPressed: _restartVideo,
                 ),
+                IconButton(
+                  icon: Icon(
+                    (_videoPlaying[_currentIndex] ?? false) ? Icons.pause : Icons.play_arrow,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                  onPressed: _toggleVideoPlayback,
+                ),
+                _buildTimeDisplay(),
               ],
             ),
-
-            // Time display
-            _buildTimeDisplay(),
           ],
         ),
       ),
@@ -252,16 +281,16 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   Widget _buildTimeDisplay() {
-    if (!_isVideoInitialized || _videoController == null) {
+    if (!(_videoInitialized[_currentIndex] ?? false) || _videoControllers[_currentIndex] == null) {
       return const SizedBox.shrink();
     }
 
-    final position = _videoController!.value.position;
-    final duration = _videoController!.value.duration;
+    final position = _videoControllers[_currentIndex]!.value.position;
+    final duration = _videoControllers[_currentIndex]!.value.duration;
 
     return Text(
       '${_formatDuration(position)} / ${_formatDuration(duration)}',
-      style: const TextStyle(color: Colors.white, fontSize: 14),
+      style: const TextStyle(color: Colors.white),
     );
   }
 
@@ -272,26 +301,27 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   void _toggleVideoPlayback() {
-    if (_videoController == null) return;
+    if (_videoControllers[_currentIndex] == null) return;
 
-    if (_videoController!.value.isPlaying) {
-      _videoController!.pause();
+    if (_videoControllers[_currentIndex]!.value.isPlaying) {
+      _videoControllers[_currentIndex]!.pause();
     } else {
-      _videoController!.play();
+      _videoControllers[_currentIndex]!.play();
     }
   }
 
   void _restartVideo() {
-    if (_videoController == null) return;
+    if (_videoControllers[_currentIndex] == null) return;
 
-    _videoController!.seekTo(Duration.zero);
-    _videoController!.play();
+    _videoControllers[_currentIndex]!.seekTo(Duration.zero);
+    _videoControllers[_currentIndex]!.play();
   }
 
   void _showMediaInfo() {
-    final captureDate = widget.mediaItem.capturedAt;
-    final fileSize = widget.mediaItem.fileSizeFormatted;
-    final fileType = widget.mediaItem.type == MediaType.photo ? 'Photo' : 'Video';
+    final mediaItem = widget.mediaItems[_currentIndex];
+    final captureDate = mediaItem.capturedAt;
+    final fileSize = mediaItem.fileSizeFormatted;
+    final fileType = mediaItem.type == MediaType.photo ? 'Photo' : 'Video';
 
     showDialog(
       context: context,
@@ -302,12 +332,12 @@ class _MediaViewerState extends State<MediaViewer> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildInfoRow('Type', fileType),
-            _buildInfoRow('File Name', widget.mediaItem.fileName),
-            _buildInfoRow('Extension', widget.mediaItem.fileExtension.toUpperCase()),
+            _buildInfoRow('File Name', mediaItem.fileName),
+            _buildInfoRow('Extension', mediaItem.fileExtension.toUpperCase()),
             _buildInfoRow('Size', fileSize),
             _buildInfoRow('Captured', _formatDate(captureDate)),
-            if (widget.mediaItem.type == MediaType.video && widget.mediaItem.videoDuration != null) _buildInfoRow('Duration', _formatDuration(widget.mediaItem.videoDuration!)),
-            if (widget.mediaItem.orientationData != null) _buildInfoRow('Orientation', widget.mediaItem.orientationData!),
+            if (mediaItem.type == MediaType.video && mediaItem.videoDuration != null) _buildInfoRow('Duration', _formatDuration(mediaItem.videoDuration!)),
+            if (mediaItem.orientationData != null) _buildInfoRow('Orientation', mediaItem.orientationData!),
           ],
         ),
         actions: [
@@ -343,5 +373,12 @@ class _MediaViewerState extends State<MediaViewer> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+    _initializeVideoForIndex(_currentIndex);
   }
 }
