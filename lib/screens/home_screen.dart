@@ -1,84 +1,90 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-enum CameraMode {
-  photoOnly,
-  videoOnly,
-  combined,
-}
+import '../providers/permission_providers.dart';
+import '../services/camera_service.dart';
+import 'camera_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final permissionRequest = ref.watch(permissionRequestProvider);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Camera Test MVP'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('Camera Test'),
+        centerTitle: true,
+        elevation: 0,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Camera Orientation Testing',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Test how the camera package handles orientation on your device',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-                textAlign: TextAlign.center,
+              Text(
+                'Test how camera captures work across different device orientations',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.grey[600],
+                    ),
               ),
               const SizedBox(height: 32),
-              _buildModeCard(
-                context,
+
+              Text(
+                'Camera Modes',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 16),
+
+              // Camera mode cards
+              _buildCameraModeCard(
+                context: context,
+                ref: ref,
                 title: 'Photo Mode',
-                description: 'Test photo capture orientation handling',
+                description: 'Test photo capture with orientation data',
                 icon: Icons.camera_alt,
-                mode: CameraMode.photoOnly,
+                color: Colors.blue,
+                mode: CameraMode.photo,
               ),
               const SizedBox(height: 16),
-              _buildModeCard(
-                context,
+
+              _buildCameraModeCard(
+                context: context,
+                ref: ref,
                 title: 'Video Mode',
-                description: 'Test video recording orientation handling',
+                description: 'Test video recording with orientation data',
                 icon: Icons.videocam,
-                mode: CameraMode.videoOnly,
+                color: Colors.red,
+                mode: CameraMode.video,
               ),
               const SizedBox(height: 16),
-              _buildModeCard(
-                context,
+
+              _buildCameraModeCard(
+                context: context,
+                ref: ref,
                 title: 'Combined Mode',
-                description: 'Test both photo and video in one interface',
+                description: 'Switch between photo and video in one interface',
                 icon: Icons.camera,
+                color: Colors.green,
                 mode: CameraMode.combined,
               ),
+
               const SizedBox(height: 32),
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.blue),
-                      SizedBox(height: 8),
-                      Text(
-                        'This app tests camera orientation handling across different Android devices. Captured media will be saved to app storage for verification.',
-                        style: TextStyle(fontSize: 12),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16), // Bottom padding
+
+              // Permission status section
+              _buildPermissionStatus(context, ref, permissionRequest),
             ],
           ),
         ),
@@ -86,26 +92,35 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildModeCard(
-    BuildContext context, {
+  Widget _buildCameraModeCard({
+    required BuildContext context,
+    required WidgetRef ref,
     required String title,
     required String description,
     required IconData icon,
+    required Color color,
     required CameraMode mode,
   }) {
     return Card(
-      elevation: 2,
+      elevation: 4,
       child: InkWell(
-        onTap: () => _navigateToCameraMode(context, mode),
+        onTap: () => _navigateToCameraMode(context, ref, mode),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Row(
             children: [
-              Icon(
-                icon,
-                size: 40,
-                color: Theme.of(context).colorScheme.primary,
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: 32,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -114,18 +129,16 @@ class HomeScreen extends ConsumerWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       description,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
                     ),
                   ],
                 ),
@@ -133,6 +146,7 @@ class HomeScreen extends ConsumerWidget {
               Icon(
                 Icons.arrow_forward_ios,
                 color: Colors.grey[400],
+                size: 16,
               ),
             ],
           ),
@@ -141,13 +155,144 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  void _navigateToCameraMode(BuildContext context, CameraMode mode) {
-    // TODO: Navigate to camera screen with the selected mode
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${mode.name} mode selected - Camera screen coming soon!'),
-        duration: const Duration(seconds: 2),
+  Widget _buildPermissionStatus(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<Map<Permission, PermissionStatus>> permissionRequest,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.security,
+                  color: Colors.orange,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Permissions',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Permission status display
+            permissionRequest.when(
+              data: (permissions) {
+                if (permissions.isEmpty) {
+                  return const Text('Tap a camera mode to check permissions');
+                }
+
+                return Column(
+                  children: permissions.entries.map((entry) {
+                    final permission = entry.key;
+                    final status = entry.value;
+                    final isGranted = status == PermissionStatus.granted;
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isGranted ? Icons.check_circle : Icons.cancel,
+                            color: isGranted ? Colors.green : Colors.red,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            permission == Permission.camera ? 'Camera' : 'Microphone',
+                            style: TextStyle(
+                              color: isGranted ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+              loading: () => const Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Text('Checking permissions...'),
+                ],
+              ),
+              error: (error, _) => Text(
+                'Error checking permissions: $error',
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Grant permissions button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  await ref.read(permissionRequestProvider.notifier).requestCameraPermissions();
+                },
+                icon: const Icon(Icons.settings),
+                label: const Text('Grant Permissions'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _navigateToCameraMode(
+    BuildContext context,
+    WidgetRef ref,
+    CameraMode mode,
+  ) async {
+    // Check permissions first
+    final permissionService = ref.read(permissionServiceProvider);
+    final hasPermissions = await permissionService.hasAllCameraPermissions();
+
+    if (!hasPermissions) {
+      // Request permissions
+      final permissionNotifier = ref.read(permissionRequestProvider.notifier);
+      await permissionNotifier.requestCameraPermissions();
+
+      // Check again
+      final stillHasPermissions = await permissionService.hasAllCameraPermissions();
+      if (!stillHasPermissions) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Camera and microphone permissions are required'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    // Navigate to camera screen
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CameraScreen(initialMode: mode),
+        ),
+      );
+    }
   }
 }
