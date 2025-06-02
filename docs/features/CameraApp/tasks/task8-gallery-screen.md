@@ -1,71 +1,282 @@
-# Task 8: Gallery Screen for Media Verification
+# Task 8: Advanced Gallery Screen with Riverpod State Management
 
 ## Status: ⏳ Not Started
 
 ## Objective
-Create a gallery screen for viewing captured photos and videos within the app, specifically designed to verify orientation correctness and provide detailed metadata for testing purposes.
+Create a sophisticated gallery screen using Riverpod state management for viewing captured photos and videos, specifically designed to verify orientation correctness and provide detailed metadata analysis for testing purposes.
 
 ## Subtasks
 
-### 8.1 Gallery Layout Implementation
-- [ ] Design grid-based media gallery layout
-- [ ] Implement responsive grid that adapts to screen size
-- [ ] Add navigation from camera screen and home screen
-- [ ] Create native-style gallery header with back navigation
-- [ ] Implement empty state when no media exists
+### 8.1 Riverpod Gallery State Management
+- [ ] Design gallery providers for media management
+- [ ] Implement media loading with async state handling
+- [ ] Create orientation verification providers
+- [ ] Add metadata analysis providers
+- [ ] Implement gallery state persistence
 
-### 8.2 Media Display Components
-- [ ] Create photo thumbnail component with orientation handling
-- [ ] Implement video thumbnail with play overlay
-- [ ] Add media type indicators (photo/video icons)
-- [ ] Display capture date/time information
-- [ ] Show orientation metadata visually
+### 8.2 Advanced Media Display with State Management
+- [ ] Create media thumbnail provider with caching
+- [ ] Implement orientation-aware media display
+- [ ] Add metadata overlay provider
+- [ ] Handle media loading states and errors
+- [ ] Implement media type filtering
 
-### 8.3 Photo/Video Playback
-- [ ] Implement full-screen photo viewer
-- [ ] Add video player with native controls
-- [ ] Support pinch-to-zoom for photos
-- [ ] Handle orientation changes during media viewing
-- [ ] Add swipe navigation between media items
+### 8.3 Orientation Verification Analytics
+- [ ] Create orientation accuracy analysis provider
+- [ ] Implement cross-app compatibility testing provider
+- [ ] Add metadata validation providers
+- [ ] Create orientation testing report generator
+- [ ] Implement batch verification analysis
 
-### 8.4 Metadata Display for Testing
-- [ ] Create detailed metadata overlay for testing
-- [ ] Display EXIF orientation data for photos
-- [ ] Show video rotation metadata
-- [ ] Include device orientation at capture time
-- [ ] Add camera settings and device information
+### 8.4 Gallery UI with Reactive State
+- [ ] Build gallery screen with Consumer widgets
+- [ ] Implement reactive media grid
+- [ ] Add orientation-aware media viewer
+- [ ] Create testing analytics dashboard
+- [ ] Handle loading, error, and empty states
 
-### 8.5 File Management Features
-- [ ] Implement delete functionality with confirmation
-- [ ] Add share media capability
-- [ ] Export to device gallery option
-- [ ] Bulk selection and operations
-- [ ] Storage usage display
+### 8.5 Advanced Testing Integration
+- [ ] Integrate with testing data providers from previous tasks
+- [ ] Create comprehensive media analysis
+- [ ] Add orientation accuracy statistics
+- [ ] Implement testing report generation
+- [ ] Create automated verification workflows
 
 ## Detailed Implementation
 
-### 8.1 Gallery Grid Layout
+### 8.1 Gallery State Management Architecture
 ```dart
-class GalleryScreen extends StatefulWidget {
+// lib/providers/gallery_providers.dart
+@riverpod
+class GalleryController extends _$GalleryController {
   @override
-  _GalleryScreenState createState() => _GalleryScreenState();
+  Future<GalleryState> build() async {
+    // Initialize gallery state with media loading
+    return _loadAllMedia();
+  }
+  
+  Future<GalleryState> _loadAllMedia() async {
+    try {
+      final mediaItems = await ref.read(mediaStorageProvider).getAllMedia();
+      final sortedMedia = _sortMediaByOrientationAccuracy(mediaItems);
+      
+      return GalleryState.loaded(
+        mediaItems: sortedMedia,
+        orientationStats: await _calculateOrientationStats(mediaItems),
+        lastUpdated: DateTime.now(),
+      );
+    } catch (e) {
+      return GalleryState.error(e.toString());
+    }
+  }
+  
+  Future<void> refreshMedia() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() => _loadAllMedia());
+  }
+  
+  Future<void> deleteMedia(String mediaId) async {
+    // Delete media and update state
+    await ref.read(mediaStorageProvider).deleteMedia(mediaId);
+    await refreshMedia();
+  }
 }
 
-class _GalleryScreenState extends State<GalleryScreen> {
-  List<MediaItem> _mediaItems = [];
-  
+@riverpod
+Future<List<MediaItem>> filteredMedia(
+  FilteredMediaRef ref,
+  MediaFilter filter,
+) async {
+  final gallery = await ref.watch(galleryControllerProvider.future);
+  return _filterMedia(gallery.mediaItems, filter);
+}
+
+@riverpod
+class MediaViewer extends _$MediaViewer {
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: _buildNativeAppBar(),
-      body: _mediaItems.isEmpty
-          ? _buildEmptyState()
-          : _buildMediaGrid(),
+  MediaViewerState build(String mediaId) {
+    final media = ref.watch(mediaItemProvider(mediaId));
+    return MediaViewerState(
+      currentMedia: media,
+      metadata: null,
+      orientationAnalysis: null,
     );
   }
   
-  Widget _buildMediaGrid() {
+  Future<void> analyzeOrientation() async {
+    final currentMedia = state.currentMedia;
+    if (currentMedia == null) return;
+    
+    final analysis = await ref.read(orientationAnalyzerProvider)
+        .analyzeMedia(currentMedia);
+    
+    state = state.copyWith(orientationAnalysis: analysis);
+  }
+}
+```
+
+### 8.2 Orientation Verification Providers
+```dart
+// lib/providers/orientation_verification_providers.dart
+@riverpod
+class OrientationAnalyzer extends _$OrientationAnalyzer {
+  @override
+  Future<OrientationAnalysisState> build() async {
+    return OrientationAnalysisState.initial();
+  }
+  
+  Future<MediaOrientationAnalysis> analyzeMedia(MediaItem media) async {
+    try {
+      // Extract EXIF/metadata from media file
+      final metadata = await _extractMediaMetadata(media);
+      
+      // Verify orientation accuracy
+      final orientationAccuracy = await _verifyOrientationAccuracy(
+        media, 
+        metadata
+      );
+      
+      // Test cross-app compatibility
+      final compatibilityResults = await _testCrossAppCompatibility(media);
+      
+      // Generate recommendations
+      final recommendations = _generateOrientationRecommendations(
+        orientationAccuracy,
+        compatibilityResults,
+      );
+      
+      return MediaOrientationAnalysis(
+        mediaItem: media,
+        metadata: metadata,
+        orientationAccuracy: orientationAccuracy,
+        compatibilityResults: compatibilityResults,
+        recommendations: recommendations,
+        analyzedAt: DateTime.now(),
+      );
+      
+    } catch (e) {
+      throw OrientationAnalysisException('Failed to analyze media: $e');
+    }
+  }
+  
+  Future<GalleryOrientationReport> generateGalleryReport() async {
+    final allMedia = await ref.read(galleryControllerProvider.future);
+    
+    final analyses = <MediaOrientationAnalysis>[];
+    for (final media in allMedia.mediaItems) {
+      analyses.add(await analyzeMedia(media));
+    }
+    
+    return GalleryOrientationReport(
+      totalMediaItems: analyses.length,
+      orientationAccuracy: _calculateOverallAccuracy(analyses),
+      deviceBreakdown: _generateDeviceBreakdown(analyses),
+      orientationBreakdown: _generateOrientationBreakdown(analyses),
+      compatibilityScore: _calculateCompatibilityScore(analyses),
+      recommendations: _generateGlobalRecommendations(analyses),
+      generatedAt: DateTime.now(),
+    );
+  }
+}
+
+@riverpod
+Future<OrientationAccuracyStats> orientationAccuracyStats(
+  OrientationAccuracyStatsRef ref,
+) async {
+  final testingData = await ref.watch(testingDataControllerProvider.future);
+  return _calculateAccuracyStats(testingData);
+}
+
+@riverpod
+Future<CrossAppCompatibilityReport> crossAppCompatibility(
+  CrossAppCompatibilityRef ref,
+) async {
+  final gallery = await ref.watch(galleryControllerProvider.future);
+  return await _testAllMediaCompatibility(gallery.mediaItems);
+}
+```
+
+### 8.3 Gallery UI with Reactive State
+```dart
+// lib/screens/gallery_screen.dart
+class GalleryScreen extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final galleryState = ref.watch(galleryControllerProvider);
+    
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: _buildNativeAppBar(context, ref),
+      body: galleryState.when(
+        loading: () => _buildLoadingState(),
+        error: (error, stack) => _buildErrorState(error, ref),
+        data: (gallery) => _buildGalleryContent(context, ref, gallery),
+      ),
+    );
+  }
+  
+  Widget _buildGalleryContent(
+    BuildContext context, 
+    WidgetRef ref, 
+    GalleryState gallery,
+  ) {
+    return Column(
+      children: [
+        _buildOrientationStatsHeader(context, ref, gallery),
+        Expanded(
+          child: _buildMediaGrid(context, ref, gallery),
+        ),
+        _buildGalleryActions(context, ref),
+      ],
+    );
+  }
+  
+  Widget _buildOrientationStatsHeader(
+    BuildContext context, 
+    WidgetRef ref, 
+    GalleryState gallery,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        border: Border(bottom: BorderSide(color: Colors.grey[700]!)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildStatCard(
+                'Total Media', 
+                '${gallery.mediaItems.length}',
+                Icons.photo_library,
+              ),
+              _buildStatCard(
+                'Accuracy', 
+                '${(gallery.orientationStats.accuracy * 100).toStringAsFixed(1)}%',
+                Icons.check_circle,
+                color: _getAccuracyColor(gallery.orientationStats.accuracy),
+              ),
+              _buildStatCard(
+                'Devices Tested', 
+                '${gallery.orientationStats.uniqueDevices}',
+                Icons.devices,
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          _buildOrientationBreakdown(gallery.orientationStats),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildMediaGrid(
+    BuildContext context, 
+    WidgetRef ref, 
+    GalleryState gallery,
+  ) {
     return GridView.builder(
       padding: EdgeInsets.all(4),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -73,11 +284,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
         crossAxisSpacing: 2,
         mainAxisSpacing: 2,
       ),
-      itemCount: _mediaItems.length,
+      itemCount: gallery.mediaItems.length,
       itemBuilder: (context, index) {
-        return MediaThumbnail(
-          mediaItem: _mediaItems[index],
-          onTap: () => _viewMedia(index),
+        final media = gallery.mediaItems[index];
+        return OrientationAwareMediaThumbnail(
+          mediaItem: media,
+          onTap: () => _viewMedia(context, ref, media),
         );
       },
     );
@@ -85,14 +297,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
 }
 ```
 
-### 8.2 Media Thumbnail Component
+### 8.4 Orientation-Aware Media Thumbnail
 ```dart
-class MediaThumbnail extends StatelessWidget {
+// lib/widgets/orientation_aware_media_thumbnail.dart
+class OrientationAwareMediaThumbnail extends ConsumerWidget {
   final MediaItem mediaItem;
   final VoidCallback onTap;
   
+  const OrientationAwareMediaThumbnail({
+    required this.mediaItem,
+    required this.onTap,
+  });
+  
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final orientationAnalysis = ref.watch(
+      mediaOrientationAnalysisProvider(mediaItem.id)
+    );
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -104,122 +326,141 @@ class MediaThumbnail extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             _buildMediaPreview(),
+            _buildOrientationIndicators(orientationAnalysis),
             _buildMediaTypeIndicator(),
-            _buildOrientationIndicator(),
           ],
         ),
       ),
     );
   }
   
-  Widget _buildMediaPreview() {
-    if (mediaItem.type == MediaType.photo) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: Image.file(
-          mediaItem.file,
-          fit: BoxFit.cover,
-        ),
-      );
-    } else {
-      return _buildVideoThumbnail();
-    }
-  }
-  
-  Widget _buildOrientationIndicator() {
+  Widget _buildOrientationIndicators(
+    AsyncValue<MediaOrientationAnalysis> analysis,
+  ) {
     return Positioned(
       top: 4,
-      right: 4,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          _getOrientationText(),
-          style: TextStyle(
+      left: 4,
+      child: analysis.when(
+        loading: () => _buildLoadingIndicator(),
+        error: (error, stack) => _buildErrorIndicator(),
+        data: (analysis) => _buildOrientationAccuracyBadge(analysis),
+      ),
+    );
+  }
+  
+  Widget _buildOrientationAccuracyBadge(MediaOrientationAnalysis analysis) {
+    final accuracy = analysis.orientationAccuracy.overallScore;
+    final color = _getAccuracyColor(accuracy);
+    
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            accuracy > 0.95 ? Icons.check_circle : 
+            accuracy > 0.8 ? Icons.warning : Icons.error,
             color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
+            size: 12,
           ),
-        ),
+          SizedBox(width: 2),
+          Text(
+            '${(accuracy * 100).toInt()}%',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 ```
 
-### 8.3 Full-Screen Media Viewer
+### 8.5 Advanced Media Viewer with Analytics
 ```dart
-class MediaViewer extends StatefulWidget {
-  final List<MediaItem> mediaItems;
-  final int initialIndex;
+// lib/screens/media_viewer_screen.dart
+class MediaViewerScreen extends ConsumerWidget {
+  final String mediaId;
+  
+  const MediaViewerScreen({required this.mediaId});
   
   @override
-  _MediaViewerState createState() => _MediaViewerState();
-}
-
-class _MediaViewerState extends State<MediaViewer> {
-  PageController _pageController;
-  int _currentIndex;
-  bool _showMetadata = false;
-  
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mediaViewer = ref.watch(mediaViewerProvider(mediaId));
+    final orientationAnalysis = ref.watch(
+      mediaOrientationAnalysisProvider(mediaId)
+    );
+    
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          _buildMediaPageView(),
-          _buildViewerControls(),
-          if (_showMetadata) _buildMetadataOverlay(),
+          _buildMediaDisplay(context, ref, mediaViewer),
+          _buildMediaControls(context, ref),
+          _buildMetadataOverlay(context, ref, orientationAnalysis),
         ],
       ),
     );
   }
   
-  Widget _buildMediaPageView() {
-    return PageView.builder(
-      controller: _pageController,
-      onPageChanged: (index) => setState(() => _currentIndex = index),
-      itemCount: widget.mediaItems.length,
-      itemBuilder: (context, index) {
-        final mediaItem = widget.mediaItems[index];
-        if (mediaItem.type == MediaType.photo) {
-          return InteractiveViewer(
-            child: Image.file(mediaItem.file),
-          );
-        } else {
-          return VideoPlayerWidget(mediaItem: mediaItem);
-        }
-      },
+  Widget _buildMetadataOverlay(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<MediaOrientationAnalysis> analysis,
+  ) {
+    return analysis.when(
+      loading: () => _buildAnalysisLoadingState(),
+      error: (error, stack) => _buildAnalysisErrorState(error),
+      data: (analysis) => OrientationMetadataOverlay(analysis: analysis),
     );
   }
 }
-```
 
-### 8.4 Metadata Overlay for Testing
-```dart
-class MetadataOverlay extends StatelessWidget {
-  final MediaItem mediaItem;
+class OrientationMetadataOverlay extends StatefulWidget {
+  final MediaOrientationAnalysis analysis;
+  
+  @override
+  _OrientationMetadataOverlayState createState() => 
+      _OrientationMetadataOverlayState();
+}
+
+class _OrientationMetadataOverlayState extends State<OrientationMetadataOverlay> {
+  bool _showDetails = false;
   
   @override
   Widget build(BuildContext context) {
+    if (!_showDetails) {
+      return _buildCompactOverlay();
+    }
+    
+    return _buildDetailedOverlay();
+  }
+  
+  Widget _buildDetailedOverlay() {
     return Container(
-      color: Colors.black.withOpacity(0.8),
+      color: Colors.black.withOpacity(0.9),
       child: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildMetadataHeader(),
+              _buildOrientationAnalysisSection(),
               SizedBox(height: 16),
-              _buildOrientationData(),
-              _buildCaptureData(),
-              _buildDeviceData(),
-              _buildFileData(),
+              _buildMetadataSection(),
+              SizedBox(height: 16),
+              _buildCompatibilitySection(),
+              SizedBox(height: 16),
+              _buildRecommendationsSection(),
+              SizedBox(height: 16),
+              _buildTestingDataSection(),
             ],
           ),
         ),
@@ -227,131 +468,134 @@ class MetadataOverlay extends StatelessWidget {
     );
   }
   
-  Widget _buildOrientationData() {
-    return MetadataSection(
-      title: 'Orientation Data',
-      items: [
-        MetadataItem('Device Orientation', mediaItem.deviceOrientation),
-        MetadataItem('EXIF Orientation', _getExifOrientation()),
-        MetadataItem('Capture Angle', _getCaptureAngle()),
-        MetadataItem('Preview Rotation', _getPreviewRotation()),
-      ],
+  Widget _buildOrientationAnalysisSection() {
+    final analysis = widget.analysis;
+    
+    return Card(
+      color: Colors.grey[800],
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Orientation Analysis',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 12),
+            _buildAccuracyMeter(analysis.orientationAccuracy),
+            SizedBox(height: 12),
+            _buildOrientationDetails(analysis),
+          ],
+        ),
+      ),
     );
   }
 }
 ```
 
 ## Files to Create
+- `lib/providers/gallery_providers.dart`
+- `lib/providers/orientation_verification_providers.dart`
+- `lib/providers/media_analysis_providers.dart`
 - `lib/screens/gallery_screen.dart`
 - `lib/screens/media_viewer_screen.dart`
-- `lib/widgets/media_thumbnail.dart`
-- `lib/widgets/metadata_overlay.dart`
-- `lib/widgets/video_player_widget.dart`
-- `lib/services/media_metadata_service.dart`
-- `lib/utils/exif_reader.dart`
+- `lib/widgets/orientation_aware_media_thumbnail.dart`
+- `lib/widgets/orientation_metadata_overlay.dart`
+- `lib/widgets/gallery_stats_widgets.dart`
+- `lib/models/gallery_state.dart`
+- `lib/models/media_orientation_analysis.dart`
 
 ## Files to Modify
-- `lib/main.dart` (add gallery route)
-- `lib/screens/home_screen.dart` (add gallery navigation)
-- `lib/screens/camera_screen.dart` (add gallery access)
+- `lib/providers/testing_providers.dart` (integrate gallery analytics)
+- `lib/main.dart` (add gallery routes)
+- `lib/screens/camera_screen.dart` (add gallery navigation)
 
-## Orientation Verification Features
+## Riverpod Integration Benefits
 
-### Visual Orientation Indicators
-- Color-coded orientation badges on thumbnails
-- Clear text labels: "Portrait", "Landscape L", "Landscape R", "Upside Down"
-- Visual rotation indicators showing capture angle
-- Comparison with expected vs actual orientation
+### State Management Advantages
+- **Reactive Media Loading**: Automatic UI updates when media changes
+- **Cached Analysis**: Orientation analysis results cached efficiently
+- **Global Testing Data**: Shared analytics across screens
+- **Error Handling**: Centralized error management
+- **Performance**: Optimized rebuilds for large media collections
 
-### EXIF/Metadata Analysis
-- Display raw EXIF orientation values
-- Show video rotation matrix data
-- Compare device orientation vs media metadata
-- Highlight mismatches for debugging
-
-### Testing Workflow Integration
-- Quick access to recently captured media
-- Batch orientation verification
-- Export test results functionality
-- Integration with testing documentation
-
-## Native Gallery Integration
-
-### Share to System Gallery
+### Provider Dependencies
 ```dart
-Future<void> _shareToSystemGallery(MediaItem mediaItem) async {
-  try {
-    await GallerySaver.saveImage(mediaItem.path);
-    _showSuccessMessage('Saved to device gallery');
-  } catch (e) {
-    _showErrorMessage('Failed to save: $e');
-  }
-}
+// Gallery dependencies
+galleryControllerProvider
+  ↓ depends on
+mediaStorageProvider + testingDataControllerProvider
+  ↓ provides to
+orientationAnalyzerProvider + mediaViewerProvider
 ```
 
-### Open in External Apps
+## Testing Integration with Riverpod
+
+### Provider Testing
 ```dart
-Future<void> _openInExternalApp(MediaItem mediaItem) async {
-  try {
-    await OpenFile.open(mediaItem.path);
-  } catch (e) {
-    _showErrorMessage('No compatible app found');
-  }
+// Test gallery provider functionality
+testWidgets('Gallery loads media correctly', (tester) async {
+  final container = ProviderContainer(
+    overrides: [
+      mediaStorageProvider.overrideWith(MockMediaStorage()),
+    ],
+  );
+  
+  final gallery = await container.read(galleryControllerProvider.future);
+  expect(gallery.mediaItems.length, equals(expectedCount));
+});
+```
+
+### Orientation Testing Analytics
+```dart
+@riverpod
+Future<OrientationTestingReport> orientationTestingReport(
+  OrientationTestingReportRef ref,
+) async {
+  final allAnalyses = await ref.watch(allMediaAnalysesProvider.future);
+  
+  return OrientationTestingReport(
+    totalTests: allAnalyses.length,
+    successRate: _calculateSuccessRate(allAnalyses),
+    deviceBreakdown: _groupByDevice(allAnalyses),
+    orientationBreakdown: _groupByOrientation(allAnalyses),
+    timeSeriesData: _generateTimeSeriesData(allAnalyses),
+    recommendations: _generateTestingRecommendations(allAnalyses),
+  );
 }
 ```
 
 ## Acceptance Criteria
-- [ ] Gallery displays all captured photos and videos
-- [ ] Media thumbnails show correct orientation
-- [ ] Full-screen viewer handles orientation properly
-- [ ] Video playback works with correct rotation
-- [ ] Metadata overlay shows accurate orientation data
-- [ ] Delete functionality works without errors
-- [ ] Share to system gallery preserves orientation
-- [ ] UI remains responsive with large media collections
-- [ ] Orientation verification is visually clear
-- [ ] Testing workflow is efficient and intuitive
+- [ ] Gallery screen uses Riverpod providers for all state management
+- [ ] Media loading and display is reactive and efficient
+- [ ] Orientation verification analytics are comprehensive and accurate
+- [ ] UI automatically updates when testing data changes
+- [ ] All media operations (load, delete, analyze) work through providers
+- [ ] Error states are handled gracefully throughout
+- [ ] Orientation analysis results are cached and persisted
+- [ ] Gallery integrates seamlessly with testing data from other tasks
+- [ ] Performance remains smooth with large media collections
+- [ ] Testing analytics provide actionable insights
 
-## Testing Points
-- [ ] Test gallery with mixed photo/video content
-- [ ] Verify thumbnail generation for all orientations
-- [ ] Test full-screen viewing in all device orientations
-- [ ] Verify video playback orientation
-- [ ] Test metadata accuracy for all capture scenarios
-- [ ] Verify file operations (delete, share, export)
-- [ ] Test performance with large number of media files
-- [ ] Verify UI responsiveness during media loading
-- [ ] Test navigation between media items
-- [ ] Verify empty state handling
-
-## Performance Considerations
-- Efficient thumbnail generation and caching
-- Lazy loading for large media collections
-- Optimized video thumbnail extraction
-- Memory management for full-screen viewing
-- Background processing for metadata extraction
-
-## User Experience Requirements
-- Smooth scrolling in media grid
-- Quick thumbnail loading
-- Intuitive navigation gestures
-- Clear visual feedback for operations
-- Consistent with system gallery patterns
-
-## Testing Integration Features
-- Export orientation test results
-- Generate testing reports
-- Batch verification tools
-- Integration with external analysis tools
-- Test data preservation across app sessions
+## Enhanced Testing Requirements
+- **Provider Integration**: All functionality accessible through Riverpod
+- **State Persistence**: Gallery state and analysis results persist across app lifecycle
+- **Real-time Updates**: UI reflects changes immediately
+- **Testing Analytics**: Comprehensive orientation analysis and reporting
+- **Performance**: Smooth operation with 100+ media items
 
 ## Notes
-- Gallery serves dual purpose: user functionality and testing verification
-- Focus on making orientation issues immediately visible
-- Ensure metadata display is comprehensive for debugging
-- Consider adding automated orientation verification
-- Document any discrepancies found during testing
+- Gallery serves as the primary validation tool for orientation testing
+- Riverpod enables sophisticated caching and dependency management
+- State management makes testing and debugging much easier
+- Analytics providers can be reused across different screens
+- Real-time orientation analysis provides immediate feedback
 
-## Estimated Time: 4-5 hours
+## Estimated Time: 5-6 hours
 
 ## Next Task: Task 9 - Comprehensive Orientation Testing 
