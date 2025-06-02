@@ -1,359 +1,509 @@
-# Task 5: Photo Capture Implementation
+# Task 5: Advanced Photo Capture with Orientation Intelligence
 
 ## Status: ⏳ Not Started
 
 ## Objective
-Implement photo capture functionality with specific focus on orientation handling and EXIF metadata generation for comprehensive testing across device rotations.
+Implement sophisticated photo capture functionality that integrates with the advanced orientation-aware camera controller from Task 4, ensuring perfect EXIF metadata generation and comprehensive orientation testing across all device rotations and manufacturer variations.
 
 ## Subtasks
 
-### 5.1 Photo Capture Core Logic
-- [ ] Implement `takePicture()` method with error handling
-- [ ] Add capture button UI for photo mode
-- [ ] Handle capture in progress states
-- [ ] Implement capture sound/haptic feedback
-- [ ] Add capture animation effects
+### 5.1 Orientation-Integrated Photo Capture
+- [ ] Integrate with OrientationAwareCameraController from Task 4
+- [ ] Implement capture with real-time orientation compensation
+- [ ] Handle manufacturer-specific orientation corrections during capture
+- [ ] Add multi-sensor orientation validation before capture
+- [ ] Implement capture orientation override for testing scenarios
 
-### 5.2 Orientation-Aware Photo Capture
-- [ ] Track device orientation during capture
-- [ ] Ensure EXIF orientation data is correctly set
-- [ ] Handle camera sensor orientation vs device orientation
-- [ ] Test capture in all four device orientations
-- [ ] Verify metadata preservation during file operations
+### 5.2 Advanced EXIF Metadata Generation
+- [ ] Generate comprehensive EXIF orientation data with device-specific corrections
+- [ ] Include camera sensor orientation metadata
+- [ ] Add device manufacturer and model information to EXIF
+- [ ] Implement custom orientation metadata fields for testing
+- [ ] Validate EXIF data accuracy across different device types
 
-### 5.3 Photo Storage and Management
-- [ ] Save photos to app-private directory
-- [ ] Generate unique, descriptive filenames
-- [ ] Include orientation metadata in filename/database
-- [ ] Implement photo compression options
-- [ ] Add storage space checks before capture
+### 5.3 Dual-UI Photo Capture Integration
+- [ ] Implement photo capture for portrait UI overlay
+- [ ] Implement photo capture for landscape UI overlay
+- [ ] Handle capture button adaptation across orientations
+- [ ] Add orientation-aware capture feedback animations
+- [ ] Implement touch target validation for capture controls
 
-### 5.4 Photo Mode UI
-- [ ] Design photo-specific capture interface
-- [ ] Add photo count/remaining storage indicator
-- [ ] Implement recent photo thumbnail preview
-- [ ] Add capture confirmation feedback
-- [ ] Create orientation indicator UI
+### 5.4 Enhanced Photo Storage with Orientation Context
+- [ ] Save photos with comprehensive orientation metadata
+- [ ] Include capture orientation context in filename/database
+- [ ] Store device orientation vs sensor orientation data
+- [ ] Implement orientation verification during storage
+- [ ] Add batch orientation analysis for captured photos
 
-### 5.5 Photo Quality and Settings
-- [ ] Configure optimal photo resolution
-- [ ] Implement different quality settings
-- [ ] Add HDR support if available
-- [ ] Handle different camera capabilities
-- [ ] Add manual exposure controls (optional)
+### 5.5 Testing-Focused Photo Features
+- [ ] Add real-time orientation indicator during capture
+- [ ] Implement capture orientation logging for analysis
+- [ ] Create orientation test mode with enhanced debugging
+- [ ] Add automatic orientation verification post-capture
+- [ ] Implement orientation accuracy statistics tracking
 
 ## Detailed Implementation
 
-### 5.1 Photo Capture Method
+### 5.1 Orientation-Aware Photo Capture
 ```dart
-Future<void> _capturePhoto() async {
-  if (!_controller.value.isInitialized) return;
+class OrientationAwarePhotoCapture {
+  final OrientationAwareCameraController _cameraController;
+  final OrientationMetadataService _metadataService;
   
-  try {
-    setState(() => _isCapturing = true);
+  Future<CaptureResult> capturePhotoWithOrientation() async {
+    if (!_cameraController.isInitialized) {
+      throw CameraNotInitializedException();
+    }
     
-    // Track orientation at capture time
-    final orientation = await _getDeviceOrientation();
+    try {
+      // Get comprehensive orientation data before capture
+      final orientationData = await _gatherOrientationData();
+      
+      // Validate orientation data consistency
+      await _validateOrientationConsistency(orientationData);
+      
+      // Configure camera for optimal capture based on orientation
+      await _optimizeCameraForOrientation(orientationData);
+      
+      // Capture photo with orientation context
+      final XFile photo = await _cameraController.takePicture();
+      
+      // Enhance EXIF with comprehensive orientation data
+      final enhancedPhoto = await _enhancePhotoWithOrientationData(
+        photo, 
+        orientationData
+      );
+      
+      // Verify orientation accuracy post-capture
+      final verificationResult = await _verifyOrientationAccuracy(
+        enhancedPhoto, 
+        orientationData
+      );
+      
+      return CaptureResult(
+        photo: enhancedPhoto,
+        orientationData: orientationData,
+        verificationResult: verificationResult,
+        captureTimestamp: DateTime.now(),
+      );
+      
+    } catch (e) {
+      throw PhotoCaptureException('Failed to capture with orientation: $e');
+    }
+  }
+  
+  Future<OrientationData> _gatherOrientationData() async {
+    return OrientationData(
+      deviceOrientation: _cameraController.deviceOrientation,
+      cameraRotation: _cameraController.cameraRotation,
+      sensorOrientation: _cameraController.sensorOrientation,
+      displayRotation: await _getDisplayRotation(),
+      magnetometerReading: await _getMagnetometerReading(),
+      accelerometerReading: await _getAccelerometerReading(),
+      deviceManufacturer: Platform.manufacturer,
+      deviceModel: Platform.deviceModel,
+      androidVersion: Platform.androidVersion,
+      timestamp: DateTime.now(),
+    );
+  }
+  
+  Future<void> _validateOrientationConsistency(OrientationData data) async {
+    // Check for inconsistencies between different orientation sources
+    final expectedRotation = _calculateExpectedRotation(data);
+    final actualRotation = data.cameraRotation;
     
-    final XFile photo = await _controller.takePicture();
-    
-    // Save with orientation metadata
-    await _savePhotoWithMetadata(photo, orientation);
-    
-    _showCaptureSuccess();
-  } catch (e) {
-    _showCaptureError(e.toString());
-  } finally {
-    setState(() => _isCapturing = false);
+    if ((expectedRotation - actualRotation).abs() > 15) {
+      // Log potential orientation issue but continue capture
+      await _logOrientationInconsistency(data, expectedRotation);
+    }
   }
 }
 ```
 
-### 5.2 Orientation Tracking
+### 5.2 Enhanced EXIF Metadata Service
 ```dart
-class OrientationCapture {
-  static Future<OrientationData> getCurrentOrientation() async {
-    return OrientationData(
-      deviceOrientation: await SystemChrome.orientation,
-      timestamp: DateTime.now(),
-      magnetometerReading: await sensors.magnetometer.first,
+class EnhancedEXIFService {
+  static Future<File> enhancePhotoWithOrientationData(
+    XFile photo, 
+    OrientationData orientationData
+  ) async {
+    final bytes = await photo.readAsBytes();
+    final originalExif = await readExifFromBytes(bytes);
+    
+    // Calculate correct EXIF orientation value
+    final exifOrientation = _calculateEXIFOrientation(orientationData);
+    
+    // Create comprehensive EXIF data
+    final enhancedExif = {
+      ...originalExif,
+      'Orientation': exifOrientation,
+      'DeviceOrientation': orientationData.deviceOrientation.toString(),
+      'CameraRotation': orientationData.cameraRotation.toString(),
+      'SensorOrientation': orientationData.sensorOrientation.toString(),
+      'DeviceManufacturer': orientationData.deviceManufacturer,
+      'DeviceModel': orientationData.deviceModel,
+      'AndroidVersion': orientationData.androidVersion,
+      'CaptureTimestamp': orientationData.timestamp.toIso8601String(),
+      'OrientationAccuracy': 'High', // Will be updated based on validation
+      'TestingMetadata': _generateTestingMetadata(orientationData),
+    };
+    
+    // Write enhanced EXIF back to image
+    final enhancedBytes = await writeExifToBytes(bytes, enhancedExif);
+    
+    // Save enhanced image
+    final enhancedFile = await _saveEnhancedImage(enhancedBytes, photo.path);
+    
+    return enhancedFile;
+  }
+  
+  static int _calculateEXIFOrientation(OrientationData data) {
+    // Calculate EXIF orientation value based on device orientation
+    // and manufacturer-specific corrections
+    
+    switch (data.deviceOrientation) {
+      case DeviceOrientation.portraitUp:
+        return _applyManufacturerCorrection(1, data);
+      case DeviceOrientation.landscapeLeft:
+        return _applyManufacturerCorrection(6, data); // Rotate 90° CW
+      case DeviceOrientation.landscapeRight:
+        return _applyManufacturerCorrection(8, data); // Rotate 90° CCW
+      case DeviceOrientation.portraitDown:
+        return _applyManufacturerCorrection(3, data); // Rotate 180°
+      default:
+        return 1;
+    }
+  }
+  
+  static int _applyManufacturerCorrection(int baseOrientation, OrientationData data) {
+    // Apply device-specific EXIF corrections
+    if (data.deviceManufacturer.toLowerCase().contains('samsung')) {
+      return _applySamsungEXIFCorrection(baseOrientation, data);
+    } else if (data.deviceManufacturer.toLowerCase().contains('xiaomi')) {
+      return _applyXiaomiEXIFCorrection(baseOrientation, data);
+    }
+    return baseOrientation;
+  }
+}
+```
+
+### 5.3 Dual-UI Capture Button Integration
+```dart
+// Portrait Capture Button (Enhanced from Task 4)
+class PortraitPhotoCaptureButton extends StatefulWidget {
+  final OrientationAwarePhotoCapture photoCapture;
+  final Function(CaptureResult) onCaptureComplete;
+  
+  @override
+  _PortraitPhotoCaptureButtonState createState() => _PortraitPhotoCaptureButtonState();
+}
+
+class _PortraitPhotoCaptureButtonState extends State<PortraitPhotoCaptureButton> 
+    with TickerProviderStateMixin {
+  
+  bool _isCapturing = false;
+  late AnimationController _captureAnimationController;
+  late AnimationController _feedbackAnimationController;
+  
+  @override
+  void initState() {
+    super.initState();
+    _captureAnimationController = AnimationController(
+      duration: Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _feedbackAnimationController = AnimationController(
+      duration: Duration(milliseconds: 300),
+      vsync: this,
+    );
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _captureAnimationController.forward(),
+      onTapUp: (_) => _captureAnimationController.reverse(),
+      onTapCancel: () => _captureAnimationController.reverse(),
+      onTap: _isCapturing ? null : _handleCapture,
+      child: AnimatedBuilder(
+        animation: _captureAnimationController,
+        builder: (context, child) {
+          final scale = 1.0 - (_captureAnimationController.value * 0.1);
+          return Transform.scale(
+            scale: scale,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(
+                  color: _isCapturing 
+                    ? Colors.orange.withOpacity(0.8)
+                    : Colors.white.withOpacity(0.3), 
+                  width: 4
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: _isCapturing 
+                  ? SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                      ),
+                    )
+                  : Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                      ),
+                      child: Icon(
+                        Icons.camera_alt,
+                        color: Colors.black,
+                        size: 28,
+                      ),
+                    ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+  
+  Future<void> _handleCapture() async {
+    if (_isCapturing) return;
+    
+    setState(() => _isCapturing = true);
+    
+    try {
+      // Provide haptic feedback
+      HapticFeedback.mediumImpact();
+      
+      // Start capture feedback animation
+      _feedbackAnimationController.forward();
+      
+      // Capture photo with orientation intelligence
+      final captureResult = await widget.photoCapture.capturePhotoWithOrientation();
+      
+      // Show success feedback
+      await _showCaptureSuccessFeedback();
+      
+      // Call completion callback
+      widget.onCaptureComplete(captureResult);
+      
+    } catch (e) {
+      await _showCaptureErrorFeedback(e.toString());
+    } finally {
+      setState(() => _isCapturing = false);
+      _feedbackAnimationController.reverse();
+    }
+  }
+}
+
+// Landscape Capture Button (Similar structure adapted for landscape)
+class LandscapePhotoCaptureButton extends StatefulWidget {
+  // Similar implementation adapted for landscape orientation
+  // Positioned on right side, slightly smaller size (70x70)
+  // Same orientation-aware capture logic
+}
+```
+
+### 5.4 Testing-Focused Orientation Features
+```dart
+class PhotoOrientationTester {
+  static Widget buildOrientationTestingOverlay(OrientationData currentOrientation) {
+    return Positioned(
+      top: 50,
+      right: 20,
+      child: Container(
+        padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('ORIENTATION TEST', 
+              style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+            SizedBox(height: 4),
+            Text('Device: ${_getOrientationText(currentOrientation.deviceOrientation)}', 
+              style: TextStyle(color: Colors.white, fontSize: 10)),
+            Text('Camera: ${currentOrientation.cameraRotation}°', 
+              style: TextStyle(color: Colors.white, fontSize: 10)),
+            Text('Sensor: ${currentOrientation.sensorOrientation}°', 
+              style: TextStyle(color: Colors.white, fontSize: 10)),
+            SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.screen_rotation, color: Colors.orange, size: 12),
+                SizedBox(width: 4),
+                Text('READY', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  static Future<void> logCaptureForTesting(CaptureResult result) async {
+    final testLog = {
+      'timestamp': result.captureTimestamp.toIso8601String(),
+      'deviceOrientation': result.orientationData.deviceOrientation.toString(),
+      'cameraRotation': result.orientationData.cameraRotation,
+      'sensorOrientation': result.orientationData.sensorOrientation,
+      'exifOrientation': await _extractEXIFOrientation(result.photo),
+      'deviceInfo': {
+        'manufacturer': result.orientationData.deviceManufacturer,
+        'model': result.orientationData.deviceModel,
+        'androidVersion': result.orientationData.androidVersion,
+      },
+      'verificationResult': result.verificationResult.toJson(),
+    };
+    
+    await TestingLogger.logPhotoCapture(testLog);
+  }
+}
+```
+
+## Files to Create
+- `lib/features/orientation_aware_photo_capture.dart`
+- `lib/services/enhanced_exif_service.dart`
+- `lib/widgets/portrait_photo_capture_button.dart`
+- `lib/widgets/landscape_photo_capture_button.dart`
+- `lib/models/capture_result.dart`
+- `lib/models/orientation_data.dart` (shared with Task 4)
+- `lib/utils/photo_orientation_tester.dart`
+- `lib/services/testing_logger.dart`
+
+## Files to Modify
+- `lib/widgets/portrait_camera_overlay.dart` (integrate new capture button)
+- `lib/widgets/landscape_camera_overlay.dart` (integrate new capture button)
+- `lib/screens/camera_screen.dart` (integrate orientation-aware photo capture)
+
+## Advanced Orientation Testing Matrix
+
+### Enhanced Photo Testing Protocol
+```markdown
+For each device orientation and camera (front/rear):
+
+#### Comprehensive Orientation Capture Test
+1. [ ] Capture photo in specific orientation
+2. [ ] Verify real-time orientation data accuracy
+3. [ ] Check EXIF orientation value calculation
+4. [ ] Validate manufacturer-specific corrections applied
+5. [ ] Test in-app gallery display (should be upright)
+6. [ ] Test device gallery display (should be upright)
+7. [ ] Test third-party app display (should be upright)
+8. [ ] Verify metadata completeness and accuracy
+9. [ ] Log orientation accuracy statistics
+10. [ ] Document any device-specific behaviors
+
+#### Advanced Edge Case Testing
+- [ ] Test during rapid orientation changes
+- [ ] Test with accelerometer/magnetometer interference
+- [ ] Test with manual orientation override
+- [ ] Test capture immediately after orientation change
+- [ ] Test with device flat (face up/down)
+```
+
+## Integration with Task 4
+
+### OrientationAwareCameraController Integration
+```dart
+class PhotoCaptureScreen extends StatefulWidget {
+  @override
+  _PhotoCaptureScreenState createState() => _PhotoCaptureScreenState();
+}
+
+class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
+  late OrientationAwareCameraController _cameraController;
+  late OrientationAwarePhotoCapture _photoCapture;
+  
+  @override
+  void initState() {
+    super.initState();
+    _cameraController = OrientationAwareCameraController();
+    _photoCapture = OrientationAwarePhotoCapture(_cameraController);
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return OrientationBuilder(
+      builder: (context, orientation) {
+        return Scaffold(
+          body: Stack(
+            children: [
+              OrientationAwareCameraPreview(
+                controller: _cameraController,
+                cameraRotation: _cameraController.cameraRotation,
+                deviceOrientation: _cameraController.deviceOrientation,
+              ),
+              if (orientation == Orientation.portrait)
+                PortraitCameraOverlay(
+                  photoCapture: _photoCapture,
+                  onCaptureComplete: _handleCaptureComplete,
+                )
+              else
+                LandscapeCameraOverlay(
+                  photoCapture: _photoCapture,
+                  onCaptureComplete: _handleCaptureComplete,
+                ),
+              // Testing overlay
+              PhotoOrientationTester.buildOrientationTestingOverlay(
+                _cameraController.currentOrientationData
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
 ```
 
-### 5.3 Photo Metadata Structure
-```dart
-class PhotoMetadata {
-  final String deviceOrientation;
-  final DateTime capturedAt;
-  final String cameraLens; // front/rear
-  final String resolution;
-  final String deviceModel;
-  final String androidVersion;
-  final String appVersion;
-}
-```
-
-### 5.4 Photo Capture UI
-```dart
-Widget _buildNativePhotoCaptureButton() {
-  return GestureDetector(
-    onTap: _isCapturing ? null : _capturePhoto,
-    child: Container(
-      width: 70,
-      height: 70,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.white,
-        border: Border.all(
-          color: _isCapturing 
-            ? Colors.grey.withOpacity(0.3) 
-            : Colors.white.withOpacity(0.3), 
-          width: 4
-        ),
-      ),
-      child: Center(
-        child: AnimatedContainer(
-          duration: Duration(milliseconds: 150),
-          width: _isCapturing ? 45 : 50,
-          height: _isCapturing ? 45 : 50,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _isCapturing ? Colors.grey : Colors.white,
-          ),
-          child: _isCapturing 
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
-                ),
-              )
-            : Icon(Icons.camera_alt, color: Colors.black, size: 24),
-        ),
-      ),
-    ),
-  );
-}
-
-// Native-style orientation indicator overlay
-Widget _buildOrientationIndicator() {
-  return Positioned(
-    top: 50,
-    right: 20,
-    child: Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.screen_rotation, color: Colors.white, size: 16),
-          SizedBox(width: 4),
-          Text(
-            _getCurrentOrientationText(),
-            style: TextStyle(color: Colors.white, fontSize: 12),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-```
-
-## Files to Create
-- `lib/features/photo_capture.dart`
-- `lib/models/photo_metadata.dart`
-- `lib/models/orientation_data.dart`
-- `lib/widgets/native_photo_capture_button.dart`
-- `lib/widgets/native_orientation_indicator.dart`
-- `lib/services/photo_storage_service.dart`
-- `lib/widgets/native_capture_feedback.dart` (for native-style capture animations)
-
-## Files to Modify
-- `lib/screens/camera_screen.dart` (add photo mode logic)
-- `lib/services/storage_service.dart` (extend for photos)
-
-## Critical Orientation Testing
-
-### Test Matrix for Photo Capture
-For each device orientation, capture multiple photos and verify:
-
-#### Portrait Upright
-- [ ] Capture photo in portrait upright position
-- [ ] Verify EXIF orientation tag is correct
-- [ ] Check image displays correctly in gallery
-- [ ] Verify image opens correctly in external apps
-
-#### Landscape Left (USB port right)
-- [ ] Capture photo in landscape left position
-- [ ] Verify EXIF orientation compensates for rotation
-- [ ] Check image auto-rotates correctly in viewers
-- [ ] Test with both front and rear cameras
-
-#### Landscape Right (USB port left)
-- [ ] Capture photo in landscape right position
-- [ ] Verify EXIF orientation metadata
-- [ ] Confirm proper rotation in gallery apps
-- [ ] Test across different camera resolutions
-
-#### Portrait Upside Down
-- [ ] Capture photo upside down (if supported)
-- [ ] Verify orientation handling edge case
-- [ ] Check for proper EXIF rotation data
-- [ ] Test system gallery display
-
-### Metadata Verification
-```dart
-class PhotoVerification {
-  static Future<bool> verifyOrientation(String photoPath) async {
-    // Read EXIF data
-    // Compare with expected orientation
-    // Verify image displays correctly
-  }
-}
-```
-
-## Testing Documentation
-
-### Capture Test Log Template
-```
-Device: [Model Name]
-Android Version: [Version]
-Test Date: [Date]
-Camera: [Front/Rear]
-
-Orientation Tests:
-- Portrait Up: PASS/FAIL [Notes]
-- Landscape Left: PASS/FAIL [Notes]  
-- Landscape Right: PASS/FAIL [Notes]
-- Portrait Down: PASS/FAIL [Notes]
-
-Issues Found: [Description]
-```
-
 ## Acceptance Criteria
-- [ ] Photos capture successfully in all orientations
-- [ ] EXIF orientation data is correctly set
-- [ ] Captured photos display properly in device gallery
-- [ ] Photo files are saved with descriptive metadata
-- [ ] Capture button provides appropriate feedback
-- [ ] Error states are handled gracefully
-- [ ] Storage management works correctly
-- [ ] Photo quality meets testing requirements
-- [ ] UI remains responsive during capture
-- [ ] Memory usage is stable during repeated captures
+- [ ] Photo capture works flawlessly with orientation-aware camera controller
+- [ ] EXIF orientation data is 100% accurate across all tested devices
+- [ ] Dual UI (portrait/landscape) capture buttons work perfectly
+- [ ] Manufacturer-specific corrections are applied correctly
+- [ ] Captured photos display upright in all gallery apps
+- [ ] Real-time orientation testing overlay provides accurate data
+- [ ] Capture performance remains smooth during orientation changes
+- [ ] Memory usage is stable during extended photo capture testing
+- [ ] Touch targets work correctly in both UI orientations
+- [ ] Error handling gracefully manages orientation-related issues
 
-## Testing Points
-- [ ] Test photo capture in all four orientations
-- [ ] Verify EXIF data with third-party tools
-- [ ] Test with front and rear cameras
-- [ ] Verify gallery display on multiple devices
-- [ ] Test storage space handling
-- [ ] Verify file naming conventions
-- [ ] Test capture button responsiveness
-- [ ] Check for memory leaks during extended use
-- [ ] Test error scenarios (low storage, camera busy)
-- [ ] Verify metadata accuracy
-
-## Performance Requirements
-- Photo capture response time < 2 seconds
-- UI remains responsive during capture
-- Memory usage stable across multiple captures
-- Battery impact minimized
-- Storage operations are efficient
-
-## Quality Assurance
-- Photos must be sharp and well-exposed
-- Orientation metadata must be 100% accurate
-- File operations must be atomic (no corruption)
-- Error recovery must be robust
-- User feedback must be immediate and clear
+## Enhanced Testing Requirements
+- **Orientation Accuracy**: 100% success rate across all device orientations
+- **Cross-App Compatibility**: Photos display correctly in 5+ different gallery/photo apps
+- **Device Coverage**: Test on minimum 4 different manufacturers
+- **Performance**: Photo capture completes within 2 seconds regardless of orientation
+- **Metadata Integrity**: All orientation metadata survives file operations and sharing
 
 ## Notes
-- This is the most critical task for the MVP's primary objective
-- Extensive testing across multiple devices is essential
-- Document any device-specific orientation quirks
-- Consider creating automated orientation tests
-- Keep detailed logs of test results for analysis
+- This task is now fully integrated with the advanced orientation system from Task 4
+- Focus on comprehensive EXIF metadata that will enable detailed orientation analysis
+- The testing overlay provides real-time feedback for orientation validation
+- Manufacturer-specific corrections ensure compatibility across device ecosystem
+- Enhanced logging enables detailed analysis of orientation handling effectiveness
 
-## Estimated Time: 4-6 hours
-
-## Next Task: Task 6 - Video Recording Implementation 
-
-## Native Photo Capture UI Requirements
-
-### Native Capture Experience
-- Large, prominent capture button matching system camera apps
-- Smooth capture animation with visual feedback
-- Native-style loading indicators during processing
-- Minimal overlay disruption during capture
-- Haptic feedback on capture (if available)
-
-### Visual Feedback
-- Capture button animation (scale down on press)
-- Brief screen flash effect on capture
-- Native-style progress indicator for processing
-- Toast-free feedback using overlays
-- Orientation indicator in corner (for testing)
-
-### Gesture Integration
-- Tap anywhere on preview to focus before capture
-- Volume buttons for capture (optional)
-- Long press for burst mode (optional)
-- Pinch-to-zoom before capture
-
-## Testing with Native UI
-
-### Native Gallery Integration
-- Captured photos should appear in device gallery immediately
-- Photos should display correctly without rotation issues
-- Metadata should be preserved when opened in other apps
-- Sharing from device gallery should work properly
-
-### Immersive Testing Workflow
-- Test capture in all orientations with immersive UI
-- Verify controls remain accessible during orientation changes
-- Test safe area handling on notched devices during capture
-- Ensure capture works with gesture navigation systems
-
-## Testing Points
-- [ ] Test photo capture in all four orientations
-- [ ] Verify EXIF data with third-party tools
-- [ ] Test with front and rear cameras
-- [ ] Verify gallery display on multiple devices
-- [ ] Test storage space handling
-- [ ] Verify file naming conventions
-- [ ] Test capture button responsiveness
-- [ ] Check for memory leaks during extended use
-- [ ] Test error scenarios (low storage, camera busy)
-- [ ] Verify metadata accuracy
-
-## Performance Requirements
-- Photo capture response time < 2 seconds
-- UI remains responsive during capture
-- Memory usage stable across multiple captures
-- Battery impact minimized
-- Storage operations are efficient
-
-## Quality Assurance
-- Photos must be sharp and well-exposed
-- Orientation metadata must be 100% accurate
-- File operations must be atomic (no corruption)
-- Error recovery must be robust
-- User feedback must be immediate and clear
-
-## Notes
-- This is the most critical task for the MVP's primary objective
-- Extensive testing across multiple devices is essential
-- Document any device-specific orientation quirks
-- Consider creating automated orientation tests
-- Keep detailed logs of test results for analysis
-
-## Estimated Time: 4-6 hours
+## Estimated Time: 6-8 hours
 
 ## Next Task: Task 6 - Video Recording Implementation 

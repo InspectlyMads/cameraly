@@ -1,5 +1,10 @@
 # Camera App MVP - Implementation Plan
 
+## 📋 Quick Reference Documents
+- **[Complete Dependencies Overview](./dependencies.md)** - All packages, versions, and installation commands
+- **[Comprehensive Testing Strategy](./testing-strategy.md)** - Progressive testing implementation with orientation focus
+- **[MVP Requirements](../../mvp.md)** - Original scope and objectives
+
 ## Project Overview
 
 **Primary Objective:** Build a Flutter camera app to test and understand how the `camera` package handles orientation on various Android devices, specifically focusing on how captured photos and videos are oriented when saved.
