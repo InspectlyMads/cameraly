@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/camera_providers.dart';
+import '../providers/gallery_providers.dart';
 import '../providers/permission_providers.dart';
 import '../screens/gallery_screen.dart';
 import '../services/camera_service.dart';
@@ -480,6 +481,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       final imageFile = await cameraController.takePicture();
 
       if (imageFile != null && mounted) {
+        // Refresh gallery to show new photo
+        ref.read(galleryProvider.notifier).refreshMedia();
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Photo captured!'),
@@ -542,6 +546,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       final videoFile = await cameraController.stopVideoRecording();
 
       if (videoFile != null && mounted) {
+        // Refresh gallery to show new video
+        ref.read(galleryProvider.notifier).refreshMedia();
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Video saved!'),

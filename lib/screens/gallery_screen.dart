@@ -352,9 +352,16 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   }
 
   void _openMediaViewer(MediaItem mediaItem) {
+    final galleryState = ref.read(galleryProvider);
+    final mediaItems = galleryState.mediaItems;
+    final currentIndex = mediaItems.indexOf(mediaItem);
+
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => MediaViewer(mediaItem: mediaItem),
+        builder: (context) => MediaViewer(
+          mediaItems: mediaItems,
+          initialIndex: currentIndex,
+        ),
       ),
     );
   }

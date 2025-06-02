@@ -15,8 +15,8 @@ final mediaServiceProvider = Provider<MediaService>((ref) {
 class Gallery extends _$Gallery {
   @override
   GalleryState build() {
-    // Auto-refresh media when provider is created
-    refreshMedia();
+    // Schedule refresh for next frame to avoid accessing uninitialized state
+    Future.microtask(() => refreshMedia());
     return const GalleryState();
   }
 
