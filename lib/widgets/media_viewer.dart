@@ -167,9 +167,20 @@ class _MediaViewerState extends State<MediaViewer> {
       );
     }
 
-    return AspectRatio(
-      aspectRatio: _videoControllers[index]!.value.aspectRatio,
-      child: VideoPlayer(_videoControllers[index]!),
+    // Use Container with proper sizing instead of AspectRatio to prevent stretching
+    return Center(
+      child: SizedBox(
+        width: double.infinity,
+        height: double.infinity,
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: _videoControllers[index]!.value.size.width,
+            height: _videoControllers[index]!.value.size.height,
+            child: VideoPlayer(_videoControllers[index]!),
+          ),
+        ),
+      ),
     );
   }
 

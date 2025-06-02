@@ -509,6 +509,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final cameraController = ref.read(cameraControllerProvider.notifier);
 
     try {
+      // Get current orientation and lock to it during recording
+      final currentOrientation = MediaQuery.of(context).orientation;
+      if (currentOrientation == Orientation.portrait) {
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+      } else {
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      }
+
       // Haptic feedback
       HapticFeedback.mediumImpact();
 
@@ -516,14 +530,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Recording started'),
-            duration: Duration(milliseconds: 1500),
+          SnackBar(
+            content: Text('Recording started - ${currentOrientation.name} locked'),
+            duration: const Duration(milliseconds: 1500),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } catch (e) {
+      // Restore orientation freedom on error
+      await SystemChrome.setPreferredOrientations([]);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -545,6 +562,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
       final videoFile = await cameraController.stopVideoRecording();
 
+      // Restore orientation freedom after recording
+      await SystemChrome.setPreferredOrientations([]);
+
       if (videoFile != null && mounted) {
         // Refresh gallery to show new video
         ref.read(galleryProvider.notifier).refreshMedia();
@@ -558,6 +578,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         );
       }
     } catch (e) {
+      // Restore orientation freedom on error
+      await SystemChrome.setPreferredOrientations([]);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
