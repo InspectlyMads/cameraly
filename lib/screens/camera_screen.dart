@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/camera_providers.dart';
 import '../providers/permission_providers.dart';
+import '../screens/gallery_screen.dart';
 import '../services/camera_service.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
@@ -204,18 +205,27 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           // Gallery/Preview placeholder
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: Colors.grey[800],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-            child: const Icon(
-              Icons.photo_library,
-              color: Colors.white,
-              size: 24,
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const GalleryScreen(),
+                ),
+              );
+            },
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: const Icon(
+                Icons.photo_library,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
           ),
 
