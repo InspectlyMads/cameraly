@@ -1,4 +1,45 @@
-# Camera Test App - Comprehensive Testing Strategy
+# Camera App Testing Strategy
+
+## Test-Driven Development Approach (Cursor Rule Compliance)
+
+### Testing During Implementation
+Following **Cursor Rule 3**, we will create tests **as we implement each feature**, not after. This ensures:
+- ✅ **Robust error handling** from the start
+- ✅ **Test coverage** for core functionality 
+- ✅ **Early bug detection** during development
+- ✅ **Confidence in implementation** before moving to next feature
+
+### Implementation + Test Workflow:
+```
+For each Task/Feature:
+1. 📝 Implement core functionality
+2. 🧪 Create unit tests for business logic
+3. 🎯 Create widget tests for UI components  
+4. 🔄 Run tests and fix issues
+5. ✅ Mark task complete only when tests pass
+```
+
+### Test File Structure:
+```
+test/
+├── unit/
+│   ├── controllers/
+│   ├── services/ 
+│   ├── models/
+│   └── providers/
+├── widget/
+│   ├── screens/
+│   ├── overlays/
+│   └── components/
+└── integration/
+    ├── camera_flow_test.dart
+    ├── orientation_test.dart
+    └── capture_test.dart
+```
+
+---
+
+# Progressive "Test-as-You-Build" Camera App Testing Strategy
 
 ## Overview
 This document outlines our testing approach for the Camera Test MVP, emphasizing orientation testing while maintaining code quality through progressive test implementation.
