@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../services/camera_service.dart';
+import '../services/media_service.dart';
 import 'permission_providers.dart';
 
 part 'camera_providers.g.dart';
@@ -9,6 +10,11 @@ part 'camera_providers.g.dart';
 // Service provider
 final cameraServiceProvider = Provider<CameraService>((ref) {
   return CameraService();
+});
+
+// Media service provider
+final mediaServiceProvider = Provider<MediaService>((ref) {
+  return MediaService();
 });
 
 // Available cameras provider
@@ -135,6 +141,16 @@ class CameraController extends _$CameraController {
     try {
       final videoFile = await state.controller!.stopVideoRecording();
       state = state.copyWith(isRecording: false);
+
+      // Save the video to app directory
+      final mediaService = ref.read(mediaServiceProvider);
+      final savedPath = await mediaService.saveVideo(videoFile.path);
+
+      if (savedPath != null) {
+        // Return XFile pointing to saved location
+        return XFile(savedPath);
+      }
+
       return videoFile;
     } catch (e) {
       final service = ref.read(cameraServiceProvider);
@@ -154,6 +170,17 @@ class CameraController extends _$CameraController {
 
     try {
       final imageFile = await state.controller!.takePicture();
+
+      // Save the image to app directory
+      final mediaService = ref.read(mediaServiceProvider);
+      final imageBytes = await imageFile.readAsBytes();
+      final savedPath = await mediaService.savePhoto(imageBytes);
+
+      if (savedPath != null) {
+        // Return XFile pointing to saved location
+        return XFile(savedPath);
+      }
+
       return imageFile;
     } catch (e) {
       final service = ref.read(cameraServiceProvider);
