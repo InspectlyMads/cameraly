@@ -1,0 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Agent Rules & Operating Guidelines
+ 
+## 1. Clarity & Confidence Before Implementation:
+*   **Rule:** Before implementing any code, if there are ambiguities in the request, multiple plausible interpretations, or missing information critical for a successful implementation, **do not implement.**
+*   **Action:** Instead, list the specific ambiguities, conflicting interpretations, or missing pieces of information and ask for clarification.
+*   **Complex Tasks:** If a request is too broad or complex to implement confidently in one go, propose a breakdown into smaller, manageable steps and ask for confirmation on this breakdown before proceeding with the first step.
+ 
+## 2. Implementation Planning & Documentation (/docs):
+*   **Rule:** When implementing new features (not trivial bug fixes), first create an implementation plan and document the feature within the `/docs` folder.
+*   **Structure:**
+    *   For a new feature named `[FeatureName]`, create an implementation plan at `/docs/features/[FeatureName]/implementation-plan.md`.
+    *   This plan should outline:
+        *   High-level objectives and success criteria.
+        *   Key components/modules to be created or modified.
+        *   A breakdown of tasks.
+        *   Any new data structures or API endpoints.
+        *   Potential challenges or dependencies.
+    *   Task-specific details or temporary notes can be put into separate files within a `tasks` subfolder (e.g., `/docs/features/[FeatureName]/tasks/task1-component-design.md`). Clearly mark these as temporary if they are not meant for permanent documentation.
+*   **Permanent Feature Documentation:**
+    *   The main documentation for the feature itself (its purpose, how it works, API usage if applicable, user-facing impact) should be captured in a permanent file, such as `/docs/features/[FeatureName]/README.md` or integrated into the main project documentation as appropriate.
+*   **Cleanup:** Files specifically marked as temporary within the task breakdown (e.g., "This file `task1-details.md` can be deleted after task 1 is complete") can be noted for deletion upon feature completion. The core feature documentation and high-level plan should remain.
+*   **Exception:** For trivial changes or very minor bug fixes that don't introduce substantial new functionality or architectural changes, this detailed planning step may be streamlined or omitted. If unsure whether a task is 'trivial', err on the side of creating a brief plan or ask for clarification.
+ 
+## 3. Testing:
+*   **Rule:** For new features or significant modifications, consider how the changes will be tested.
+*   **Action:** Suggest or (if straightforward and within scope) create basic unit tests or integration tests for the core functionality. If testing is complex, unclear, or requires specific data setup, ask for guidance on testing strategy or if tests should be deferred.
+ 
+## 4. Error Handling:
+*   **Rule:** Implement robust and user-friendly error handling for all new code.
+*   **Action:** Anticipate potential failure points (e.g., API errors, invalid input, missing data). If unsure about how to handle specific error scenarios or what the desired user experience for an error should be, ask for clarification.
+ 
+## 5. Dependencies:
+*   **Rule:** If new external libraries, packages, or dependencies are deemed necessary for an implementation:
+*   **Action:** State the proposed library/dependency, its purpose, and why it's beneficial, then ask for approval before adding it to the project.
+ 
+## 6. Security:
+*   **Rule:** Maintain a strong focus on security best practices in all implementations.
+*   **Action:** This includes, but is not limited to:
+    *   Validating and sanitizing all external inputs.
+    *   Avoiding hardcoded secrets or sensitive information in the codebase.
+    *   If a task involves sensitive data or operations, explicitly highlight potential security considerations and ask for review or guidance if unsure.
+    
+## 7. Scope Management:
+*   **Rule:** If a request seems to require changes outside the currently discussed file(s), module(s), or the clearly defined scope of the current task:
+*   **Action:** Explicitly state the potentially affected out-of-scope areas and ask for confirmation before proceeding with those changes.
+ 
+## 8. Communication & Iteration:
+*   **Rule:** Provide updates on progress, especially for longer tasks. Don't hesitate to ask follow-up questions if requirements become unclear during implementation.
+*   **Action:** If a chosen approach isn't working or a significant unforeseen obstacle arises, communicate this promptly along with any proposed alternative solutions.
