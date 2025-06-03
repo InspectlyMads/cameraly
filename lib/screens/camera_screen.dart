@@ -153,9 +153,26 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildCameraPreview(camera.CameraController controller) {
-    return Positioned.fill(
+    final orientation = MediaQuery.of(context).orientation;
+    final screenSize = MediaQuery.of(context).size;
+    final cameraAspectRatio = controller.value.aspectRatio;
+
+    // Invert aspect ratio for portrait orientation
+    final adjustedAspectRatio = orientation == Orientation.portrait
+        ? 1 / cameraAspectRatio // Invert for portrait
+        : cameraAspectRatio; // Use as-is for landscape
+
+    // Debug information
+    debugPrint('🔄 Device orientation: ${orientation.name}');
+    debugPrint('📱 Screen size: ${screenSize.width} x ${screenSize.height}');
+    debugPrint('📱 Screen aspect ratio: ${screenSize.aspectRatio.toStringAsFixed(3)}');
+    debugPrint('📸 Camera sensor aspect ratio: ${cameraAspectRatio.toStringAsFixed(3)}');
+    debugPrint('🎯 Adjusted aspect ratio: ${adjustedAspectRatio.toStringAsFixed(3)}');
+    debugPrint('---');
+
+    return Center(
       child: AspectRatio(
-        aspectRatio: controller.value.aspectRatio,
+        aspectRatio: adjustedAspectRatio,
         child: camera.CameraPreview(controller),
       ),
     );
@@ -181,8 +198,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
           ),
 
-          // Right side controls column (flash, camera switch, future buttons)
-          _buildRightControlsColumn(),
+          // Right side controls - only show in portrait mode
+          if (OrientationUIHelper.isPortrait(orientation)) _buildRightControlsColumn(),
         ],
       ),
     );
@@ -752,10 +769,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Widget _buildLandscapeUI(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
     return Stack(
       children: [
-        // Right-side capture button
-        _buildLandscapeCaptureButton(screenSize, safeArea, cameraState),
+        // Right-side capture button + mode info below it
+        _buildLandscapeRightControls(screenSize, safeArea, cameraState),
 
-        // Left-side controls (gallery, mode info)
+        // Left-side controls (flash + switch buttons only)
         _buildLandscapeLeftControls(screenSize, safeArea, cameraState),
 
         // Mode selector for combined mode (bottom-center)
@@ -764,38 +781,46 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     );
   }
 
-  Widget _buildPortraitUI(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
-    return Stack(
-      children: [
-        // Bottom controls row
-        _buildPortraitBottomControls(screenSize, safeArea, cameraState),
-
-        // Mode selector for combined mode (above bottom controls)
-        if (cameraState.mode == CameraMode.combined) _buildPortraitModeSelector(screenSize, safeArea),
-      ],
-    );
-  }
-
-  Widget _buildLandscapeCaptureButton(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
-    final position = OrientationUIHelper.getCaptureButtonPosition(
-      screenSize: screenSize,
-      orientation: Orientation.landscape,
-      safeArea: safeArea,
-    );
-
+  Widget _buildLandscapeRightControls(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
+    final screenCenter = screenSize.height / 2;
+    final spacing = 80.0; // Space between elements
     final buttonSize = OrientationUIHelper.getCaptureButtonSize(
       orientation: Orientation.landscape,
       screenSize: screenSize,
     );
 
-    return Positioned(
-      right: 16 + safeArea.right,
-      top: position.dy - (buttonSize / 2),
-      child: SizedBox(
-        width: buttonSize,
-        height: buttonSize,
-        child: _buildCaptureButton(cameraState),
-      ),
+    // Calculate positions for 3 elements centered around screen center
+    final galleryTop = screenCenter - spacing - 30; // 60px gallery button / 2
+    final captureTop = screenCenter - (buttonSize / 2);
+    final modeInfoTop = screenCenter + spacing - 30; // 60px mode info / 2
+
+    return Stack(
+      children: [
+        // Gallery button (top of group)
+        Positioned(
+          right: 16 + safeArea.right + (buttonSize - 60) / 2, // Center align with capture button
+          top: galleryTop,
+          child: _buildGalleryButton(),
+        ),
+
+        // Capture button (center of group)
+        Positioned(
+          right: 16 + safeArea.right,
+          top: captureTop,
+          child: SizedBox(
+            width: buttonSize,
+            height: buttonSize,
+            child: _buildCaptureButton(cameraState),
+          ),
+        ),
+
+        // Mode info (bottom of group)
+        Positioned(
+          right: 16 + safeArea.right + (buttonSize - 60) / 2, // Center align with capture button
+          top: modeInfoTop,
+          child: _buildModeInfo(cameraState),
+        ),
+      ],
     );
   }
 
@@ -806,26 +831,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       safeArea: safeArea,
     );
 
-    final modeInfoPosition = OrientationUIHelper.getModeInfoPosition(
-      screenSize: screenSize,
-      orientation: Orientation.landscape,
-      safeArea: safeArea,
-    );
-
     return Stack(
       children: [
-        // Gallery button
+        // Flash + Camera switch buttons (moved from top-right to left-center)
         Positioned(
           left: galleryPosition.dx,
-          top: galleryPosition.dy,
-          child: _buildGalleryButton(),
-        ),
-
-        // Mode info
-        Positioned(
-          left: modeInfoPosition.dx,
-          top: modeInfoPosition.dy,
-          child: _buildModeInfo(cameraState),
+          top: galleryPosition.dy - 60, // Position above where gallery was
+          child: _buildRightControlsColumn(),
         ),
       ],
     );
@@ -842,6 +854,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       left: position.dx - 80, // Center the 160px wide selector
       bottom: safeArea.bottom + 16,
       child: _buildModeSelector(),
+    );
+  }
+
+  Widget _buildPortraitUI(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
+    return Stack(
+      children: [
+        // Bottom controls row
+        _buildPortraitBottomControls(screenSize, safeArea, cameraState),
+
+        // Mode selector for combined mode (above bottom controls)
+        if (cameraState.mode == CameraMode.combined) _buildPortraitModeSelector(screenSize, safeArea),
+      ],
     );
   }
 
