@@ -782,45 +782,36 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildLandscapeRightControls(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
-    final screenCenter = screenSize.height / 2;
-    final spacing = 80.0; // Space between elements
     final buttonSize = OrientationUIHelper.getCaptureButtonSize(
       orientation: Orientation.landscape,
       screenSize: screenSize,
     );
 
-    // Calculate positions for 3 elements centered around screen center
-    final galleryTop = screenCenter - spacing - 30; // 60px gallery button / 2
-    final captureTop = screenCenter - (buttonSize / 2);
-    final modeInfoTop = screenCenter + spacing - 30; // 60px mode info / 2
+    return Positioned(
+      right: 16 + safeArea.right,
+      top: 0,
+      bottom: 0,
+      child: SizedBox(
+        width: buttonSize,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Gallery button (top of group)
+            _buildGalleryButton(),
 
-    return Stack(
-      children: [
-        // Gallery button (top of group)
-        Positioned(
-          right: 16 + safeArea.right + (buttonSize - 60) / 2, // Center align with capture button
-          top: galleryTop,
-          child: _buildGalleryButton(),
-        ),
+            // Capture button (center of group)
+            SizedBox(
+              width: buttonSize,
+              height: buttonSize,
+              child: _buildCaptureButton(cameraState),
+            ),
 
-        // Capture button (center of group)
-        Positioned(
-          right: 16 + safeArea.right,
-          top: captureTop,
-          child: SizedBox(
-            width: buttonSize,
-            height: buttonSize,
-            child: _buildCaptureButton(cameraState),
-          ),
+            // Check FAB (bottom of group)
+            _buildCheckFab(),
+          ],
         ),
-
-        // Mode info (bottom of group)
-        Positioned(
-          right: 16 + safeArea.right + (buttonSize - 60) / 2, // Center align with capture button
-          top: modeInfoTop,
-          child: _buildModeInfo(cameraState),
-        ),
-      ],
+      ),
     );
   }
 
@@ -892,8 +883,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             child: _buildCaptureButton(cameraState),
           ),
 
-          // Mode info
-          _buildModeInfo(cameraState),
+          // Check FAB
+          _buildCheckFab(),
         ],
       ),
     );
@@ -932,6 +923,21 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           color: Colors.white,
           size: 24,
         ),
+      ),
+    );
+  }
+
+  Widget _buildCheckFab() {
+    return CircleAvatar(
+      backgroundColor: Colors.green,
+      radius: 30,
+      child: IconButton(
+        icon: const Icon(
+          Icons.check,
+          color: Colors.white,
+          size: 24,
+        ),
+        onPressed: () => Navigator.of(context).pop(),
       ),
     );
   }
