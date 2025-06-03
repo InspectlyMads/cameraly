@@ -1,4 +1,5 @@
-import 'package:camera/camera.dart';
+import 'package:camera/camera.dart' as camera;
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../services/camera_service.dart';
@@ -19,9 +20,9 @@ final mediaServiceProvider = Provider<MediaService>((ref) {
 
 // Available cameras provider
 @riverpod
-Future<List<CameraDescription>> availableCameras(AvailableCamerasRef ref) async {
-  final cameraService = ref.read(cameraServiceProvider);
-  return await cameraService.getAvailableCameras();
+Future<List<camera.CameraDescription>> availableCameras(AvailableCamerasRef ref) async {
+  final service = ref.read(cameraServiceProvider);
+  return service.getAvailableCameras();
 }
 
 // Main camera state provider
@@ -46,10 +47,22 @@ class CameraController extends _$CameraController {
   Future<void> switchMode(CameraMode newMode) async {
     if (state.mode == newMode) return;
 
+    final oldMode = state.mode;
     state = state.copyWith(mode: newMode);
 
+    // Update flash settings for new mode
+    if (state.controller != null) {
+      final service = ref.read(cameraServiceProvider);
+      await service.setFlashModeForContext(
+        controller: state.controller!,
+        cameraMode: newMode,
+        photoMode: state.photoFlashMode,
+        videoMode: state.videoFlashMode,
+      );
+    }
+
     // If switching to/from video mode, reinitialize to handle audio requirements
-    if ((state.mode == CameraMode.video || newMode == CameraMode.video) && state.controller != null) {
+    if ((oldMode == CameraMode.video || newMode == CameraMode.video) && state.controller != null) {
       await _reinitializeCamera();
     }
   }
@@ -57,13 +70,16 @@ class CameraController extends _$CameraController {
   /// Switch camera lens direction
   Future<void> switchCamera() async {
     if (!state.isInitialized || state.availableCameras.length < 2) {
+      debugPrint('CameraController: Cannot switch camera - not initialized or insufficient cameras');
       return;
     }
 
     final service = ref.read(cameraServiceProvider);
     final newLensDirection = service.getOppositeLensDirection(state.lensDirection);
 
-    state = state.copyWith(isLoading: true);
+    debugPrint('CameraController: Switching from ${state.lensDirection.name} to ${newLensDirection.name}');
+
+    state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
       final newController = await service.switchCamera(
@@ -78,16 +94,55 @@ class CameraController extends _$CameraController {
         isLoading: false,
         errorMessage: null,
       );
+
+      // Reset flash mode after switching (front camera usually doesn't have flash)
+      await _setInitialFlashMode(newController);
+
+      debugPrint('CameraController: Camera switched successfully to ${newLensDirection.name}');
     } catch (e) {
+      debugPrint('CameraController: Camera switch failed: $e');
       final service = ref.read(cameraServiceProvider);
       state = state.copyWith(
         isLoading: false,
-        errorMessage: service.getErrorMessage(e),
+        errorMessage: 'Failed to switch camera: ${service.getErrorMessage(e)}',
       );
+
+      // Try to recover by reinitializing the original camera
+      try {
+        await _initializeCamera();
+      } catch (recoveryError) {
+        debugPrint('CameraController: Recovery after switch failure also failed: $recoveryError');
+      }
     }
   }
 
-  /// Cycle flash mode
+  /// Set initial flash mode based on camera capabilities
+  Future<void> _setInitialFlashMode(camera.CameraController controller) async {
+    final service = ref.read(cameraServiceProvider);
+
+    // Reset to off for front camera (no flash), keep current for back camera
+    final photoFlashMode = service.hasFlash(controller) ? state.photoFlashMode : PhotoFlashMode.off;
+    final videoFlashMode = service.hasFlash(controller) ? state.videoFlashMode : VideoFlashMode.off;
+
+    try {
+      await service.setFlashModeForContext(
+        controller: controller,
+        cameraMode: state.mode,
+        photoMode: photoFlashMode,
+        videoMode: videoFlashMode,
+      );
+
+      state = state.copyWith(
+        photoFlashMode: photoFlashMode,
+        videoFlashMode: videoFlashMode,
+      );
+      debugPrint('CameraController: Flash modes set - Photo: ${photoFlashMode.name}, Video: ${videoFlashMode.name}');
+    } catch (e) {
+      debugPrint('CameraController: Failed to set flash mode: $e');
+    }
+  }
+
+  /// Cycle flash mode based on current camera mode
   Future<void> cycleFlashMode() async {
     if (!state.isInitialized || state.controller == null) return;
 
@@ -98,20 +153,22 @@ class CameraController extends _$CameraController {
       return;
     }
 
-    final nextFlashMode = service.getNextFlashMode(state.flashMode);
-
-    try {
-      await service.setFlashMode(
+    if (state.mode == CameraMode.video) {
+      final nextVideoMode = service.getNextVideoFlashMode(state.videoFlashMode);
+      await service.setFlashModeForContext(
         controller: state.controller!,
-        flashMode: nextFlashMode,
+        cameraMode: state.mode,
+        videoMode: nextVideoMode,
       );
-
-      state = state.copyWith(flashMode: nextFlashMode);
-    } catch (e) {
-      final service = ref.read(cameraServiceProvider);
-      state = state.copyWith(
-        errorMessage: service.getErrorMessage(e),
+      state = state.copyWith(videoFlashMode: nextVideoMode);
+    } else {
+      final nextPhotoMode = service.getNextPhotoFlashMode(state.photoFlashMode);
+      await service.setFlashModeForContext(
+        controller: state.controller!,
+        cameraMode: state.mode,
+        photoMode: nextPhotoMode,
       );
+      state = state.copyWith(photoFlashMode: nextPhotoMode);
     }
   }
 
@@ -133,7 +190,7 @@ class CameraController extends _$CameraController {
   }
 
   /// Stop video recording
-  Future<XFile?> stopVideoRecording() async {
+  Future<camera.XFile?> stopVideoRecording() async {
     if (!state.isRecording || state.controller == null) {
       return null;
     }
@@ -148,7 +205,7 @@ class CameraController extends _$CameraController {
 
       if (savedPath != null) {
         // Return XFile pointing to saved location
-        return XFile(savedPath);
+        return camera.XFile(savedPath);
       }
 
       return videoFile;
@@ -163,7 +220,7 @@ class CameraController extends _$CameraController {
   }
 
   /// Take picture
-  Future<XFile?> takePicture() async {
+  Future<camera.XFile?> takePicture() async {
     if (!state.isInitialized || state.controller == null) {
       return null;
     }
@@ -178,7 +235,7 @@ class CameraController extends _$CameraController {
 
       if (savedPath != null) {
         // Return XFile pointing to saved location
-        return XFile(savedPath);
+        return camera.XFile(savedPath);
       }
 
       return imageFile;
@@ -198,9 +255,14 @@ class CameraController extends _$CameraController {
 
   /// Private method to initialize camera
   Future<void> _initializeCamera() async {
-    // Check permissions using the permission service
+    // Check permissions using the permission service with retry mechanism
     final permissionService = ref.read(permissionServiceProvider);
-    final hasPermissions = await permissionService.hasAllCameraPermissions();
+
+    // Use the retry mechanism to handle race conditions
+    final hasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
+      maxAttempts: 3,
+      delay: const Duration(milliseconds: 100),
+    );
 
     if (!hasPermissions) {
       state = state.copyWith(
@@ -239,10 +301,7 @@ class CameraController extends _$CameraController {
       );
 
       // Set initial flash mode
-      await service.setFlashMode(
-        controller: controller,
-        flashMode: state.flashMode,
-      );
+      await _setInitialFlashMode(controller);
     } catch (e) {
       final service = ref.read(cameraServiceProvider);
       state = state.copyWith(
@@ -301,12 +360,22 @@ bool canSwitchCamera(CanSwitchCameraRef ref) {
 String flashModeDisplayName(FlashModeDisplayNameRef ref) {
   final cameraState = ref.watch(cameraControllerProvider);
   final service = ref.read(cameraServiceProvider);
-  return service.getFlashDisplayName(cameraState.flashMode);
+
+  if (cameraState.mode == CameraMode.video) {
+    return service.getVideoFlashDisplayName(cameraState.videoFlashMode);
+  } else {
+    return service.getPhotoFlashDisplayName(cameraState.photoFlashMode);
+  }
 }
 
 @riverpod
 String flashModeIcon(FlashModeIconRef ref) {
   final cameraState = ref.watch(cameraControllerProvider);
   final service = ref.read(cameraServiceProvider);
-  return service.getFlashIcon(cameraState.flashMode);
+
+  if (cameraState.mode == CameraMode.video) {
+    return service.getVideoFlashIcon(cameraState.videoFlashMode);
+  } else {
+    return service.getPhotoFlashIcon(cameraState.photoFlashMode);
+  }
 }

@@ -31,6 +31,28 @@ class PermissionService {
     ].request();
   }
 
+  /// Check if both permissions are granted with retry mechanism
+  /// This helps handle race conditions where permissions are just granted
+  /// but not yet reflected in the system state
+  Future<bool> hasAllCameraPermissionsWithRetry({
+    int maxAttempts = 3,
+    Duration delay = const Duration(milliseconds: 100),
+  }) async {
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      final hasPermissions = await hasAllCameraPermissions();
+      if (hasPermissions) {
+        return true;
+      }
+
+      // Don't delay on the last attempt
+      if (attempt < maxAttempts - 1) {
+        await Future.delayed(Duration(milliseconds: delay.inMilliseconds * (attempt + 1)));
+      }
+    }
+
+    return false;
+  }
+
   /// Check if both permissions are granted
   Future<bool> hasAllCameraPermissions() async {
     final cameraGranted = await hasCameraPermission();

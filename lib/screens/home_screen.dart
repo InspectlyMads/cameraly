@@ -270,8 +270,15 @@ class HomeScreen extends ConsumerWidget {
       final permissionNotifier = ref.read(permissionRequestProvider.notifier);
       await permissionNotifier.requestCameraPermissions();
 
-      // Check again
-      final stillHasPermissions = await permissionService.hasAllCameraPermissions();
+      // Add a small delay to ensure permissions are fully processed
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // Check again with retry mechanism
+      final stillHasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
+        maxAttempts: 3,
+        delay: const Duration(milliseconds: 100),
+      );
+
       if (!stillHasPermissions) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
