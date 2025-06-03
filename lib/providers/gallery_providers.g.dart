@@ -90,7 +90,7 @@ final formattedStorageUsedProvider = AutoDisposeProvider<String>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef FormattedStorageUsedRef = AutoDisposeProviderRef<String>;
-String _$galleryHash() => r'26e9c4caa53563b1da63a370f86069627e303c68';
+String _$galleryHash() => r'749f0b6da78dcec29442df8acdc0e060d0121820';
 
 /// See also [Gallery].
 @ProviderFor(Gallery)

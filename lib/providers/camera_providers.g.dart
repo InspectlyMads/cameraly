@@ -6,12 +6,12 @@ part of 'camera_providers.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$availableCamerasHash() => r'256b2b680b6ef3c5fe4415df16114118957564e0';
+String _$availableCamerasHash() => r'a1ea977666160b93776fc02ed3e83e0f441dc8e3';
 
 /// See also [availableCameras].
 @ProviderFor(availableCameras)
 final availableCamerasProvider =
-    AutoDisposeFutureProvider<List<CameraDescription>>.internal(
+    AutoDisposeFutureProvider<List<camera.CameraDescription>>.internal(
   availableCameras,
   name: r'availableCamerasProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -24,7 +24,7 @@ final availableCamerasProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef AvailableCamerasRef
-    = AutoDisposeFutureProviderRef<List<CameraDescription>>;
+    = AutoDisposeFutureProviderRef<List<camera.CameraDescription>>;
 String _$cameraHasFlashHash() => r'03d099abd2b8716b0cd1d801ba2878ed7d5137c6';
 
 /// See also [cameraHasFlash].
@@ -60,7 +60,7 @@ final canSwitchCameraProvider = AutoDisposeProvider<bool>.internal(
 // ignore: unused_element
 typedef CanSwitchCameraRef = AutoDisposeProviderRef<bool>;
 String _$flashModeDisplayNameHash() =>
-    r'c713ef41d340357473036f6daffc5f529027720b';
+    r'da9e4683ced27df24e575001405edf9a55117c01';
 
 /// See also [flashModeDisplayName].
 @ProviderFor(flashModeDisplayName)
@@ -77,7 +77,7 @@ final flashModeDisplayNameProvider = AutoDisposeProvider<String>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef FlashModeDisplayNameRef = AutoDisposeProviderRef<String>;
-String _$flashModeIconHash() => r'882151b0567e356ee891977831474955cedc6750';
+String _$flashModeIconHash() => r'ddc71c6e563461b0361cb86958cf70a12c68cba4';
 
 /// See also [flashModeIcon].
 @ProviderFor(flashModeIcon)
@@ -94,7 +94,7 @@ final flashModeIconProvider = AutoDisposeProvider<String>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef FlashModeIconRef = AutoDisposeProviderRef<String>;
-String _$cameraControllerHash() => r'd64967bdc841bd4d996956df829cc399e0d565e1';
+String _$cameraControllerHash() => r'9d7966c514a0c1bc7e8bbf37aebfd22dff0889d0';
 
 /// See also [CameraController].
 @ProviderFor(CameraController)
