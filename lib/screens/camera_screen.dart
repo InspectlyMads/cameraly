@@ -590,18 +590,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   bool _isVideoModeSelected = false;
 
   Widget _buildModeSelector() {
-    return Positioned(
-      bottom: 120,
-      left: 0,
-      right: 0,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildModeToggleButton('PHOTO', !_isVideoModeSelected),
-          const SizedBox(width: 16),
-          _buildModeToggleButton('VIDEO', _isVideoModeSelected),
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildModeToggleButton('PHOTO', !_isVideoModeSelected),
+        const SizedBox(width: 16),
+        _buildModeToggleButton('VIDEO', _isVideoModeSelected),
+      ],
     );
   }
 
