@@ -436,20 +436,42 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         final size = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
 
         return GestureDetector(
+          onTapDown: (_) {
+            HapticFeedback.lightImpact();
+          },
           onTap: _takePhoto,
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-              border: Border.all(color: Colors.grey[300]!, width: 3),
-            ),
-            child: Icon(
-              Icons.camera_alt,
-              color: Colors.black,
-              size: size * 0.4, // Scale icon with button size
-            ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Outer ring
+              Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 3,
+                  ),
+                ),
+              ),
+              // Inner circle
+              Container(
+                width: size * 0.8,
+                height: size * 0.8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -472,31 +494,44 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               _startVideoRecording();
             }
           },
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
             width: size,
             height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isRecording ? Colors.red.shade600 : Colors.transparent,
+              color: isRecording ? Colors.white : Colors.transparent,
               border: Border.all(
-                color: isRecording ? Colors.red.shade600 : Colors.white,
-                width: isRecording ? 2 : 3,
+                color: isRecording ? Colors.white : Colors.red,
+                width: 4,
+              ),
+              boxShadow: isRecording
+                  ? [
+                      BoxShadow(
+                        color: Colors.red.withOpacity(0.5),
+                        blurRadius: 12,
+                        spreadRadius: 4,
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+            ),
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: isRecording ? size * 0.4 : size * 0.75,
+                height: isRecording ? size * 0.4 : size * 0.75,
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(isRecording ? 8 : size),
+                ),
               ),
             ),
-            child: isRecording
-                ? Container(
-                    width: size * 0.35,
-                    height: size * 0.35,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  )
-                : Icon(
-                    Icons.fiber_manual_record,
-                    color: Colors.red,
-                    size: size * 0.7,
-                  ),
           ),
         );
       },
