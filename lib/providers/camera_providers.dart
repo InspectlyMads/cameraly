@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../services/camera_service.dart';
 import '../services/media_service.dart';
+import '../services/camera_ui_service.dart';
 import 'permission_providers.dart';
 
 part 'camera_providers.g.dart';
@@ -359,23 +360,21 @@ bool canSwitchCamera(CanSwitchCameraRef ref) {
 @riverpod
 String flashModeDisplayName(FlashModeDisplayNameRef ref) {
   final cameraState = ref.watch(cameraControllerProvider);
-  final service = ref.read(cameraServiceProvider);
 
   if (cameraState.mode == CameraMode.video) {
-    return service.getVideoFlashDisplayName(cameraState.videoFlashMode);
+    return CameraUIService.getVideoFlashDisplayName(cameraState.videoFlashMode);
   } else {
-    return service.getPhotoFlashDisplayName(cameraState.photoFlashMode);
+    return CameraUIService.getPhotoFlashDisplayName(cameraState.photoFlashMode);
   }
 }
 
 @riverpod
 String flashModeIcon(FlashModeIconRef ref) {
   final cameraState = ref.watch(cameraControllerProvider);
-  final service = ref.read(cameraServiceProvider);
 
   if (cameraState.mode == CameraMode.video) {
-    return service.getVideoFlashIcon(cameraState.videoFlashMode);
+    return CameraUIService.getVideoFlashIcon(cameraState.videoFlashMode);
   } else {
-    return service.getPhotoFlashIcon(cameraState.photoFlashMode);
+    return CameraUIService.getPhotoFlashIcon(cameraState.photoFlashMode);
   }
 }
