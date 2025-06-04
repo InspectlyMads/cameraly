@@ -60,7 +60,7 @@ final canSwitchCameraProvider = AutoDisposeProvider<bool>.internal(
 // ignore: unused_element
 typedef CanSwitchCameraRef = AutoDisposeProviderRef<bool>;
 String _$flashModeDisplayNameHash() =>
-    r'da9e4683ced27df24e575001405edf9a55117c01';
+    r'3b8cf1afdeb7efe14d76450ed0efec894acf92cb';
 
 /// See also [flashModeDisplayName].
 @ProviderFor(flashModeDisplayName)
@@ -77,7 +77,7 @@ final flashModeDisplayNameProvider = AutoDisposeProvider<String>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef FlashModeDisplayNameRef = AutoDisposeProviderRef<String>;
-String _$flashModeIconHash() => r'ddc71c6e563461b0361cb86958cf70a12c68cba4';
+String _$flashModeIconHash() => r'951c4bb5bfc5ea009fb5119d80fbfd84e8388031';
 
 /// See also [flashModeIcon].
 @ProviderFor(flashModeIcon)

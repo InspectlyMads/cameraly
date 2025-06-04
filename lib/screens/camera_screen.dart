@@ -89,10 +89,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
+    final cameraState = ref.watch(cameraControllerProvider);
+    
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: _buildCameraInterface(),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: _buildCameraInterface(),
+          ),
+        ],
       ),
     );
   }
@@ -114,33 +120,70 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     return OrientationBuilder(
       builder: (context, orientation) {
-        return AnimatedSwitcher(
-          duration: OrientationUIHelper.getOrientationTransitionDuration(),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: child,
-            );
-          },
-          child: Stack(
-            key: ValueKey(orientation),
-            children: [
-              // Camera preview (standard approach)
-              _buildCameraPreview(cameraState.controller!),
+            return Stack(
+          children: [
+Stack(
+              children: [
+                // Camera preview (standard approach)
+                _buildCameraPreview(cameraState.controller!),
 
-              // Orientation-specific UI overlay
-              _buildOrientationSpecificUI(orientation, cameraState),
-            ],
-          ),
+                // Orientation-specific UI overlay
+                _buildOrientationSpecificUI(orientation, cameraState),
+              ],
+            ),
+            
+          ],
         );
       },
     );
   }
 
   Widget _buildOrientationSpecificUI(Orientation orientation, CameraState cameraState) {
-    final screenSize = MediaQuery.of(context).size;
+final screenSize = MediaQuery.of(context).size;
     final safeArea = MediaQuery.of(context).padding;
 
+    // Recording UI requires special handling to ensure stop button visibility
+    if (cameraState.isRecording) {
+      final buttonSize = OrientationUIHelper.getCaptureButtonSize(
+        orientation: orientation,
+        screenSize: screenSize,
+      );
+      
+      if (orientation == Orientation.landscape) {
+        // Landscape: button on the right side, centered vertically
+        return Container(
+          color: Colors.transparent,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: EdgeInsets.only(right: 16 + safeArea.right),
+              child: SizedBox(
+                width: buttonSize,
+                height: buttonSize,
+                child: _buildVideoRecordButton(cameraState),
+              ),
+            ),
+          ),
+        );
+      } else {
+        // Portrait: button at the bottom center
+        return Container(
+          color: Colors.transparent,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 32 + safeArea.bottom),
+              child: SizedBox(
+                width: buttonSize,
+                height: buttonSize,
+                child: _buildVideoRecordButton(cameraState),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    
     return Stack(
       children: [
         // Top controls (same for both orientations)
@@ -162,15 +205,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ? 1 / cameraAspectRatio // Invert for portrait
         : cameraAspectRatio; // Use as-is for landscape
 
-    // Debug information
-    debugPrint('🔄 Device orientation: ${orientation.name}');
-    debugPrint('📱 Screen size: ${screenSize.width} x ${screenSize.height}');
-    debugPrint('📱 Screen aspect ratio: ${screenSize.aspectRatio.toStringAsFixed(3)}');
-    debugPrint('📸 Camera sensor aspect ratio: ${cameraAspectRatio.toStringAsFixed(3)}');
-    debugPrint('🎯 Adjusted aspect ratio: ${adjustedAspectRatio.toStringAsFixed(3)}');
-    debugPrint('---');
-
-    return Center(
+return Center(
       child: AspectRatio(
         aspectRatio: adjustedAspectRatio,
         child: camera.CameraPreview(controller),
@@ -184,7 +219,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     // Hide top controls during recording
     if (cameraState.isRecording) {
-      return const SizedBox.shrink();
+      return const Positioned(
+        top: 0,
+        left: 0,
+        child: SizedBox.shrink(),
+      );
     }
 
     return Positioned(
@@ -381,16 +420,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
 
     // Always show video controls if we're currently recording OR in video modes
-    final bool shouldShowVideoControls = isActuallyRecording || cameraState.mode == CameraMode.video || (cameraState.mode == CameraMode.combined && _isVideoModeSelected);
+    // IMPORTANT: If recording, always show video button regardless of mode selection
+    final bool shouldShowVideoControls = isActuallyRecording || 
+        cameraState.mode == CameraMode.video || 
+        (cameraState.mode == CameraMode.combined && _isVideoModeSelected);
 
-    // Debug output
-    print('🔴 CAPTURE BUTTON:');
-    print('   - isActuallyRecording: $isActuallyRecording');
-    print('   - shouldShowVideoControls: $shouldShowVideoControls');
-    print('   - _isVideoModeSelected: $_isVideoModeSelected');
-    print('   - Returning: ${shouldShowVideoControls ? "VIDEO" : "PHOTO"} button');
-
-    if (shouldShowVideoControls) {
+if (shouldShowVideoControls) {
       return _buildVideoRecordButton(cameraState);
     } else {
       return _buildPhotoButton();
@@ -425,31 +460,46 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildVideoRecordButton(CameraState cameraState) {
-    final isRecording = cameraState.isRecording;
-
+    // Use the same logic as landscape controls for consistency
+    final isRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
+    
     return LayoutBuilder(
       builder: (context, constraints) {
         // Use the available size from constraints
         final size = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
-        
         return GestureDetector(
-          onTap: isRecording ? _stopVideoRecording : _startVideoRecording,
+          onTap: () {
+            if (isRecording) {
+              _stopVideoRecording();
+            } else {
+              _startVideoRecording();
+            }
+          },
           child: Container(
             width: size,
             height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isRecording ? Colors.red : Colors.white,
+              color: isRecording ? Colors.red.shade600 : Colors.transparent,
               border: Border.all(
-                color: isRecording ? Colors.red[800]! : Colors.grey[300]!,
-                width: 3,
+                color: isRecording ? Colors.red.shade600 : Colors.white,
+                width: isRecording ? 2 : 3,
               ),
             ),
-            child: Icon(
-              isRecording ? Icons.stop : Icons.videocam,
-              color: isRecording ? Colors.white : Colors.black,
-              size: size * 0.4, // Scale icon with button size
-            ),
+            child: isRecording 
+              ? Container(
+                  width: size * 0.35,
+                  height: size * 0.35,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                )
+              : Icon(
+                  Icons.fiber_manual_record,
+                  color: Colors.red,
+                  size: size * 0.7,
+                ),
           ),
         );
       },
@@ -678,8 +728,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     );
   }
 
-  // Camera action methods
-  Future<void> _takePhoto() async {
+Future<void> _takePhoto() async {
     final cameraController = ref.read(cameraControllerProvider.notifier);
 
     try {
@@ -735,7 +784,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       HapticFeedback.mediumImpact();
 
       await cameraController.startVideoRecording();
-
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -812,6 +861,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
         // Mode selector for combined mode (bottom-center)
         if (cameraState.mode == CameraMode.combined) _buildLandscapeModeSelector(screenSize, safeArea),
+        
       ],
     );
   }
@@ -825,48 +875,46 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Check both our state and the controller's state to be absolutely sure
     final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
 
-    // Debug output
-    print('🔍 LANDSCAPE RIGHT CONTROLS:');
-    print('   - cameraState.isRecording: ${cameraState.isRecording}');
-    print('   - controller.isRecordingVideo: ${cameraState.controller?.value.isRecordingVideo}');
-    print('   - isActuallyRecording: $isActuallyRecording');
-    print('   - mode: ${cameraState.mode}');
-    print('   - buttonSize: $buttonSize');
-
+// When recording, show only the stop button centered on screen
+    if (isActuallyRecording) {
+      return Positioned(
+        right: 16 + safeArea.right,
+        top: 0,
+        bottom: 0,
+        child: Container(
+          width: buttonSize,
+          alignment: Alignment.center,
+          child: _buildCaptureButton(cameraState),
+        ),
+      );
+    }
+    
+    // Normal state with gallery, capture, and check buttons
     return Positioned(
       right: 16 + safeArea.right,
       top: 0,
       bottom: 0,
       child: SizedBox(
         width: buttonSize,
-        child: isActuallyRecording
-            ? Center(
-                // During recording, just center the capture button
-                child: SizedBox(
-                  width: buttonSize,
-                  height: buttonSize,
-                  child: _buildCaptureButton(cameraState),
-                ),
-              )
-            : Column(
-                // Normal state with all 3 elements
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Gallery button
-                  _buildGalleryButton(),
+        child: Column(
+          // Normal state with all 3 elements
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Gallery button
+            _buildGalleryButton(),
 
-                  // Capture button
-                  SizedBox(
-                    width: buttonSize,
-                    height: buttonSize,
-                    child: _buildCaptureButton(cameraState),
-                  ),
+            // Capture button
+            SizedBox(
+              width: buttonSize,
+              height: buttonSize,
+              child: _buildCaptureButton(cameraState),
+            ),
 
-                  // Check FAB
-                  _buildCheckFab(),
-                ],
-              ),
+            // Check FAB
+            _buildCheckFab(),
+          ],
+        ),
       ),
     );
   }
