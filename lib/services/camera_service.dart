@@ -263,29 +263,33 @@ class CameraService {
     }
   }
 
+  /// Check if error is a camera exception
+  bool isCameraException(Object error) {
+    return error is camera.CameraException;
+  }
+  
+  /// Get camera exception code
+  String? getCameraExceptionCode(Object error) {
+    if (error is camera.CameraException) {
+      return error.code;
+    }
+    return null;
+  }
+
+
+  /// Get opposite lens direction for camera switching
+  CameraLensDirection getOppositeLensDirection(CameraLensDirection current) {
+    return current == CameraLensDirection.back ? CameraLensDirection.front : CameraLensDirection.back;
+  }
+  
   /// Handle camera errors
   String getErrorMessage(Object error) {
     if (error is camera.CameraException) {
-      switch (error.code) {
-        case 'CameraAccessDenied':
-          return 'Camera access denied. Please enable camera permission.';
-        case 'CameraAccessDeniedWithoutPrompt':
-          return 'Camera access denied. Please enable camera permission in settings.';
-        case 'CameraAccessRestricted':
-          return 'Camera access restricted.';
-        case 'AudioAccessDenied':
-          return 'Microphone access denied. Please enable microphone permission.';
-        case 'AudioAccessDeniedWithoutPrompt':
-          return 'Microphone access denied. Please enable microphone permission in settings.';
-        case 'AudioAccessRestricted':
-          return 'Microphone access restricted.';
-        default:
-          return 'Camera error: ${error.description}';
-      }
+      return error.description ?? error.code;
     }
-    return 'An unexpected error occurred: $error';
+    return error.toString();
   }
-
+  
   /// Get next photo flash mode for cycling
   PhotoFlashMode getNextPhotoFlashMode(PhotoFlashMode current) {
     switch (current) {
@@ -306,54 +310,5 @@ class CameraService {
       case VideoFlashMode.torch:
         return VideoFlashMode.off;
     }
-  }
-
-  /// Get photo flash mode icon
-  String getPhotoFlashIcon(PhotoFlashMode mode) {
-    switch (mode) {
-      case PhotoFlashMode.off:
-        return '⚫'; // Flash off
-      case PhotoFlashMode.auto:
-        return '⚡'; // Flash auto
-      case PhotoFlashMode.on:
-        return '💡'; // Flash on
-    }
-  }
-
-  /// Get video flash mode icon
-  String getVideoFlashIcon(VideoFlashMode mode) {
-    switch (mode) {
-      case VideoFlashMode.off:
-        return '⚫'; // Flash off
-      case VideoFlashMode.torch:
-        return '🔦'; // Torch
-    }
-  }
-
-  /// Get photo flash mode display name
-  String getPhotoFlashDisplayName(PhotoFlashMode mode) {
-    switch (mode) {
-      case PhotoFlashMode.off:
-        return 'Off';
-      case PhotoFlashMode.auto:
-        return 'Auto';
-      case PhotoFlashMode.on:
-        return 'On';
-    }
-  }
-
-  /// Get video flash mode display name
-  String getVideoFlashDisplayName(VideoFlashMode mode) {
-    switch (mode) {
-      case VideoFlashMode.off:
-        return 'Off';
-      case VideoFlashMode.torch:
-        return 'Torch';
-    }
-  }
-
-  /// Get opposite lens direction for camera switching
-  CameraLensDirection getOppositeLensDirection(CameraLensDirection current) {
-    return current == CameraLensDirection.back ? CameraLensDirection.front : CameraLensDirection.back;
   }
 }

@@ -180,6 +180,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   Widget _buildTopControls(Orientation orientation) {
     final safeArea = MediaQuery.of(context).padding;
+    final cameraState = ref.watch(cameraControllerProvider);
+
+    // Hide top controls during recording
+    if (cameraState.isRecording) {
+      return const SizedBox.shrink();
+    }
 
     return Positioned(
       top: 16 + safeArea.top,
@@ -206,6 +212,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildRightControlsColumn() {
+    final cameraState = ref.watch(cameraControllerProvider);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -215,8 +223,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
         const SizedBox(height: 8),
 
-        // Camera switch
-        _buildCameraSwitchControl(),
+        // Camera switch - hide during recording
+        if (!cameraState.isRecording) _buildCameraSwitchControl(),
 
         // Space reserved for future buttons
         // const SizedBox(height: 8),
@@ -369,7 +377,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildCaptureButton(CameraState cameraState) {
-    if (cameraState.mode == CameraMode.video || (cameraState.mode == CameraMode.combined && _isVideoModeSelected)) {
+    // Check both our state and the controller's state to be absolutely sure
+    final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
+
+    // Always show video controls if we're currently recording OR in video modes
+    final bool shouldShowVideoControls = isActuallyRecording || cameraState.mode == CameraMode.video || (cameraState.mode == CameraMode.combined && _isVideoModeSelected);
+
+    // Debug output
+    print('🔴 CAPTURE BUTTON:');
+    print('   - isActuallyRecording: $isActuallyRecording');
+    print('   - shouldShowVideoControls: $shouldShowVideoControls');
+    print('   - _isVideoModeSelected: $_isVideoModeSelected');
+    print('   - Returning: ${shouldShowVideoControls ? "VIDEO" : "PHOTO"} button');
+
+    if (shouldShowVideoControls) {
       return _buildVideoRecordButton(cameraState);
     } else {
       return _buildPhotoButton();
@@ -377,47 +398,61 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildPhotoButton() {
-    return GestureDetector(
-      onTap: _takePhoto,
-      child: Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white,
-          border: Border.all(color: Colors.grey[300]!, width: 4),
-        ),
-        child: const Icon(
-          Icons.camera_alt,
-          color: Colors.black,
-          size: 32,
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Use the available size from constraints
+        final size = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
+        
+        return GestureDetector(
+          onTap: _takePhoto,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              border: Border.all(color: Colors.grey[300]!, width: 3),
+            ),
+            child: Icon(
+              Icons.camera_alt,
+              color: Colors.black,
+              size: size * 0.4, // Scale icon with button size
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildVideoRecordButton(CameraState cameraState) {
     final isRecording = cameraState.isRecording;
 
-    return GestureDetector(
-      onTap: isRecording ? _stopVideoRecording : _startVideoRecording,
-      child: Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: isRecording ? Colors.red : Colors.white,
-          border: Border.all(
-            color: isRecording ? Colors.red[800]! : Colors.grey[300]!,
-            width: 4,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Use the available size from constraints
+        final size = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
+        
+        return GestureDetector(
+          onTap: isRecording ? _stopVideoRecording : _startVideoRecording,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isRecording ? Colors.red : Colors.white,
+              border: Border.all(
+                color: isRecording ? Colors.red[800]! : Colors.grey[300]!,
+                width: 3,
+              ),
+            ),
+            child: Icon(
+              isRecording ? Icons.stop : Icons.videocam,
+              color: isRecording ? Colors.white : Colors.black,
+              size: size * 0.4, // Scale icon with button size
+            ),
           ),
-        ),
-        child: Icon(
-          isRecording ? Icons.stop : Icons.videocam,
-          color: isRecording ? Colors.white : Colors.black,
-          size: 32,
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -787,35 +822,61 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       screenSize: screenSize,
     );
 
+    // Check both our state and the controller's state to be absolutely sure
+    final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
+
+    // Debug output
+    print('🔍 LANDSCAPE RIGHT CONTROLS:');
+    print('   - cameraState.isRecording: ${cameraState.isRecording}');
+    print('   - controller.isRecordingVideo: ${cameraState.controller?.value.isRecordingVideo}');
+    print('   - isActuallyRecording: $isActuallyRecording');
+    print('   - mode: ${cameraState.mode}');
+    print('   - buttonSize: $buttonSize');
+
     return Positioned(
       right: 16 + safeArea.right,
       top: 0,
       bottom: 0,
       child: SizedBox(
         width: buttonSize,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Gallery button (top of group)
-            _buildGalleryButton(),
+        child: isActuallyRecording
+            ? Center(
+                // During recording, just center the capture button
+                child: SizedBox(
+                  width: buttonSize,
+                  height: buttonSize,
+                  child: _buildCaptureButton(cameraState),
+                ),
+              )
+            : Column(
+                // Normal state with all 3 elements
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Gallery button
+                  _buildGalleryButton(),
 
-            // Capture button (center of group)
-            SizedBox(
-              width: buttonSize,
-              height: buttonSize,
-              child: _buildCaptureButton(cameraState),
-            ),
+                  // Capture button
+                  SizedBox(
+                    width: buttonSize,
+                    height: buttonSize,
+                    child: _buildCaptureButton(cameraState),
+                  ),
 
-            // Check FAB (bottom of group)
-            _buildCheckFab(),
-          ],
-        ),
+                  // Check FAB
+                  _buildCheckFab(),
+                ],
+              ),
       ),
     );
   }
 
   Widget _buildLandscapeLeftControls(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
+    // Hide left controls during recording
+    if (cameraState.isRecording) {
+      return const SizedBox.shrink();
+    }
+
     final galleryPosition = OrientationUIHelper.getGalleryButtonPosition(
       screenSize: screenSize,
       orientation: Orientation.landscape,
@@ -835,6 +896,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildLandscapeModeSelector(Size screenSize, EdgeInsets safeArea) {
+    final cameraState = ref.watch(cameraControllerProvider);
+
+    // Hide mode selector during recording
+    if (cameraState.isRecording) {
+      return const SizedBox.shrink();
+    }
+
     final position = OrientationUIHelper.getModeSelectorPosition(
       screenSize: screenSize,
       orientation: Orientation.landscape,
@@ -873,24 +941,31 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Gallery button
-          _buildGalleryButton(),
+          // Gallery button - hide during recording
+          if (!cameraState.isRecording) _buildGalleryButton() else const SizedBox(width: 60),
 
-          // Main capture button
+          // Main capture button (always show)
           SizedBox(
             width: buttonSize,
             height: buttonSize,
             child: _buildCaptureButton(cameraState),
           ),
 
-          // Check FAB
-          _buildCheckFab(),
+          // Check FAB - hide during recording
+          if (!cameraState.isRecording) _buildCheckFab() else const SizedBox(width: 60),
         ],
       ),
     );
   }
 
   Widget _buildPortraitModeSelector(Size screenSize, EdgeInsets safeArea) {
+    final cameraState = ref.watch(cameraControllerProvider);
+
+    // Hide mode selector during recording
+    if (cameraState.isRecording) {
+      return const SizedBox.shrink();
+    }
+
     return Positioned(
       bottom: 140 + safeArea.bottom,
       left: 0,
