@@ -1,6 +1,10 @@
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 
+import 'camera_error_handler.dart';
+import 'orientation_service.dart';
+import '../models/orientation_data.dart';
+
 enum CameraMode { photo, video, combined }
 
 enum PhotoFlashMode { off, auto, on }
@@ -20,6 +24,10 @@ class CameraState {
   final List<camera.CameraDescription> availableCameras;
   final String? errorMessage;
   final bool isLoading;
+  final bool showGrid;
+  final double currentZoom;
+  final double minZoom;
+  final double maxZoom;
 
   const CameraState({
     this.controller,
@@ -32,6 +40,10 @@ class CameraState {
     this.availableCameras = const [],
     this.errorMessage,
     this.isLoading = false,
+    this.showGrid = false,
+    this.currentZoom = 1.0,
+    this.minZoom = 1.0,
+    this.maxZoom = 1.0,
   });
 
   CameraState copyWith({
@@ -45,6 +57,10 @@ class CameraState {
     List<camera.CameraDescription>? availableCameras,
     String? errorMessage,
     bool? isLoading,
+    bool? showGrid,
+    double? currentZoom,
+    double? minZoom,
+    double? maxZoom,
   }) {
     return CameraState(
       controller: controller ?? this.controller,
@@ -57,6 +73,10 @@ class CameraState {
       availableCameras: availableCameras ?? this.availableCameras,
       errorMessage: errorMessage,
       isLoading: isLoading ?? this.isLoading,
+      showGrid: showGrid ?? this.showGrid,
+      currentZoom: currentZoom ?? this.currentZoom,
+      minZoom: minZoom ?? this.minZoom,
+      maxZoom: maxZoom ?? this.maxZoom,
     );
   }
 
@@ -73,7 +93,11 @@ class CameraState {
         other.lensDirection == lensDirection &&
         listEquals(other.availableCameras, availableCameras) &&
         other.errorMessage == errorMessage &&
-        other.isLoading == isLoading;
+        other.isLoading == isLoading &&
+        other.showGrid == showGrid &&
+        other.currentZoom == currentZoom &&
+        other.minZoom == minZoom &&
+        other.maxZoom == maxZoom;
   }
 
   @override
@@ -89,12 +113,23 @@ class CameraState {
       availableCameras,
       errorMessage,
       isLoading,
+      showGrid,
+      currentZoom,
+      minZoom,
+      maxZoom,
     );
   }
 }
 
 class CameraService {
   static const String _logTag = 'CameraService';
+  
+  final OrientationService _orientationService = OrientationService();
+  
+  /// Initialize the camera service
+  Future<void> initialize() async {
+    await _orientationService.initialize();
+  }
 
   /// Initialize available cameras
   Future<List<camera.CameraDescription>> getAvailableCameras() async {
@@ -123,6 +158,11 @@ class CameraService {
       case camera.CameraLensDirection.external:
         return CameraLensDirection.back; // Default external cameras to back
     }
+  }
+
+  /// Public method to map camera package lens direction to our enum
+  CameraLensDirection mapCameraLensDirection(camera.CameraLensDirection lensDirection) {
+    return _mapFromCameraLensDirection(lensDirection);
   }
 
   /// Initialize camera controller
@@ -263,11 +303,22 @@ class CameraService {
     }
   }
 
+  /// Get opposite lens direction for camera switching
+  CameraLensDirection getOppositeLensDirection(CameraLensDirection current) {
+    return current == CameraLensDirection.back ? CameraLensDirection.front : CameraLensDirection.back;
+  }
+  
+  /// Handle camera errors
+  String getErrorMessage(Object error) {
+    final errorInfo = CameraErrorHandler.analyzeError(error);
+    return errorInfo.userMessage ?? errorInfo.message;
+  }
+
   /// Check if error is a camera exception
   bool isCameraException(Object error) {
     return error is camera.CameraException;
   }
-  
+
   /// Get camera exception code
   String? getCameraExceptionCode(Object error) {
     if (error is camera.CameraException) {
@@ -276,18 +327,9 @@ class CameraService {
     return null;
   }
 
-
-  /// Get opposite lens direction for camera switching
-  CameraLensDirection getOppositeLensDirection(CameraLensDirection current) {
-    return current == CameraLensDirection.back ? CameraLensDirection.front : CameraLensDirection.back;
-  }
-  
-  /// Handle camera errors
-  String getErrorMessage(Object error) {
-    if (error is camera.CameraException) {
-      return error.description ?? error.code;
-    }
-    return error.toString();
+  /// Get detailed error information
+  CameraErrorInfo getErrorInfo(Object error) {
+    return CameraErrorHandler.analyzeError(error);
   }
   
   /// Get next photo flash mode for cycling
@@ -310,5 +352,53 @@ class CameraService {
       case VideoFlashMode.torch:
         return VideoFlashMode.off;
     }
+  }
+
+  /// Dispose service resources
+  void dispose() {
+    _orientationService.dispose();
+  }
+
+  /// Get current orientation data
+  Future<OrientationData> getCurrentOrientation({
+    required camera.CameraDescription cameraDescription,
+    required CameraLensDirection lensDirection,
+  }) async {
+    // Convert our enum to camera package enum
+    final cameraLensDirection = lensDirection == CameraLensDirection.front
+        ? camera.CameraLensDirection.front
+        : camera.CameraLensDirection.back;
+    
+    return await _orientationService.getCurrentOrientation(
+      camera: cameraDescription,
+      lensDirection: cameraLensDirection,
+    );
+  }
+
+  /// Process captured photo with orientation correction
+  Future<String?> processCapturedPhoto({
+    required String imagePath,
+    required OrientationData orientationData,
+  }) async {
+    // Apply orientation correction
+    final correctedPath = await _orientationService.applyOrientationCorrection(
+      imagePath,
+      orientationData,
+    );
+    
+    // Write EXIF metadata
+    if (correctedPath != null) {
+      await _orientationService.writeExifOrientation(
+        correctedPath,
+        orientationData,
+      );
+    }
+    
+    return correctedPath;
+  }
+
+  /// Get orientation debug info
+  Map<String, dynamic> getOrientationDebugInfo() {
+    return _orientationService.getDebugInfo();
   }
 }

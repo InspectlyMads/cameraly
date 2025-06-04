@@ -8,8 +8,7 @@ part of 'orientation_data.dart';
 
 OrientationData _$OrientationDataFromJson(Map<String, dynamic> json) =>
     OrientationData(
-      deviceOrientation:
-          $enumDecode(_$DeviceOrientationEnumMap, json['deviceOrientation']),
+      deviceOrientation: (json['deviceOrientation'] as num).toInt(),
       cameraRotation: (json['cameraRotation'] as num).toInt(),
       sensorOrientation: (json['sensorOrientation'] as num).toInt(),
       deviceManufacturer: json['deviceManufacturer'] as String,
@@ -21,8 +20,7 @@ OrientationData _$OrientationDataFromJson(Map<String, dynamic> json) =>
 
 Map<String, dynamic> _$OrientationDataToJson(OrientationData instance) =>
     <String, dynamic>{
-      'deviceOrientation':
-          _$DeviceOrientationEnumMap[instance.deviceOrientation]!,
+      'deviceOrientation': instance.deviceOrientation,
       'cameraRotation': instance.cameraRotation,
       'sensorOrientation': instance.sensorOrientation,
       'deviceManufacturer': instance.deviceManufacturer,
@@ -32,18 +30,13 @@ Map<String, dynamic> _$OrientationDataToJson(OrientationData instance) =>
       'metadata': instance.metadata,
     };
 
-const _$DeviceOrientationEnumMap = {
-  DeviceOrientation.portraitUp: 'portraitUp',
-  DeviceOrientation.landscapeLeft: 'landscapeLeft',
-  DeviceOrientation.portraitDown: 'portraitDown',
-  DeviceOrientation.landscapeRight: 'landscapeRight',
-};
-
 DeviceInfo _$DeviceInfoFromJson(Map<String, dynamic> json) => DeviceInfo(
       manufacturer: json['manufacturer'] as String,
       model: json['model'] as String,
-      androidVersion: json['androidVersion'] as String,
-      sdkVersion: json['sdkVersion'] as String,
+      androidVersion: json['androidVersion'] as String?,
+      sdkVersion: json['sdkVersion'] as String?,
+      osVersion: json['osVersion'] as String?,
+      metadata: json['metadata'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$DeviceInfoToJson(DeviceInfo instance) =>
@@ -52,6 +45,8 @@ Map<String, dynamic> _$DeviceInfoToJson(DeviceInfo instance) =>
       'model': instance.model,
       'androidVersion': instance.androidVersion,
       'sdkVersion': instance.sdkVersion,
+      'osVersion': instance.osVersion,
+      'metadata': instance.metadata,
     };
 
 OrientationCorrection _$OrientationCorrectionFromJson(
