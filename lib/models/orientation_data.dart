@@ -1,11 +1,11 @@
-import 'package:flutter/services.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'orientation_data.g.dart';
 
 @JsonSerializable()
 class OrientationData {
-  final DeviceOrientation deviceOrientation;
+  /// Device orientation in degrees (0, 90, 180, 270)
+  final int deviceOrientation;
   final int cameraRotation;
   final int sensorOrientation;
   final String deviceManufacturer;
@@ -30,7 +30,7 @@ class OrientationData {
   Map<String, dynamic> toJson() => _$OrientationDataToJson(this);
 
   OrientationData copyWith({
-    DeviceOrientation? deviceOrientation,
+    int? deviceOrientation,
     int? cameraRotation,
     int? sensorOrientation,
     String? deviceManufacturer,
@@ -92,14 +92,18 @@ class OrientationData {
 class DeviceInfo {
   final String manufacturer;
   final String model;
-  final String androidVersion;
-  final String sdkVersion;
+  final String? androidVersion;
+  final String? sdkVersion;
+  final String? osVersion;
+  final Map<String, dynamic>? metadata;
 
   const DeviceInfo({
     required this.manufacturer,
     required this.model,
-    required this.androidVersion,
-    required this.sdkVersion,
+    this.androidVersion,
+    this.sdkVersion,
+    this.osVersion,
+    this.metadata,
   });
 
   factory DeviceInfo.fromJson(Map<String, dynamic> json) => _$DeviceInfoFromJson(json);
@@ -107,7 +111,7 @@ class DeviceInfo {
   Map<String, dynamic> toJson() => _$DeviceInfoToJson(this);
 
   @override
-  String toString() => '$manufacturer $model (Android $androidVersion)';
+  String toString() => '$manufacturer $model${osVersion != null ? ' ($osVersion)' : ''}';
 }
 
 @JsonSerializable()
@@ -151,5 +155,10 @@ class OrientationCorrection {
       default:
         return const OrientationCorrection();
     }
+  }
+
+  /// Standard correction with no modifications
+  factory OrientationCorrection.standard() {
+    return const OrientationCorrection();
   }
 }

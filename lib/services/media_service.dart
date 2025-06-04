@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
@@ -6,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/media_item.dart';
+import '../models/orientation_data.dart';
 
 class GalleryState {
   final List<MediaItem> mediaItems;
@@ -98,7 +100,7 @@ class MediaService {
   }
 
   /// Save captured photo to media directory
-  Future<String?> savePhoto(Uint8List imageData, {String? fileName}) async {
+  Future<String?> savePhoto(Uint8List imageData, {String? fileName, OrientationData? orientationData}) async {
     try {
       final mediaDir = await getMediaDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -107,6 +109,16 @@ class MediaService {
 
       final file = File(filePath);
       await file.writeAsBytes(imageData);
+
+      // Save orientation data as a sidecar file if provided
+      if (orientationData != null) {
+        final orientationPath = '$filePath.orientation.json';
+        final orientationFile = File(orientationPath);
+        await orientationFile.writeAsString(
+          jsonEncode(orientationData.toJson()),
+        );
+        debugPrint('$_logTag: Saved orientation data to: $orientationPath');
+      }
 
       debugPrint('$_logTag: Saved photo to: $filePath');
       return filePath;
@@ -197,7 +209,8 @@ class MediaService {
 
       // Generate thumbnail path
       final thumbnailFileName = '${videoItem.fileName}_thumb.jpg';
-      final thumbnailPath = path.join(thumbnailDir.path, thumbnailFileName);
+      // final thumbnailPath = path.join(thumbnailDir.path, thumbnailFileName);
+      // TODO: Implement actual thumbnail generation using flutter_ffmpeg or similar
 
       // For now, we'll return null since thumbnail generation is complex
       // In a production app, you'd use a plugin like flutter_ffmpeg

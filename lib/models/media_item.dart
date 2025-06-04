@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:convert';
+
+import 'orientation_data.dart';
 
 enum MediaType { photo, video }
 
@@ -7,6 +10,7 @@ class MediaItem {
   final MediaType type;
   final DateTime capturedAt;
   final String? orientationData;
+  final OrientationData? orientationInfo;
   final String? thumbnailPath;
   final Duration? videoDuration;
   final int? fileSize;
@@ -16,6 +20,7 @@ class MediaItem {
     required this.type,
     required this.capturedAt,
     this.orientationData,
+    this.orientationInfo,
     this.thumbnailPath,
     this.videoDuration,
     this.fileSize,
@@ -37,11 +42,25 @@ class MediaItem {
         return null; // Unsupported file type
       }
 
+      // Try to load orientation data from sidecar file
+      OrientationData? orientationInfo;
+      final orientationFile = File('$path.orientation.json');
+      if (await orientationFile.exists()) {
+        try {
+          final jsonStr = await orientationFile.readAsString();
+          final jsonData = json.decode(jsonStr);
+          orientationInfo = OrientationData.fromJson(jsonData);
+        } catch (e) {
+          // Failed to parse orientation data
+        }
+      }
+
       return MediaItem(
         path: path,
         type: type,
         capturedAt: stat.modified,
         fileSize: stat.size,
+        orientationInfo: orientationInfo,
       );
     } catch (e) {
       return null; // Error reading file
@@ -88,6 +107,7 @@ class MediaItem {
     MediaType? type,
     DateTime? capturedAt,
     String? orientationData,
+    OrientationData? orientationInfo,
     String? thumbnailPath,
     Duration? videoDuration,
     int? fileSize,
@@ -97,6 +117,7 @@ class MediaItem {
       type: type ?? this.type,
       capturedAt: capturedAt ?? this.capturedAt,
       orientationData: orientationData ?? this.orientationData,
+      orientationInfo: orientationInfo ?? this.orientationInfo,
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       videoDuration: videoDuration ?? this.videoDuration,
       fileSize: fileSize ?? this.fileSize,
@@ -111,6 +132,7 @@ class MediaItem {
         other.type == type &&
         other.capturedAt == capturedAt &&
         other.orientationData == orientationData &&
+        other.orientationInfo == orientationInfo &&
         other.thumbnailPath == thumbnailPath &&
         other.videoDuration == videoDuration &&
         other.fileSize == fileSize;
@@ -123,6 +145,7 @@ class MediaItem {
       type,
       capturedAt,
       orientationData,
+      orientationInfo,
       thumbnailPath,
       videoDuration,
       fileSize,

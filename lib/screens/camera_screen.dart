@@ -9,6 +9,9 @@ import '../providers/permission_providers.dart';
 import '../screens/gallery_screen.dart';
 import '../services/camera_service.dart';
 import '../utils/orientation_ui_helper.dart';
+import '../widgets/camera_grid_overlay.dart';
+import '../widgets/camera_zoom_control.dart';
+import '../widgets/orientation_debug_overlay.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final CameraMode initialMode;
@@ -24,6 +27,7 @@ class CameraScreen extends ConsumerStatefulWidget {
 
 class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBindingObserver {
   bool _hasInitializationFailed = false;
+  bool _showDebugInfo = false; // Toggle with long press on screen
 
   @override
   void initState() {
@@ -50,14 +54,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
         // App is going to background, dispose camera to free resources
+        cameraController.pauseCamera();
         break;
       case AppLifecycleState.resumed:
         // App is back in foreground, reinitialize camera
-        _initializeWithMode();
+        cameraController.resumeCamera();
         break;
       case AppLifecycleState.detached:
         break;
       case AppLifecycleState.hidden:
+        // On iOS, hidden state is similar to paused
+        cameraController.pauseCamera();
         break;
     }
   }
@@ -89,8 +96,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
-    final cameraState = ref.watch(cameraControllerProvider);
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -104,31 +109,50 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildCameraInterface() {
-    final cameraState = ref.watch(cameraControllerProvider);
+    // Use selective watching to reduce rebuilds
+    final isLoading = ref.watch(cameraControllerProvider.select((state) => state.isLoading));
+    final errorMessage = ref.watch(cameraControllerProvider.select((state) => state.errorMessage));
+    final isInitialized = ref.watch(cameraControllerProvider.select((state) => state.isInitialized));
+    final hasController = ref.watch(cameraControllerProvider.select((state) => state.controller != null));
 
-    if (cameraState.isLoading) {
+    if (isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (cameraState.errorMessage != null) {
-      return _buildErrorState(cameraState.errorMessage!);
+    if (errorMessage != null) {
+      return _buildErrorState(errorMessage);
     }
 
-    if (!cameraState.isInitialized || cameraState.controller == null) {
+    if (!isInitialized || !hasController) {
       return _buildPermissionOrInitializationState();
     }
 
+    final cameraState = ref.watch(cameraControllerProvider);
+    
     return OrientationBuilder(
       builder: (context, orientation) {
         return Stack(
           children: [
             Stack(
               children: [
-                // Camera preview (standard approach)
-                _buildCameraPreview(cameraState.controller!),
+                  // Camera preview (standard approach)
+                  _buildCameraPreview(cameraState.controller!),
 
-                // Orientation-specific UI overlay
-                _buildOrientationSpecificUI(orientation, cameraState),
+                  // Grid overlay
+                  if (cameraState.showGrid)
+                    const CameraGridOverlay(
+                      gridType: GridType.ruleOfThirds,
+                      opacity: 0.3,
+                    ),
+
+                  // Orientation-specific UI overlay
+                  _buildOrientationSpecificUI(orientation, cameraState),
+                  
+                  // Zoom control overlay
+                  _buildZoomControl(cameraState),
+                  
+                  // Debug overlay (toggle with long press)
+                  OrientationDebugOverlay(showDebugInfo: _showDebugInfo),
               ],
             ),
           ],
@@ -196,7 +220,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   Widget _buildCameraPreview(camera.CameraController controller) {
     final orientation = MediaQuery.of(context).orientation;
-    final screenSize = MediaQuery.of(context).size;
     final cameraAspectRatio = controller.value.aspectRatio;
 
     // Invert aspect ratio for portrait orientation
@@ -214,10 +237,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   Widget _buildTopControls(Orientation orientation) {
     final safeArea = MediaQuery.of(context).padding;
-    final cameraState = ref.watch(cameraControllerProvider);
+    final isRecording = ref.watch(cameraControllerProvider.select((state) => state.isRecording));
 
     // Hide top controls during recording
-    if (cameraState.isRecording) {
+    if (isRecording) {
       return const Positioned(
         top: 0,
         left: 0,
@@ -264,9 +287,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         // Camera switch - hide during recording
         if (!cameraState.isRecording) _buildCameraSwitchControl(),
 
-        // Space reserved for future buttons
-        // const SizedBox(height: 8),
-        // _buildFutureControl(),
+        const SizedBox(height: 8),
+
+        // Grid toggle
+        _buildGridControl(),
       ],
     );
   }
@@ -368,51 +392,33 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     );
   }
 
-  Widget _buildBottomControls() {
+  Widget _buildGridControl() {
     final cameraState = ref.watch(cameraControllerProvider);
-    final safeArea = MediaQuery.of(context).padding;
 
-    return Positioned(
-      bottom: 32 + safeArea.bottom,
-      left: safeArea.left,
-      right: safeArea.right,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Gallery/Preview placeholder
-          GestureDetector(
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const GalleryScreen(),
-                ),
-              );
-            },
-            child: Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: Colors.grey[800],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: const Icon(
-                Icons.photo_library,
-                color: Colors.white,
-                size: 24,
-              ),
+    return CircleAvatar(
+      backgroundColor: Colors.black54,
+      child: IconButton(
+        icon: Icon(
+          cameraState.showGrid ? Icons.grid_on : Icons.grid_off,
+          color: Colors.white,
+          size: 20,
+        ),
+        onPressed: () {
+          ref.read(cameraControllerProvider.notifier).toggleGrid();
+          
+          // Show feedback
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(cameraState.showGrid ? 'Grid off' : 'Grid on'),
+              duration: const Duration(milliseconds: 1000),
+              behavior: SnackBarBehavior.floating,
             ),
-          ),
-
-          // Main capture button
-          _buildCaptureButton(cameraState),
-
-          // Mode info
-          _buildModeInfo(cameraState),
-        ],
+          );
+        },
       ),
     );
   }
+
 
   Widget _buildCaptureButton(CameraState cameraState) {
     // Check both our state and the controller's state to be absolutely sure
@@ -440,6 +446,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             HapticFeedback.lightImpact();
           },
           onTap: _takePhoto,
+          onLongPress: () {
+            setState(() {
+              _showDebugInfo = !_showDebugInfo;
+            });
+            HapticFeedback.mediumImpact();
+          },
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -493,6 +505,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             } else {
               _startVideoRecording();
             }
+          },
+          onLongPress: () {
+            setState(() {
+              _showDebugInfo = !_showDebugInfo;
+            });
+            HapticFeedback.mediumImpact();
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
@@ -674,7 +692,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   Widget _buildPermissionOrInitializationState() {
     final cameraState = ref.watch(cameraControllerProvider);
-    final permissionRequest = ref.watch(permissionRequestProvider);
 
     // Show different states based on the situation
     if (_hasInitializationFailed || (cameraState.errorMessage != null && cameraState.errorMessage!.contains('permissions'))) {
@@ -1087,6 +1104,29 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           size: 24,
         ),
         onPressed: () => Navigator.of(context).pop(),
+      ),
+    );
+  }
+  
+  Widget _buildZoomControl(CameraState cameraState) {
+    if (!cameraState.isInitialized || cameraState.controller == null) {
+      return const SizedBox.shrink();
+    }
+    
+    // Hide zoom control during recording
+    if (cameraState.isRecording) {
+      return const SizedBox.shrink();
+    }
+    
+    // Make the zoom control fill the entire screen to capture pinch gestures anywhere
+    return Positioned.fill(
+      child: CameraZoomControl(
+        currentZoom: cameraState.currentZoom,
+        minZoom: cameraState.minZoom,
+        maxZoom: cameraState.maxZoom,
+        onZoomChanged: (zoom) {
+          ref.read(cameraControllerProvider.notifier).setZoomLevel(zoom);
+        },
       ),
     );
   }

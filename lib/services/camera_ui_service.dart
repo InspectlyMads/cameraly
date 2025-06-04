@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart' as camera;
-import '../providers/camera_providers.dart';
 import 'camera_service.dart';
 
 /// Service for camera-related UI helpers and display logic

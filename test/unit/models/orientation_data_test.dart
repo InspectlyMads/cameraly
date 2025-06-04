@@ -1,12 +1,11 @@
 import 'package:camera_test/models/orientation_data.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('OrientationData', () {
     test('serializes to JSON correctly', () {
       final orientation = OrientationData(
-        deviceOrientation: DeviceOrientation.landscapeLeft,
+        deviceOrientation: 90, // 90 degrees for landscape left
         cameraRotation: 90,
         sensorOrientation: 270,
         deviceManufacturer: 'Samsung',
@@ -17,7 +16,7 @@ void main() {
       );
 
       final json = orientation.toJson();
-      expect(json['deviceOrientation'], equals('landscapeLeft'));
+      expect(json['deviceOrientation'], equals(90));
       expect(json['cameraRotation'], equals(90));
       expect(json['sensorOrientation'], equals(270));
       expect(json['deviceManufacturer'], equals('Samsung'));
@@ -27,7 +26,7 @@ void main() {
 
     test('deserializes from JSON correctly', () {
       final json = {
-        'deviceOrientation': 'landscapeLeft',
+        'deviceOrientation': 90,
         'cameraRotation': 90,
         'sensorOrientation': 270,
         'deviceManufacturer': 'Samsung',
@@ -38,7 +37,7 @@ void main() {
       };
 
       final orientation = OrientationData.fromJson(json);
-      expect(orientation.deviceOrientation, equals(DeviceOrientation.landscapeLeft));
+      expect(orientation.deviceOrientation, equals(90));
       expect(orientation.cameraRotation, equals(90));
       expect(orientation.sensorOrientation, equals(270));
       expect(orientation.deviceManufacturer, equals('Samsung'));
@@ -49,7 +48,7 @@ void main() {
 
     test('copyWith creates correct copy', () {
       final original = OrientationData(
-        deviceOrientation: DeviceOrientation.portraitUp,
+        deviceOrientation: 0, // Portrait up
         cameraRotation: 0,
         sensorOrientation: 0,
         deviceManufacturer: 'Google',
@@ -58,11 +57,11 @@ void main() {
       );
 
       final copied = original.copyWith(
-        deviceOrientation: DeviceOrientation.landscapeLeft,
+        deviceOrientation: 90, // Landscape left
         accuracyScore: 0.85,
       );
 
-      expect(copied.deviceOrientation, equals(DeviceOrientation.landscapeLeft));
+      expect(copied.deviceOrientation, equals(90));
       expect(copied.accuracyScore, equals(0.85));
       expect(copied.deviceManufacturer, equals('Google'));
       expect(copied.deviceModel, equals('Pixel 6'));
@@ -70,7 +69,7 @@ void main() {
 
     test('toString returns formatted string', () {
       final orientation = OrientationData(
-        deviceOrientation: DeviceOrientation.landscapeLeft,
+        deviceOrientation: 90, // Landscape left
         cameraRotation: 90,
         sensorOrientation: 270,
         deviceManufacturer: 'Samsung',
@@ -80,7 +79,7 @@ void main() {
       );
 
       final str = orientation.toString();
-      expect(str, contains('DeviceOrientation.landscapeLeft'));
+      expect(str, contains('90')); // deviceOrientation value
       expect(str, contains('Samsung Galaxy S21'));
       expect(str, contains('95.0%'));
     });
@@ -88,7 +87,7 @@ void main() {
     test('equality works correctly', () {
       final timestamp = DateTime.now();
       final orientation1 = OrientationData(
-        deviceOrientation: DeviceOrientation.portraitUp,
+        deviceOrientation: 0, // Portrait up
         cameraRotation: 0,
         sensorOrientation: 0,
         deviceManufacturer: 'Google',
@@ -98,7 +97,7 @@ void main() {
       );
 
       final orientation2 = OrientationData(
-        deviceOrientation: DeviceOrientation.portraitUp,
+        deviceOrientation: 0, // Portrait up
         cameraRotation: 0,
         sensorOrientation: 0,
         deviceManufacturer: 'Google',
@@ -136,10 +135,11 @@ void main() {
         model: 'Galaxy S21',
         androidVersion: '13',
         sdkVersion: '33',
+        osVersion: '13', // Add osVersion for toString
       );
 
       final str = deviceInfo.toString();
-      expect(str, equals('Samsung Galaxy S21 (Android 13)'));
+      expect(str, equals('Samsung Galaxy S21 (13)')); // New format uses osVersion
     });
   });
 

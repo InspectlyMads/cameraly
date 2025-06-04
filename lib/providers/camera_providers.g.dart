@@ -94,7 +94,7 @@ final flashModeIconProvider = AutoDisposeProvider<String>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef FlashModeIconRef = AutoDisposeProviderRef<String>;
-String _$cameraControllerHash() => r'9d7966c514a0c1bc7e8bbf37aebfd22dff0889d0';
+String _$cameraControllerHash() => r'0f17c51ab2c161f4e13b627ce410a16aad35a8e2';
 
 /// See also [CameraController].
 @ProviderFor(CameraController)
