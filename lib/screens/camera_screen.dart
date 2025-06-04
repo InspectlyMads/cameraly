@@ -90,7 +90,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     final cameraState = ref.watch(cameraControllerProvider);
-    
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -120,9 +120,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     return OrientationBuilder(
       builder: (context, orientation) {
-            return Stack(
+        return Stack(
           children: [
-Stack(
+            Stack(
               children: [
                 // Camera preview (standard approach)
                 _buildCameraPreview(cameraState.controller!),
@@ -131,7 +131,6 @@ Stack(
                 _buildOrientationSpecificUI(orientation, cameraState),
               ],
             ),
-            
           ],
         );
       },
@@ -139,7 +138,7 @@ Stack(
   }
 
   Widget _buildOrientationSpecificUI(Orientation orientation, CameraState cameraState) {
-final screenSize = MediaQuery.of(context).size;
+    final screenSize = MediaQuery.of(context).size;
     final safeArea = MediaQuery.of(context).padding;
 
     // Recording UI requires special handling to ensure stop button visibility
@@ -148,7 +147,7 @@ final screenSize = MediaQuery.of(context).size;
         orientation: orientation,
         screenSize: screenSize,
       );
-      
+
       if (orientation == Orientation.landscape) {
         // Landscape: button on the right side, centered vertically
         return Container(
@@ -183,7 +182,7 @@ final screenSize = MediaQuery.of(context).size;
         );
       }
     }
-    
+
     return Stack(
       children: [
         // Top controls (same for both orientations)
@@ -205,7 +204,7 @@ final screenSize = MediaQuery.of(context).size;
         ? 1 / cameraAspectRatio // Invert for portrait
         : cameraAspectRatio; // Use as-is for landscape
 
-return Center(
+    return Center(
       child: AspectRatio(
         aspectRatio: adjustedAspectRatio,
         child: camera.CameraPreview(controller),
@@ -421,11 +420,9 @@ return Center(
 
     // Always show video controls if we're currently recording OR in video modes
     // IMPORTANT: If recording, always show video button regardless of mode selection
-    final bool shouldShowVideoControls = isActuallyRecording || 
-        cameraState.mode == CameraMode.video || 
-        (cameraState.mode == CameraMode.combined && _isVideoModeSelected);
+    final bool shouldShowVideoControls = isActuallyRecording || cameraState.mode == CameraMode.video || (cameraState.mode == CameraMode.combined && _isVideoModeSelected);
 
-if (shouldShowVideoControls) {
+    if (shouldShowVideoControls) {
       return _buildVideoRecordButton(cameraState);
     } else {
       return _buildPhotoButton();
@@ -437,7 +434,7 @@ if (shouldShowVideoControls) {
       builder: (context, constraints) {
         // Use the available size from constraints
         final size = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
-        
+
         return GestureDetector(
           onTap: _takePhoto,
           child: Container(
@@ -462,7 +459,7 @@ if (shouldShowVideoControls) {
   Widget _buildVideoRecordButton(CameraState cameraState) {
     // Use the same logic as landscape controls for consistency
     final isRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
-    
+
     return LayoutBuilder(
       builder: (context, constraints) {
         // Use the available size from constraints
@@ -486,20 +483,20 @@ if (shouldShowVideoControls) {
                 width: isRecording ? 2 : 3,
               ),
             ),
-            child: isRecording 
-              ? Container(
-                  width: size * 0.35,
-                  height: size * 0.35,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
+            child: isRecording
+                ? Container(
+                    width: size * 0.35,
+                    height: size * 0.35,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  )
+                : Icon(
+                    Icons.fiber_manual_record,
+                    color: Colors.red,
+                    size: size * 0.7,
                   ),
-                )
-              : Icon(
-                  Icons.fiber_manual_record,
-                  color: Colors.red,
-                  size: size * 0.7,
-                ),
           ),
         );
       },
@@ -728,7 +725,7 @@ if (shouldShowVideoControls) {
     );
   }
 
-Future<void> _takePhoto() async {
+  Future<void> _takePhoto() async {
     final cameraController = ref.read(cameraControllerProvider.notifier);
 
     try {
@@ -784,7 +781,7 @@ Future<void> _takePhoto() async {
       HapticFeedback.mediumImpact();
 
       await cameraController.startVideoRecording();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -861,7 +858,6 @@ Future<void> _takePhoto() async {
 
         // Mode selector for combined mode (bottom-center)
         if (cameraState.mode == CameraMode.combined) _buildLandscapeModeSelector(screenSize, safeArea),
-        
       ],
     );
   }
@@ -888,7 +884,7 @@ Future<void> _takePhoto() async {
         ),
       );
     }
-    
+
     // Normal state with gallery, capture, and check buttons
     return Positioned(
       right: 16 + safeArea.right,
