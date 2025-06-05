@@ -16,10 +16,16 @@ import '../widgets/orientation_debug_overlay.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final CameraMode initialMode;
+  final bool showGridButton;
+  final Widget? customPortraitWidget;
+  final Widget? customLandscapeWidget;
 
   const CameraScreen({
     super.key,
     required this.initialMode,
+    this.showGridButton = false,
+    this.customPortraitWidget,
+    this.customLandscapeWidget,
   });
 
   @override
@@ -342,10 +348,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         // Camera switch - hide during recording
         if (!cameraState.isRecording) _buildCameraSwitchControl(),
 
-        const SizedBox(height: 8),
-
-        // Grid toggle
-        _buildGridControl(),
+        if (widget.showGridButton) ...[
+          const SizedBox(height: 8),
+          // Grid toggle
+          _buildGridControl(),
+        ],
       ],
     );
   }
@@ -353,7 +360,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Widget _buildFlashControl() {
     final hasFlash = ref.watch(cameraHasFlashProvider);
     final cameraState = ref.watch(cameraControllerProvider);
-    final flashDisplayName = ref.watch(flashModeDisplayNameProvider);
 
     if (!hasFlash) {
       return const SizedBox(width: 48, height: 48); // Placeholder to maintain layout
@@ -421,18 +427,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               ),
               onPressed: () async {
                 await ref.read(cameraControllerProvider.notifier).switchCamera();
-
-                // Show feedback
-                if (mounted) {
-                  final newDirection = ref.read(cameraControllerProvider).lensDirection;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Switched to ${newDirection.name} camera'),
-                      duration: const Duration(milliseconds: 1500),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
               },
             ),
     );
@@ -451,15 +445,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
         onPressed: () {
           ref.read(cameraControllerProvider.notifier).toggleGrid();
-          
-          // Show feedback
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(cameraState.showGrid ? 'Grid off' : 'Grid on'),
-              duration: const Duration(milliseconds: 1000),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
         },
       ),
     );
@@ -522,7 +507,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -572,14 +557,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               boxShadow: isRecording
                   ? [
                       BoxShadow(
-                        color: Colors.red.withOpacity(0.5),
+                        color: Colors.red.withValues(alpha: 0.5),
                         blurRadius: 12,
                         spreadRadius: 4,
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 8,
                         spreadRadius: 2,
                       ),
@@ -602,53 +587,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     );
   }
 
-  Widget _buildModeInfo(CameraState cameraState) {
-    String modeText;
-    switch (cameraState.mode) {
-      case CameraMode.photo:
-        modeText = 'PHOTO';
-        break;
-      case CameraMode.video:
-        modeText = 'VIDEO';
-        break;
-      case CameraMode.combined:
-        modeText = _isVideoModeSelected ? 'VIDEO' : 'PHOTO';
-        break;
-    }
-
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            modeText,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          if (cameraState.isRecording) ...[
-            const SizedBox(height: 4),
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
   // Combined mode state
   bool _isVideoModeSelected = false;
@@ -830,25 +768,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       if (imageFile != null && mounted) {
         // Refresh gallery to show new photo
         ref.read(galleryProvider.notifier).refreshMedia();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Photo captured!'),
-            duration: Duration(milliseconds: 1500),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to take photo: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      // Error is logged in the camera provider, no need for UI notification
+      debugPrint('Failed to take photo: $e');
     }
   }
 
@@ -874,29 +797,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       HapticFeedback.mediumImpact();
 
       await cameraController.startVideoRecording();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Recording started - ${currentOrientation.name} locked'),
-            duration: const Duration(milliseconds: 1500),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
     } catch (e) {
       // Restore orientation freedom on error
       await SystemChrome.setPreferredOrientations([]);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to start recording: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      // Error is logged in the camera provider, no need for UI notification
+      debugPrint('Failed to start recording: $e');
     }
   }
 
@@ -915,28 +821,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       if (videoFile != null && mounted) {
         // Refresh gallery to show new video
         ref.read(galleryProvider.notifier).refreshMedia();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Video saved!'),
-            duration: Duration(milliseconds: 1500),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
       }
     } catch (e) {
       // Restore orientation freedom on error
       await SystemChrome.setPreferredOrientations([]);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to stop recording: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      // Error is logged in the camera provider, no need for UI notification
+      debugPrint('Failed to stop recording: $e');
     }
   }
 
