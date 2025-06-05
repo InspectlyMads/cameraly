@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../providers/permission_providers.dart';
 import '../services/camera_service.dart';
 import 'camera_screen.dart';
+import 'permission_test_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -248,6 +249,23 @@ class HomeScreen extends ConsumerWidget {
                 },
                 icon: const Icon(Icons.settings),
                 label: const Text('Grant Permissions'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Debug permissions button (iOS)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PermissionTestScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.bug_report),
+                label: const Text('Debug Permissions (iOS)'),
               ),
             ),
           ],

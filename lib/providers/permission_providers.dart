@@ -43,7 +43,7 @@ class PermissionRequestNotifier extends StateNotifier<AsyncValue<Map<Permission,
 
   Future<void> openAppSettings() async {
     try {
-      await _permissionService.openAppSettings();
+      await _permissionService.openAppSettingsScreen();
     } catch (error) {
       // Handle error if needed, but don't update state
       // as opening settings is a side effect

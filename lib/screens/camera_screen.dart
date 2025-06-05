@@ -11,6 +11,7 @@ import '../services/camera_service.dart';
 import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
 import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
+import '../widgets/focus_indicator.dart';
 import '../widgets/orientation_debug_overlay.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
@@ -30,6 +31,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   bool _showDebugInfo = false; // Toggle with long press on screen
   bool _isPinching = false;
   double _baseZoom = 1.0;
+  Offset? _focusPoint;
+  DateTime? _lastScaleUpdateTime;
+  int _focusTapCounter = 0; // Counter to force widget rebuild on each tap
   
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
@@ -138,10 +142,19 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       builder: (context, orientation) {
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
+          onTapDown: (details) {
+            // Only process tap if not pinching and enough time has passed since last scale
+            if (!_isPinching && (_lastScaleUpdateTime == null || 
+                DateTime.now().difference(_lastScaleUpdateTime!).inMilliseconds > 300)) {
+              _handleTapToFocus(details.localPosition, cameraState);
+            }
+          },
           onScaleStart: (details) {
             _baseZoom = cameraState.currentZoom;
+            _lastScaleUpdateTime = DateTime.now();
           },
           onScaleUpdate: (details) {
+            _lastScaleUpdateTime = DateTime.now();
             // Only treat as pinch if scale differs significantly from 1.0
             if ((details.scale - 1.0).abs() > 0.05) {
               if (!_isPinching) {
@@ -179,6 +192,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   
                   // Zoom control overlay
                   _buildZoomControl(cameraState),
+                  
+                  // Focus indicator
+                  if (_focusPoint != null)
+                    FocusIndicator(
+                      key: ValueKey('focus_$_focusTapCounter'),
+                      position: _focusPoint!,
+                      onComplete: () {
+                        setState(() {
+                          _focusPoint = null;
+                        });
+                      },
+                    ),
                   
                   // Debug overlay (toggle with long press)
                   OrientationDebugOverlay(showDebugInfo: _showDebugInfo),
@@ -364,15 +389,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
         onPressed: () {
           ref.read(cameraControllerProvider.notifier).cycleFlashMode();
-
-          // Show flash mode change feedback
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Flash: $flashDisplayName'),
-              duration: const Duration(milliseconds: 1500),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
         },
       ),
     );
@@ -1196,5 +1212,37 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
       );
     }
+  }
+  
+  Future<void> _handleTapToFocus(Offset localPosition, CameraState cameraState) async {
+    if (!cameraState.isInitialized || cameraState.controller == null) return;
+    
+    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    
+    // Convert tap position to camera coordinates (0.0 to 1.0)
+    final size = renderBox.size;
+    final offset = Offset(
+      localPosition.dx / size.width,
+      localPosition.dy / size.height,
+    );
+    
+    // Clamp values to ensure they're within valid range
+    final clampedOffset = Offset(
+      offset.dx.clamp(0.0, 1.0),
+      offset.dy.clamp(0.0, 1.0),
+    );
+    
+    // Show focus indicator at tap position
+    setState(() {
+      _focusPoint = localPosition;
+      _focusTapCounter++; // Increment counter to force new animation
+    });
+    
+    // Haptic feedback
+    HapticFeedback.lightImpact();
+    
+    // Set focus point
+    await ref.read(cameraControllerProvider.notifier).setFocusPoint(clampedOffset);
   }
 }

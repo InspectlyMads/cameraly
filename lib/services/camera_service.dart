@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import 'camera_error_handler.dart';
 import 'orientation_service.dart';
@@ -400,5 +401,45 @@ class CameraService {
   /// Get orientation debug info
   Map<String, dynamic> getOrientationDebugInfo() {
     return _orientationService.getDebugInfo();
+  }
+  
+  /// Set focus and exposure point
+  Future<void> setFocusPoint({
+    required camera.CameraController controller,
+    required Offset point,
+  }) async {
+    if (!controller.value.isInitialized) {
+      throw Exception('Camera not initialized');
+    }
+    
+    try {
+      // Set exposure and focus point
+      await controller.setExposurePoint(point);
+      await controller.setFocusPoint(point);
+      
+      debugPrint('$_logTag: Focus point set to: $point');
+    } catch (e) {
+      debugPrint('$_logTag: Error setting focus point: $e');
+      rethrow;
+    }
+  }
+  
+  /// Reset focus and exposure to auto
+  Future<void> resetFocus({
+    required camera.CameraController controller,
+  }) async {
+    if (!controller.value.isInitialized) {
+      throw Exception('Camera not initialized');
+    }
+    
+    try {
+      // Reset to auto by setting null
+      await controller.setExposurePoint(null);
+      await controller.setFocusPoint(null);
+      
+      debugPrint('$_logTag: Focus reset to auto');
+    } catch (e) {
+      debugPrint('$_logTag: Error resetting focus: $e');
+    }
   }
 }
