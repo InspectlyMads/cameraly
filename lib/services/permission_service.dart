@@ -80,7 +80,7 @@ class PermissionService {
   }
 
   /// Open app settings if permissions are permanently denied
-  Future<bool> openAppSettings() async {
+  Future<bool> openAppSettingsScreen() async {
     return await openAppSettings();
   }
 }

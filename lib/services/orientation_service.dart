@@ -30,39 +30,39 @@ class OrientationService {
   // Comprehensive manufacturer corrections based on real-world testing
   static const Map<String, Map<String, int>> _manufacturerCorrections = {
     'samsung': {
-      'default': 90,
-      'front': 270,
+      'default': 0,  // Most Samsung devices handle orientation correctly
+      'front': 0,
       // Specific models with different behavior
       'SM-G970': 0,  // S10e
       'SM-G973': 0,  // S10
       'SM-G975': 0,  // S10+
-      'SM-N960': 90, // Note 9
+      'SM-N960': 0, // Note 9
     },
     'xiaomi': {
-      'default': 270,
-      'front': 90,
+      'default': 0,
+      'front': 0,
       'Mi 9': 0,
-      'POCO': 180,
+      'POCO': 0,
     },
     'huawei': {
-      'default': 180,
-      'front': 180,
+      'default': 0,
+      'front': 0,
     },
     'oppo': {
-      'default': 90,
-      'front': 270,
+      'default': 0,
+      'front': 0,
     },
     'vivo': {
-      'default': 90,
-      'front': 270,
+      'default': 0,
+      'front': 0,
     },
     'oneplus': {
       'default': 0,
       'front': 0,
     },
     'realme': {
-      'default': 90,
-      'front': 270,
+      'default': 0,
+      'front': 0,
     },
     'motorola': {
       'default': 0,
@@ -109,14 +109,31 @@ class OrientationService {
       lensDirection: lensDirection,
     );
     
-    // Calculate final rotation needed
-    int rotation = (camera.sensorOrientation + deviceOrientation + correction.rotationOffset) % 360;
+    debugPrint('$_logTag: Camera sensor orientation: ${camera.sensorOrientation}°');
+    debugPrint('$_logTag: Device orientation: ${deviceOrientation}°');
+    debugPrint('$_logTag: Correction offset: ${correction.rotationOffset}°');
     
-    // Special handling for front camera
+    // Calculate rotation needed to correct the image
+    // For back camera:
+    // - Camera sensor orientation tells us how the sensor is mounted (usually 90° or 270°)
+    // - Device orientation tells us how the device is held (0° = portrait, 90° = landscape right, etc.)
+    // - We need to rotate the image to compensate for both
+    int rotation;
+    
     if (lensDirection == CameraLensDirection.front) {
-      // Front camera images are mirrored, adjust rotation
-      rotation = (360 - rotation) % 360;
+      // Front camera calculation (mirrored)
+      rotation = (camera.sensorOrientation - deviceOrientation + 360) % 360;
+      // Apply any device-specific corrections
+      rotation = (rotation + correction.rotationOffset) % 360;
+    } else {
+      // Back camera calculation
+      // The rotation needed is the difference between sensor orientation and device orientation
+      rotation = (camera.sensorOrientation - deviceOrientation + 360) % 360;
+      // Apply any device-specific corrections
+      rotation = (rotation + correction.rotationOffset) % 360;
     }
+    
+    debugPrint('$_logTag: Calculated rotation: ${rotation}°');
     
     return OrientationData(
       deviceOrientation: deviceOrientation,
@@ -130,6 +147,7 @@ class OrientationService {
         'lensDirection': lensDirection.toString(),
         'hasGyroscope': _lastGyroscopeEvent != null,
         'apiLevel': deviceInfo.metadata?['apiLevel'] ?? 'unknown',
+        'correction': correction.rotationOffset,
       },
     );
   }
@@ -154,18 +172,17 @@ class OrientationService {
     }
   }
 
-  /// Apply orientation correction to image file (actual rotation)
+  /// Apply orientation correction to image file
+  /// Note: We're not manually rotating images anymore as the camera package
+  /// should handle orientation through EXIF metadata
   Future<String?> applyOrientationCorrection(String imagePath, OrientationData orientationData) async {
-    // For production, this would use platform channels to:
-    // 1. Read the image
-    // 2. Rotate it according to orientationData.cameraRotation
-    // 3. Save the corrected image
-    // 4. Update EXIF data
+    debugPrint('$_logTag: Image captured with orientation data: ${orientationData.cameraRotation}°');
+    debugPrint('$_logTag: Device: ${orientationData.deviceManufacturer} ${orientationData.deviceModel}');
+    debugPrint('$_logTag: Sensor orientation: ${orientationData.sensorOrientation}°');
+    debugPrint('$_logTag: Device orientation: ${orientationData.deviceOrientation}°');
     
-    debugPrint('$_logTag: Would apply ${orientationData.cameraRotation}° rotation to $imagePath');
-    
-    // For now, return the original path
-    // In production, implement actual image rotation
+    // The camera package should have already set proper EXIF orientation
+    // We're just logging the information for debugging purposes
     return imagePath;
   }
 

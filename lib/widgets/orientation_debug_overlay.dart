@@ -37,6 +37,10 @@ class OrientationDebugOverlay extends ConsumerWidget {
             final cameraService = ref.read(cameraServiceProvider);
             final debugInfo = cameraService.getOrientationDebugInfo();
             
+            // Get camera state for additional info
+            final cameraState = ref.watch(cameraControllerProvider);
+            final sensorOrientation = cameraState.controller?.description.sensorOrientation ?? 0;
+            
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -52,7 +56,9 @@ class OrientationDebugOverlay extends ConsumerWidget {
                 const SizedBox(height: 8),
                 _buildDebugRow('Device', '${debugInfo['deviceInfo']?['manufacturer']} ${debugInfo['deviceInfo']?['model']}'),
                 _buildDebugRow('OS Version', debugInfo['deviceInfo']?['osVersion'] ?? 'Unknown'),
-                _buildDebugRow('Calculated Orientation', '${debugInfo['calculatedOrientation']}°'),
+                _buildDebugRow('Camera Sensor', '$sensorOrientation°'),
+                _buildDebugRow('Device Orientation', '${debugInfo['calculatedOrientation']}°'),
+                _buildDebugRow('Final Rotation', 'Will be calculated on capture'),
                 _buildDebugRow('Accuracy Score', '${((debugInfo['accuracyScore'] ?? 0) * 100).toStringAsFixed(0)}%'),
                 if (debugInfo['lastAccelerometer'] != null)
                   _buildDebugRow(

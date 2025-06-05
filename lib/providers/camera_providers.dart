@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../services/camera_service.dart';
@@ -241,16 +242,33 @@ class CameraController extends _$CameraController {
         orElse: () => state.availableCameras.first,
       );
       
-      // Capture orientation data before taking the photo
+      // Get current device orientation for debugging
       final orientationData = await service.getCurrentOrientation(
         cameraDescription: currentCamera,
         lensDirection: state.lensDirection,
       );
       
-      debugPrint('Captured orientation: ${orientationData.toString()}');
+      debugPrint('CameraController: Pre-capture orientation data:');
+      debugPrint('  Device orientation: ${orientationData.deviceOrientation}°');
+      debugPrint('  Sensor orientation: ${orientationData.sensorOrientation}°');
+      debugPrint('  Calculated rotation: ${orientationData.cameraRotation}°');
+      
+      // Lock the capture orientation to the current device orientation
+      // This ensures the camera package correctly handles the image orientation
+      final deviceOrientation = _mapToDeviceOrientation(orientationData.deviceOrientation);
+      if (deviceOrientation != null) {
+        debugPrint('CameraController: Locking capture orientation to: $deviceOrientation');
+        await state.controller!.lockCaptureOrientation(deviceOrientation);
+      }
       
       // Take the picture
       final imageFile = await state.controller!.takePicture();
+      
+      // Unlock capture orientation after taking the picture
+      if (deviceOrientation != null) {
+        await state.controller!.unlockCaptureOrientation();
+        debugPrint('CameraController: Unlocked capture orientation');
+      }
 
       // Save the image to app directory
       final mediaService = ref.read(mediaServiceProvider);
@@ -261,14 +279,13 @@ class CameraController extends _$CameraController {
       );
 
       if (savedPath != null) {
-        // Process the photo with orientation correction
-        final correctedPath = await service.processCapturedPhoto(
+        // Log orientation data for debugging (no manual rotation needed)
+        await service.processCapturedPhoto(
           imagePath: savedPath,
           orientationData: orientationData,
         );
         
-        // Return XFile pointing to corrected location
-        return camera.XFile(correctedPath ?? savedPath);
+        return camera.XFile(savedPath);
       }
 
       return imageFile;
@@ -280,6 +297,22 @@ class CameraController extends _$CameraController {
       return null;
     }
   }
+  
+  /// Map orientation degrees to DeviceOrientation enum
+  DeviceOrientation? _mapToDeviceOrientation(int degrees) {
+    switch (degrees) {
+      case 0:
+        return DeviceOrientation.portraitUp;
+      case 90:
+        return DeviceOrientation.landscapeRight;
+      case 180:
+        return DeviceOrientation.portraitDown;
+      case 270:
+        return DeviceOrientation.landscapeLeft;
+      default:
+        return null;
+    }
+  }
 
   /// Clear error message
   void clearError() {
@@ -289,6 +322,22 @@ class CameraController extends _$CameraController {
   /// Toggle grid overlay
   void toggleGrid() {
     state = state.copyWith(showGrid: !state.showGrid);
+  }
+  
+  /// Set focus point
+  Future<void> setFocusPoint(Offset point) async {
+    if (!state.isInitialized || state.controller == null) return;
+    
+    try {
+      final service = ref.read(cameraServiceProvider);
+      await service.setFocusPoint(
+        controller: state.controller!,
+        point: point,
+      );
+      debugPrint('CameraController: Focus point set to $point');
+    } catch (e) {
+      debugPrint('CameraController: Failed to set focus point: $e');
+    }
   }
 
   /// Set zoom level
