@@ -361,7 +361,11 @@ class CameraController extends _$CameraController {
       }
       
       // Set appropriate max zoom based on camera configuration
-      if (cameraInfo.hasTelephoto) {
+      // If controller reports very limited zoom (like 1.0), use device defaults
+      if (controllerMaxZoom <= 1.0) {
+        debugPrint('CameraController: Controller reports no zoom capability, using device defaults');
+        effectiveMaxZoom = cameraInfo.hasTelephoto ? 30.0 : 8.0;
+      } else if (cameraInfo.hasTelephoto) {
         // Pro model with telephoto - allow full zoom range
         debugPrint('CameraController: Telephoto detected, allowing full zoom range up to ${effectiveMaxZoom}x');
       } else if (effectiveMaxZoom > 8.0) {

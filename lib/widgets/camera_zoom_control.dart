@@ -29,10 +29,11 @@ class CameraZoomControl extends StatefulWidget {
   });
 
   @override
-  State<CameraZoomControl> createState() => _CameraZoomControlState();
+  State<CameraZoomControl> createState() => CameraZoomControlState();
 }
 
-class _CameraZoomControlState extends State<CameraZoomControl> 
+// Export the state class so parent can control it
+class CameraZoomControlState extends State<CameraZoomControl> 
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -76,7 +77,6 @@ class _CameraZoomControlState extends State<CameraZoomControl>
     // Check for ultra-wide support
     if (widget.minZoom <= 0.6) {
       // Always show .5 for consistency with native camera app
-      // Even if controller reports slightly different value
       presets.add(const ZoomLevel(value: 0.5, label: '.5'));
     }
     
@@ -88,28 +88,14 @@ class _CameraZoomControlState extends State<CameraZoomControl>
       presets.add(const ZoomLevel(value: 2.0, label: '2'));
     }
     
-    // For higher zoom levels, be more selective based on actual max zoom
-    // Only show presets that make sense for the device
-    
-    // 5x preset for devices with telephoto (Pixel Pro models typically support 5x optical)
-    // Show if max zoom is at least 5x
+    // 5x preset for devices with telephoto
     if (widget.maxZoom >= 5.0) {
       presets.add(const ZoomLevel(value: 5.0, label: '5'));
     }
     
-    // Don't show intermediate zoom levels like 8x for typical devices
     // Only show 10x+ for devices with real telephoto capability
     if (widget.maxZoom >= 10.0) {
       presets.add(const ZoomLevel(value: 10.0, label: '10'));
-      
-      // Only show extreme zoom levels if truly supported
-      if (widget.maxZoom >= 20.0) {
-        presets.add(const ZoomLevel(value: 20.0, label: '20'));
-      }
-      
-      if (widget.maxZoom >= 30.0) {
-        presets.add(const ZoomLevel(value: 30.0, label: '30'));
-      }
     }
     
     _zoomPresets = presets;
@@ -161,113 +147,51 @@ class _CameraZoomControlState extends State<CameraZoomControl>
       }
     }
     
-    // Highlight the closest preset, with a slightly larger threshold for better UX
+    // Highlight the closest preset
     return minDiff < 0.2 ? closest : null;
   }
   
   @override
   Widget build(BuildContext context) {
-    final orientation = MediaQuery.of(context).orientation;
-    final safeArea = MediaQuery.of(context).padding;
-    
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent, // Important: allows taps to pass through
-      onScaleStart: (details) {
-        _initialScale = 1.0;
-        // Don't show slider yet - wait for actual pinch movement
-      },
-      onScaleUpdate: (details) {
-        // Only consider it a pinch if scale changes significantly from 1.0
-        if ((details.scale - 1.0).abs() > 0.05) {
-          if (!_isPinching) {
-            _isPinching = true;
-            _showSlider();
-            _initialScale = widget.currentZoom;
-          }
-          
-          // Convert scale to zoom change
-          final newZoom = (_initialScale * details.scale)
-              .clamp(widget.minZoom, widget.maxZoom);
-          widget.onZoomChanged(newZoom);
-        }
-      },
-      onScaleEnd: (_) {
-        _isPinching = false;
-        // Hide slider after a delay, but only if not interacting with it
-        Future.delayed(const Duration(seconds: 2), () {
-          if (!_isPinching && !_isInteractingWithSlider) {
-            _hideSlider();
-          }
-        });
-      },
-      child: Stack(
-        children: [
-          // Zoom preset buttons - position based on orientation
-          if (orientation == Orientation.portrait)
-            Positioned(
-              bottom: 140 + safeArea.bottom,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: AnimatedOpacity(
-                  opacity: _isSliderVisible ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: _buildZoomButtons(),
-                ),
-              ),
-            )
-          else
-            Positioned(
-              right: 16 + safeArea.right,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: AnimatedOpacity(
-                  opacity: _isSliderVisible ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: _buildZoomButtons(),
-                ),
-              ),
-            ),
-          
-          // Zoom slider/ruler - position same as buttons
-          if (orientation == Orientation.portrait)
-            Positioned(
-              bottom: 140 + safeArea.bottom,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: AnimatedBuilder(
-                  animation: _fadeAnimation,
-                  builder: (context, child) {
-                    return Opacity(
-                      opacity: _fadeAnimation.value,
-                      child: _isSliderVisible ? _buildZoomSlider() : const SizedBox.shrink(),
-                    );
-                  },
-                ),
-              ),
-            )
-          else
-            Positioned(
-              right: 16 + safeArea.right,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: AnimatedBuilder(
-                  animation: _fadeAnimation,
-                  builder: (context, child) {
-                    return Opacity(
-                      opacity: _fadeAnimation.value,
-                      child: _isSliderVisible ? _buildZoomSlider() : const SizedBox.shrink(),
-                    );
-                  },
-                ),
-              ),
-            ),
-        ],
-      ),
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        // Zoom preset buttons
+        AnimatedOpacity(
+          opacity: _isSliderVisible ? 0.0 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          child: _buildZoomButtons(),
+        ),
+        
+        // Zoom slider/ruler
+        AnimatedBuilder(
+          animation: _fadeAnimation,
+          builder: (context, child) {
+            return Opacity(
+              opacity: _fadeAnimation.value,
+              child: _isSliderVisible ? _buildZoomSlider() : const SizedBox.shrink(),
+            );
+          },
+        ),
+      ],
     );
+  }
+  
+  // Public methods for external control
+  void showSlider() {
+    _showSlider();
+  }
+  
+  void setPinching(bool isPinching) {
+    _isPinching = isPinching;
+    if (!isPinching) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!_isPinching && !_isInteractingWithSlider) {
+          _hideSlider();
+        }
+      });
+    }
   }
   
   Widget _buildZoomButtons() {
@@ -276,7 +200,10 @@ class _CameraZoomControlState extends State<CameraZoomControl>
     final isPortrait = orientation == Orientation.portrait;
     
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: EdgeInsets.symmetric(
+        horizontal: isPortrait ? 4 : 2,
+        vertical: isPortrait ? 4 : 2,
+      ),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.6),
         borderRadius: BorderRadius.circular(20),
@@ -290,7 +217,7 @@ class _CameraZoomControlState extends State<CameraZoomControl>
           return Padding(
             padding: EdgeInsets.symmetric(
               horizontal: isPortrait ? 2 : 0,
-              vertical: isPortrait ? 0 : 2,
+              vertical: isPortrait ? 0 : 1,
             ),
             child: _ZoomButton(
               label: preset.label,
@@ -299,6 +226,7 @@ class _CameraZoomControlState extends State<CameraZoomControl>
                 HapticFeedback.lightImpact();
                 widget.onZoomChanged(preset.value);
               },
+              isPortrait: isPortrait,
             ),
           );
         }).toList(),
@@ -307,10 +235,8 @@ class _CameraZoomControlState extends State<CameraZoomControl>
   }
   
   Widget _buildZoomSlider() {
-    // Calculate slider dimensions based on orientation
     final orientation = MediaQuery.of(context).orientation;
-    final sliderHeight = 40.0;
-    final sliderWidth = orientation == Orientation.portrait ? 280.0 : 40.0;
+    final isPortrait = orientation == Orientation.portrait;
     
     // Convert zoom to logarithmic scale for better UX
     final logMin = widget.minZoom > 0 ? math.log(widget.minZoom) : 0.0;
@@ -318,15 +244,20 @@ class _CameraZoomControlState extends State<CameraZoomControl>
     final logCurrent = math.log(widget.currentZoom);
     final normalizedValue = (logCurrent - logMin) / (logMax - logMin);
     
-    final isPortrait = orientation == Orientation.portrait;
-    
+    if (isPortrait) {
+      // Portrait: horizontal slider
+      return _buildHorizontalSlider(normalizedValue, logMin, logMax);
+    } else {
+      // Landscape: vertical slider
+      return _buildVerticalSlider(normalizedValue, logMin, logMax);
+    }
+  }
+  
+  Widget _buildHorizontalSlider(double value, double logMin, double logMax) {
     return Container(
-      width: isPortrait ? sliderWidth : sliderHeight,
-      height: isPortrait ? sliderHeight : sliderWidth,
-      padding: EdgeInsets.symmetric(
-        horizontal: isPortrait ? 16 : 8,
-        vertical: isPortrait ? 0 : 16,
-      ),
+      width: 280,
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.8),
         borderRadius: BorderRadius.circular(20),
@@ -334,114 +265,43 @@ class _CameraZoomControlState extends State<CameraZoomControl>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Ruler marks
-          CustomPaint(
-            size: Size(
-              isPortrait ? sliderWidth - 32 : sliderHeight - 16,
-              isPortrait ? sliderHeight : sliderWidth - 32,
+          // Slider
+          SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 2,
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white.withOpacity(0.3),
+              thumbColor: Colors.white,
+              thumbShape: const RoundSliderThumbShape(
+                enabledThumbRadius: 8,
+                elevation: 0,
+              ),
+              overlayShape: const RoundSliderOverlayShape(
+                overlayRadius: 16,
+              ),
+              overlayColor: Colors.white.withOpacity(0.3),
             ),
-            painter: _ZoomRulerPainter(
-              minZoom: widget.minZoom,
-              maxZoom: widget.maxZoom,
-              currentZoom: widget.currentZoom,
-              presets: _zoomPresets,
+            child: Slider(
+              value: value,
+              onChangeStart: (_) {
+                _isInteractingWithSlider = true;
+                _showSlider();
+              },
+              onChanged: (newValue) {
+                final logValue = logMin + (newValue * (logMax - logMin));
+                final zoom = math.exp(logValue).clamp(widget.minZoom, widget.maxZoom);
+                widget.onZoomChanged(zoom);
+              },
+              onChangeEnd: (_) {
+                _isInteractingWithSlider = false;
+                Future.delayed(const Duration(seconds: 2), () {
+                  if (!_isPinching && !_isInteractingWithSlider) {
+                    _hideSlider();
+                  }
+                });
+              },
             ),
           ),
-          
-          // Slider track
-          if (isPortrait)
-            Positioned(
-              left: 0,
-              right: 0,
-              child: SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 2,
-                  activeTrackColor: Colors.white,
-                  inactiveTrackColor: Colors.white.withOpacity(0.3),
-                  thumbColor: Colors.white,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 8,
-                    elevation: 0,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 16,
-                  ),
-                  overlayColor: Colors.white.withOpacity(0.3),
-                ),
-                child: Slider(
-                  value: normalizedValue,
-                  onChangeStart: (_) {
-                    _isInteractingWithSlider = true;
-                    _showSlider(); // Keep slider visible during interaction
-                  },
-                  onChanged: (value) {
-                    // Convert back from normalized logarithmic scale
-                    final logValue = logMin + (value * (logMax - logMin));
-                    final zoom = math.exp(logValue).clamp(widget.minZoom, widget.maxZoom);
-                    widget.onZoomChanged(zoom);
-                  },
-                  onChangeEnd: (_) {
-                    _isInteractingWithSlider = false;
-                    // Hide slider after interaction ends
-                    Future.delayed(const Duration(seconds: 2), () {
-                      if (!_isPinching && !_isInteractingWithSlider) {
-                        _hideSlider();
-                      }
-                    });
-                  },
-                ),
-              ),
-            )
-          else
-            // Vertical slider for landscape
-            Positioned(
-              top: 0,
-              bottom: 0,
-              child: RotatedBox(
-                quarterTurns: 3,
-                child: SliderTheme(
-                  data: SliderThemeData(
-                    trackHeight: 2,
-                    activeTrackColor: Colors.white,
-                    inactiveTrackColor: Colors.white.withOpacity(0.3),
-                    thumbColor: Colors.white,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 8,
-                      elevation: 0,
-                    ),
-                    overlayShape: const RoundSliderOverlayShape(
-                      overlayRadius: 16,
-                    ),
-                    overlayColor: Colors.white.withOpacity(0.3),
-                  ),
-                  child: SizedBox(
-                    width: sliderWidth - 32,
-                    child: Slider(
-                      value: normalizedValue,
-                      onChangeStart: (_) {
-                        _isInteractingWithSlider = true;
-                        _showSlider(); // Keep slider visible during interaction
-                      },
-                      onChanged: (value) {
-                        // Convert back from normalized logarithmic scale
-                        final logValue = logMin + (value * (logMax - logMin));
-                        final zoom = math.exp(logValue).clamp(widget.minZoom, widget.maxZoom);
-                        widget.onZoomChanged(zoom);
-                      },
-                      onChangeEnd: (_) {
-                        _isInteractingWithSlider = false;
-                        // Hide slider after interaction ends
-                        Future.delayed(const Duration(seconds: 2), () {
-                          if (!_isPinching && !_isInteractingWithSlider) {
-                            _hideSlider();
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ),
           
           // Current zoom indicator
           Positioned(
@@ -466,27 +326,117 @@ class _CameraZoomControlState extends State<CameraZoomControl>
       ),
     );
   }
+  
+  Widget _buildVerticalSlider(double value, double logMin, double logMax) {
+    return Container(
+      width: 40,
+      height: 280,
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Vertical slider
+          RotatedBox(
+            quarterTurns: 3,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 2,
+                activeTrackColor: Colors.white,
+                inactiveTrackColor: Colors.white.withOpacity(0.3),
+                thumbColor: Colors.white,
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 8,
+                  elevation: 0,
+                ),
+                overlayShape: const RoundSliderOverlayShape(
+                  overlayRadius: 16,
+                ),
+                overlayColor: Colors.white.withOpacity(0.3),
+              ),
+              child: SizedBox(
+                width: 280 - 32,
+                child: Slider(
+                  value: value,
+                  onChangeStart: (_) {
+                    _isInteractingWithSlider = true;
+                    _showSlider();
+                  },
+                  onChanged: (newValue) {
+                    final logValue = logMin + (newValue * (logMax - logMin));
+                    final zoom = math.exp(logValue).clamp(widget.minZoom, widget.maxZoom);
+                    widget.onZoomChanged(zoom);
+                  },
+                  onChangeEnd: (_) {
+                    _isInteractingWithSlider = false;
+                    Future.delayed(const Duration(seconds: 2), () {
+                      if (!_isPinching && !_isInteractingWithSlider) {
+                        _hideSlider();
+                      }
+                    });
+                  },
+                ),
+              ),
+            ),
+          ),
+          
+          // Current zoom indicator for vertical
+          Positioned(
+            left: 0,
+            top: 0,
+            child: RotatedBox(
+              quarterTurns: 1,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${widget.currentZoom.toStringAsFixed(1)}x',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ZoomButton extends StatelessWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
+  final bool isPortrait;
   
   const _ZoomButton({
     required this.label,
     required this.isActive,
     required this.onTap,
+    required this.isPortrait,
   });
   
   @override
   Widget build(BuildContext context) {
+    // Smaller buttons in landscape mode
+    final size = isPortrait ? 36.0 : 30.0;
+    final fontSize = isPortrait ? 14.0 : 12.0;
+    
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 36,
-        height: 36,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: isActive ? Colors.white : Colors.transparent,
           shape: BoxShape.circle,
@@ -496,7 +446,7 @@ class _ZoomButton extends StatelessWidget {
             duration: const Duration(milliseconds: 200),
             style: TextStyle(
               color: isActive ? Colors.black : Colors.white,
-              fontSize: 14,
+              fontSize: fontSize,
               fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
             ),
             child: Text(label),
@@ -504,52 +454,5 @@ class _ZoomButton extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _ZoomRulerPainter extends CustomPainter {
-  final double minZoom;
-  final double maxZoom;
-  final double currentZoom;
-  final List<ZoomLevel> presets;
-  
-  _ZoomRulerPainter({
-    required this.minZoom,
-    required this.maxZoom,
-    required this.currentZoom,
-    required this.presets,
-  });
-  
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.5)
-      ..strokeWidth = 1;
-    
-    // Draw ruler marks for each preset
-    for (final preset in presets) {
-      if (preset.value >= minZoom && preset.value <= maxZoom) {
-        // Calculate position using logarithmic scale
-        final logMin = minZoom > 0 ? math.log(minZoom) : 0.0;
-        final logMax = math.log(maxZoom);
-        final logValue = math.log(preset.value);
-        final normalizedPos = (logValue - logMin) / (logMax - logMin);
-        final x = normalizedPos * size.width;
-        
-        // Draw tick mark
-        canvas.drawLine(
-          Offset(x, size.height * 0.3),
-          Offset(x, size.height * 0.7),
-          paint,
-        );
-      }
-    }
-  }
-  
-  @override
-  bool shouldRepaint(_ZoomRulerPainter oldDelegate) {
-    return oldDelegate.currentZoom != currentZoom ||
-           oldDelegate.minZoom != minZoom ||
-           oldDelegate.maxZoom != maxZoom;
   }
 }

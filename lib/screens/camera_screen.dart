@@ -10,7 +10,7 @@ import '../screens/gallery_screen.dart';
 import '../services/camera_service.dart';
 import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
-import '../widgets/camera_zoom_control.dart';
+import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
 import '../widgets/orientation_debug_overlay.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
@@ -28,6 +28,11 @@ class CameraScreen extends ConsumerStatefulWidget {
 class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBindingObserver {
   bool _hasInitializationFailed = false;
   bool _showDebugInfo = false; // Toggle with long press on screen
+  bool _isPinching = false;
+  double _baseZoom = 1.0;
+  
+  // Add a key to access zoom control state
+  final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
 
   @override
   void initState() {
@@ -131,10 +136,34 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     
     return OrientationBuilder(
       builder: (context, orientation) {
-        return Stack(
-          children: [
-            Stack(
-              children: [
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onScaleStart: (details) {
+            _baseZoom = cameraState.currentZoom;
+          },
+          onScaleUpdate: (details) {
+            // Only treat as pinch if scale differs significantly from 1.0
+            if ((details.scale - 1.0).abs() > 0.05) {
+              if (!_isPinching) {
+                _isPinching = true;
+                _zoomControlKey.currentState?.showSlider();
+              }
+              
+              final newZoom = (_baseZoom * details.scale)
+                  .clamp(cameraState.minZoom, cameraState.maxZoom);
+              ref.read(cameraControllerProvider.notifier).setZoomLevel(newZoom);
+            }
+          },
+          onScaleEnd: (_) {
+            if (_isPinching) {
+              _isPinching = false;
+              _zoomControlKey.currentState?.setPinching(false);
+            }
+          },
+          child: Stack(
+            children: [
+              Stack(
+                children: [
                   // Camera preview (standard approach)
                   _buildCameraPreview(cameraState.controller!),
 
@@ -153,9 +182,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   
                   // Debug overlay (toggle with long press)
                   OrientationDebugOverlay(showDebugInfo: _showDebugInfo),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         );
       },
     );
@@ -1118,16 +1148,53 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return const SizedBox.shrink();
     }
     
-    // Make the zoom control fill the entire screen to capture pinch gestures anywhere
-    return Positioned.fill(
-      child: CameraZoomControl(
-        currentZoom: cameraState.currentZoom,
-        minZoom: cameraState.minZoom,
-        maxZoom: cameraState.maxZoom,
-        onZoomChanged: (zoom) {
-          ref.read(cameraControllerProvider.notifier).setZoomLevel(zoom);
-        },
-      ),
-    );
+    final orientation = MediaQuery.of(context).orientation;
+    final safeArea = MediaQuery.of(context).padding;
+    
+    // Position zoom control based on orientation
+    if (orientation == Orientation.portrait) {
+      // Portrait: above capture button
+      return Positioned(
+        bottom: 140 + safeArea.bottom,
+        left: 0,
+        right: 0,
+        child: Center(
+          child: CameraZoomControl(
+            key: _zoomControlKey,
+            currentZoom: cameraState.currentZoom,
+            minZoom: cameraState.minZoom,
+            maxZoom: cameraState.maxZoom,
+            onZoomChanged: (zoom) {
+              ref.read(cameraControllerProvider.notifier).setZoomLevel(zoom);
+            },
+          ),
+        ),
+      );
+    } else {
+      // Landscape: vertically centered, to the left of capture buttons
+      // Get button size to calculate proper offset
+      final screenSize = MediaQuery.of(context).size;
+      final buttonSize = OrientationUIHelper.getCaptureButtonSize(
+        orientation: orientation,
+        screenSize: screenSize,
+      );
+      
+      return Positioned(
+        right: buttonSize + 40 + safeArea.right, // Button width + spacing + safe area
+        top: screenSize.height * 0.2, // Start 20% from top for more space
+        bottom: screenSize.height * 0.2, // End 20% from bottom
+        child: Center(
+          child: CameraZoomControl(
+            key: _zoomControlKey,
+            currentZoom: cameraState.currentZoom,
+            minZoom: cameraState.minZoom,
+            maxZoom: cameraState.maxZoom,
+            onZoomChanged: (zoom) {
+              ref.read(cameraControllerProvider.notifier).setZoomLevel(zoom);
+            },
+          ),
+        ),
+      );
+    }
   }
 }
