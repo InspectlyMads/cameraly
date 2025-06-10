@@ -1,10 +1,10 @@
+import 'package:cameraly/cameraly.dart' hide permissionRequestProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../providers/permission_providers.dart';
-import '../services/camera_service.dart';
-import 'camera_screen.dart';
+import 'gallery_screen.dart';
 import 'permission_test_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -280,8 +280,7 @@ class HomeScreen extends ConsumerWidget {
     CameraMode mode,
   ) async {
     // Check permissions first
-    final permissionService = ref.read(permissionServiceProvider);
-    final hasPermissions = await permissionService.hasAllCameraPermissions();
+    final hasPermissions = await ref.read(permissionRequestProvider.notifier).checkPermissions();
 
     if (!hasPermissions) {
       // Request permissions
@@ -291,11 +290,8 @@ class HomeScreen extends ConsumerWidget {
       // Add a small delay to ensure permissions are fully processed
       await Future.delayed(const Duration(milliseconds: 150));
 
-      // Check again with retry mechanism
-      final stillHasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
-        maxAttempts: 3,
-        delay: const Duration(milliseconds: 100),
-      );
+      // Check again
+      final stillHasPermissions = await ref.read(permissionRequestProvider.notifier).checkPermissions();
 
       if (!stillHasPermissions) {
         if (context.mounted) {
@@ -315,7 +311,37 @@ class HomeScreen extends ConsumerWidget {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => CameraScreen(initialMode: mode),
+          builder: (context) => CameraScreen(
+            initialMode: mode,
+            showGridButton: true,
+            onMediaCaptured: (media) {
+              // Media is already saved by the camera service
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('${media.isVideo ? 'Video' : 'Photo'} saved to gallery'),
+                ),
+              );
+            },
+            onGalleryPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const GalleryScreen(),
+                ),
+              );
+            },
+            onCheckPressed: () {
+              Navigator.pop(context);
+            },
+            onError: (error) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error: $error'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            },
+          ),
         ),
       );
     }

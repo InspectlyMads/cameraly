@@ -49,14 +49,6 @@ class PermissionRequestNotifier extends StateNotifier<AsyncValue<Map<Permission,
       // as opening settings is a side effect
     }
   }
-  
-  Future<bool> checkPermissions() async {
-    try {
-      return await _permissionService.hasAllCameraPermissions();
-    } catch (error) {
-      return false;
-    }
-  }
 
   void reset() {
     state = const AsyncValue.data({});
