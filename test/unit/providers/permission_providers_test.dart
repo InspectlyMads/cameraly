@@ -60,7 +60,6 @@ class MockPermissionService extends PermissionService {
     };
   }
 
-  @override
   Future<bool> openAppSettings() async {
     return true; // Mock successful settings opening
   }
@@ -169,7 +168,6 @@ void main() {
 
     group('PermissionRequestNotifier', () {
       test('starts with empty data state', () {
-        final notifier = container.read(permissionRequestProvider.notifier);
         final state = container.read(permissionRequestProvider);
 
         expect(state, isA<AsyncData>());

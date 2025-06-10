@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:image/image.dart' as img;
 
 import '../models/media_item.dart';
 import '../models/orientation_data.dart';
+import '../models/photo_metadata.dart';
 
 class GalleryState {
   final List<MediaItem> mediaItems;
@@ -72,7 +74,7 @@ class MediaService {
   /// Discover all captured media files
   Future<List<MediaItem>> discoverMediaFiles() async {
     try {
-      debugPrint('$_logTag: Starting media discovery');
+
 
       final mediaDir = await getMediaDirectory();
       final List<MediaItem> mediaItems = [];
@@ -83,7 +85,7 @@ class MediaService {
           final mediaItem = await MediaItem.fromFile(entity);
           if (mediaItem != null) {
             mediaItems.add(mediaItem);
-            debugPrint('$_logTag: Found media: ${mediaItem.fileName}');
+
           }
         }
       }
@@ -91,39 +93,42 @@ class MediaService {
       // Sort by capture date (newest first)
       mediaItems.sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
 
-      debugPrint('$_logTag: Discovered ${mediaItems.length} media files');
+
       return mediaItems;
     } catch (e) {
-      debugPrint('$_logTag: Error discovering media files: $e');
+
       return [];
     }
   }
 
-  /// Save captured photo to media directory
-  Future<String?> savePhoto(Uint8List imageData, {String? fileName, OrientationData? orientationData}) async {
+  /// Save captured photo to media directory with EXIF metadata
+  Future<String?> savePhoto(Uint8List imageData, {String? fileName, OrientationData? orientationData, PhotoMetadata? metadata}) async {
     try {
       final mediaDir = await getMediaDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final finalFileName = fileName ?? 'photo_$timestamp.jpg';
       final filePath = path.join(mediaDir.path, finalFileName);
 
+      // Write initial file
       final file = File(filePath);
       await file.writeAsBytes(imageData);
 
-      // Save orientation data as a sidecar file if provided
-      if (orientationData != null) {
-        final orientationPath = '$filePath.orientation.json';
-        final orientationFile = File(orientationPath);
-        await orientationFile.writeAsString(
-          jsonEncode(orientationData.toJson()),
-        );
-        debugPrint('$_logTag: Saved orientation data to: $orientationPath');
+      // Write EXIF metadata if provided
+      if (metadata != null) {
+        try {
+          await _writeExifMetadata(filePath, metadata);
+
+        } catch (e) {
+
+          // Continue even if EXIF writing fails
+        }
       }
 
-      debugPrint('$_logTag: Saved photo to: $filePath');
+
+
       return filePath;
     } catch (e) {
-      debugPrint('$_logTag: Error saving photo: $e');
+
       return null;
     }
   }
@@ -142,13 +147,13 @@ class MediaService {
         // Optionally delete the source file
         // await sourceFile.delete();
 
-        debugPrint('$_logTag: Saved video to: $targetPath');
+
         return targetPath;
       }
 
       return null;
     } catch (e) {
-      debugPrint('$_logTag: Error saving video: $e');
+
       return null;
     }
   }
@@ -168,12 +173,12 @@ class MediaService {
           }
         }
 
-        debugPrint('$_logTag: Deleted media file: ${mediaItem.path}');
+
         return true;
       }
       return false;
     } catch (e) {
-      debugPrint('$_logTag: Error deleting media file: $e');
+
       return false;
     }
   }
@@ -188,41 +193,10 @@ class MediaService {
       }
     }
 
-    debugPrint('$_logTag: Deleted $deletedCount out of ${mediaItems.length} media files');
+
     return deletedCount;
   }
 
-  /// Generate video thumbnail
-  Future<String?> generateVideoThumbnail(MediaItem videoItem) async {
-    if (videoItem.type != MediaType.video) return null;
-
-    try {
-      final controller = VideoPlayerController.file(File(videoItem.path));
-      await controller.initialize();
-
-      // Get thumbnail directory
-      final mediaDir = await getMediaDirectory();
-      final thumbnailDir = Directory(path.join(mediaDir.path, 'thumbnails'));
-      if (!await thumbnailDir.exists()) {
-        await thumbnailDir.create(recursive: true);
-      }
-
-      // Generate thumbnail path
-      final thumbnailFileName = '${videoItem.fileName}_thumb.jpg';
-      // final thumbnailPath = path.join(thumbnailDir.path, thumbnailFileName);
-      // TODO: Implement actual thumbnail generation using flutter_ffmpeg or similar
-
-      // For now, we'll return null since thumbnail generation is complex
-      // In a production app, you'd use a plugin like flutter_ffmpeg
-      await controller.dispose();
-
-      debugPrint('$_logTag: Video thumbnail generation not implemented yet');
-      return null;
-    } catch (e) {
-      debugPrint('$_logTag: Error generating video thumbnail: $e');
-      return null;
-    }
-  }
 
   /// Get video duration
   Future<Duration?> getVideoDuration(MediaItem videoItem) async {
@@ -237,7 +211,7 @@ class MediaService {
 
       return duration;
     } catch (e) {
-      debugPrint('$_logTag: Error getting video duration: $e');
+
       return null;
     }
   }
@@ -246,19 +220,16 @@ class MediaService {
   Future<MediaItem> getMediaMetadata(MediaItem mediaItem) async {
     try {
       Duration? videoDuration;
-      String? thumbnailPath;
 
       if (mediaItem.type == MediaType.video) {
         videoDuration = await getVideoDuration(mediaItem);
-        thumbnailPath = await generateVideoThumbnail(mediaItem);
       }
 
       return mediaItem.copyWith(
         videoDuration: videoDuration,
-        thumbnailPath: thumbnailPath,
       );
     } catch (e) {
-      debugPrint('$_logTag: Error getting metadata for ${mediaItem.path}: $e');
+
       return mediaItem;
     }
   }
@@ -274,9 +245,9 @@ class MediaService {
           }
         }
       }
-      debugPrint('$_logTag: Cleared all media files');
+
     } catch (e) {
-      debugPrint('$_logTag: Error clearing media files: $e');
+      // Ignore errors during cleanup
     }
   }
 
@@ -294,7 +265,7 @@ class MediaService {
 
       return totalSize;
     } catch (e) {
-      debugPrint('$_logTag: Error calculating storage usage: $e');
+
       return 0;
     }
   }
@@ -311,5 +282,99 @@ class MediaService {
     }
 
     return '${size.toStringAsFixed(1)} ${units[unitIndex]}';
+  }
+
+  /// Write EXIF metadata to image file
+  Future<void> _writeExifMetadata(String imagePath, PhotoMetadata metadata) async {
+    final file = File(imagePath);
+    final bytes = await file.readAsBytes();
+    
+    // Decode the image
+    final image = img.decodeImage(bytes);
+    if (image == null) {
+
+      return;
+    }
+    
+    // Ensure EXIF data exists
+    image.exif = img.ExifData();
+    
+    // Set basic EXIF tags
+    image.exif.imageIfd['Make'] = metadata.deviceManufacturer;
+    image.exif.imageIfd['Model'] = metadata.deviceModel;
+    image.exif.imageIfd['Software'] = 'Cameraly ${metadata.osVersion}';
+    
+    // Set date/time
+    final dateTimeStr = metadata.capturedAt.toIso8601String().replaceAll('T', ' ').substring(0, 19);
+    image.exif.imageIfd['DateTime'] = dateTimeStr;
+    image.exif.exifIfd['DateTimeOriginal'] = dateTimeStr;
+    image.exif.exifIfd['DateTimeDigitized'] = dateTimeStr;
+    
+    // Set GPS data if available
+    if (metadata.latitude != null && metadata.longitude != null) {
+      image.exif.gpsIfd['GPSLatitudeRef'] = metadata.latitude! >= 0 ? 'N' : 'S';
+      image.exif.gpsIfd['GPSLatitude'] = _convertToGPSRationals(metadata.latitude!);
+      image.exif.gpsIfd['GPSLongitudeRef'] = metadata.longitude! >= 0 ? 'E' : 'W';
+      image.exif.gpsIfd['GPSLongitude'] = _convertToGPSRationals(metadata.longitude!);
+      
+      if (metadata.altitude != null) {
+        image.exif.gpsIfd['GPSAltitudeRef'] = metadata.altitude! >= 0 ? 0 : 1;
+        image.exif.gpsIfd['GPSAltitude'] = [metadata.altitude!.abs().toInt(), 1];
+      }
+      
+      if (metadata.speed != null) {
+        // Convert m/s to km/h
+        final speedKmh = metadata.speed! * 3.6;
+        image.exif.gpsIfd['GPSSpeed'] = [(speedKmh * 100).toInt(), 100];
+        image.exif.gpsIfd['GPSSpeedRef'] = 'K'; // K for km/h
+      }
+      
+      // Set GPS timestamp
+      final gpsTimeStr = metadata.capturedAt.toIso8601String().split('T')[1].substring(0, 8);
+      image.exif.gpsIfd['GPSTimeStamp'] = gpsTimeStr;
+      image.exif.gpsIfd['GPSDateStamp'] = metadata.capturedAt.toIso8601String().split('T')[0];
+    }
+    
+    // Custom data as user comment
+    final customComment = jsonEncode({
+      'cameraly_metadata': {
+        'zoom_level': metadata.zoomLevel,
+        'flash_mode': metadata.flashMode,
+        'lens_direction': metadata.lensDirection,
+        'device_tilt': {
+          'x': metadata.deviceTiltX,
+          'y': metadata.deviceTiltY,
+          'z': metadata.deviceTiltZ,
+        },
+        'capture_time_millis': metadata.captureTimeMillis,
+      }
+    });
+    
+    image.exif.exifIfd['UserComment'] = customComment;
+    
+    // Additional camera settings if available
+    if (metadata.zoomLevel != null) {
+      image.exif.exifIfd['DigitalZoomRatio'] = [(metadata.zoomLevel! * 100).toInt(), 100];
+    }
+    
+    // Encode back to JPEG with EXIF
+    final newBytes = img.encodeJpg(image, quality: 95);
+    await file.writeAsBytes(newBytes);
+    
+
+  }
+  
+  /// Convert decimal degrees to GPS rationals
+  List<List<int>> _convertToGPSRationals(double decimal) {
+    final absDecimal = decimal.abs();
+    final degrees = absDecimal.floor();
+    final minutes = ((absDecimal - degrees) * 60).floor();
+    final seconds = ((absDecimal - degrees - minutes / 60) * 3600 * 100).round();
+    
+    return [
+      [degrees, 1],
+      [minutes, 1],
+      [seconds, 100],
+    ];
   }
 }

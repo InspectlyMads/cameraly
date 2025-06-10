@@ -1,10 +1,12 @@
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../services/camera_service.dart';
 import '../services/media_service.dart';
+import '../services/metadata_service.dart';
 import '../services/camera_ui_service.dart';
 import '../services/camera_error_handler.dart';
 import '../services/camera_info_service.dart';
@@ -13,9 +15,16 @@ import 'permission_providers.dart';
 
 part 'camera_providers.g.dart';
 
+// ignore_for_file: deprecated_member_use_from_same_package, unnecessary_import
+
 // Service provider
 final cameraServiceProvider = Provider<CameraService>((ref) {
   return CameraService();
+});
+
+// Metadata service provider
+final metadataServiceProvider = Provider<MetadataService>((ref) {
+  return MetadataService();
 });
 
 // Media service provider
@@ -33,6 +42,7 @@ Future<List<camera.CameraDescription>> availableCameras(AvailableCamerasRef ref)
 // Main camera state provider
 @riverpod
 class CameraController extends _$CameraController {
+  bool _captureLocationMetadata = true;
   @override
   CameraState build() {
     // Auto-dispose camera when provider is disposed
@@ -44,7 +54,8 @@ class CameraController extends _$CameraController {
   }
 
   /// Initialize camera system
-  Future<void> initializeCamera() async {
+  Future<void> initializeCamera({bool captureLocationMetadata = true}) async {
+    _captureLocationMetadata = captureLocationMetadata;
     await _initializeCamera();
   }
 
@@ -75,14 +86,14 @@ class CameraController extends _$CameraController {
   /// Switch camera lens direction
   Future<void> switchCamera() async {
     if (!state.isInitialized || state.availableCameras.length < 2) {
-      debugPrint('CameraController: Cannot switch camera - not initialized or insufficient cameras');
+
       return;
     }
 
     final service = ref.read(cameraServiceProvider);
     final newLensDirection = service.getOppositeLensDirection(state.lensDirection);
 
-    debugPrint('CameraController: Switching from ${state.lensDirection.name} to ${newLensDirection.name}');
+
 
     state = state.copyWith(isLoading: true, errorMessage: null);
 
@@ -106,9 +117,9 @@ class CameraController extends _$CameraController {
       // Reset flash mode after switching (front camera usually doesn't have flash)
       await _setInitialFlashMode(newController);
 
-      debugPrint('CameraController: Camera switched successfully to ${newLensDirection.name}');
+
     } catch (e) {
-      debugPrint('CameraController: Camera switch failed: $e');
+
       final service = ref.read(cameraServiceProvider);
       state = state.copyWith(
         isLoading: false,
@@ -119,7 +130,7 @@ class CameraController extends _$CameraController {
       try {
         await _initializeCamera();
       } catch (recoveryError) {
-        debugPrint('CameraController: Recovery after switch failure also failed: $recoveryError');
+
       }
     }
   }
@@ -144,9 +155,9 @@ class CameraController extends _$CameraController {
         photoFlashMode: photoFlashMode,
         videoFlashMode: videoFlashMode,
       );
-      debugPrint('CameraController: Flash modes set - Photo: ${photoFlashMode.name}, Video: ${videoFlashMode.name}');
+
     } catch (e) {
-      debugPrint('CameraController: Failed to set flash mode: $e');
+
     }
   }
 
@@ -248,18 +259,21 @@ class CameraController extends _$CameraController {
         lensDirection: state.lensDirection,
       );
       
-      debugPrint('CameraController: Pre-capture orientation data:');
-      debugPrint('  Device orientation: ${orientationData.deviceOrientation}°');
-      debugPrint('  Sensor orientation: ${orientationData.sensorOrientation}°');
-      debugPrint('  Calculated rotation: ${orientationData.cameraRotation}°');
+
+
+
+
       
       // Lock the capture orientation to the current device orientation
       // This ensures the camera package correctly handles the image orientation
       final deviceOrientation = _mapToDeviceOrientation(orientationData.deviceOrientation);
       if (deviceOrientation != null) {
-        debugPrint('CameraController: Locking capture orientation to: $deviceOrientation');
+
         await state.controller!.lockCaptureOrientation(deviceOrientation);
       }
+      
+      // Record the time before capture for metadata
+      final captureStartTime = DateTime.now();
       
       // Take the picture
       final imageFile = await state.controller!.takePicture();
@@ -267,15 +281,28 @@ class CameraController extends _$CameraController {
       // Unlock capture orientation after taking the picture
       if (deviceOrientation != null) {
         await state.controller!.unlockCaptureOrientation();
-        debugPrint('CameraController: Unlocked capture orientation');
+
       }
 
+      // Capture metadata
+      final metadataService = ref.read(metadataServiceProvider);
+      final metadata = await metadataService.captureMetadata(
+        cameraController: state.controller!,
+        captureStartTime: captureStartTime,
+        cameraName: currentCamera.name,
+        zoomLevel: state.currentZoom,
+        flashMode: state.mode == CameraMode.photo 
+          ? state.photoFlashMode.toString() 
+          : state.videoFlashMode.toString(),
+      );
+      
       // Save the image to app directory
       final mediaService = ref.read(mediaServiceProvider);
       final imageBytes = await imageFile.readAsBytes();
       final savedPath = await mediaService.savePhoto(
         imageBytes,
         orientationData: orientationData,
+        metadata: metadata,
       );
 
       if (savedPath != null) {
@@ -334,9 +361,9 @@ class CameraController extends _$CameraController {
         controller: state.controller!,
         point: point,
       );
-      debugPrint('CameraController: Focus point set to $point');
+
     } catch (e) {
-      debugPrint('CameraController: Failed to set focus point: $e');
+
     }
   }
 
@@ -355,11 +382,11 @@ class CameraController extends _$CameraController {
     // If zoom is less than 1.0 but controller doesn't support it, clamp to min
     if (zoom < 1.0 && controllerMinZoom >= 1.0) {
       actualZoom = controllerMinZoom;
-      debugPrint('CameraController: Requested ${zoom}x but controller min is ${controllerMinZoom}x');
+
     } else if (zoom > controllerMaxZoom) {
       // If zoom exceeds controller max, clamp to max
       actualZoom = controllerMaxZoom;
-      debugPrint('CameraController: Requested ${zoom}x but controller max is ${controllerMaxZoom}x');
+
     } else {
       // Ensure zoom is within controller bounds
       actualZoom = zoom.clamp(controllerMinZoom, controllerMaxZoom);
@@ -369,9 +396,9 @@ class CameraController extends _$CameraController {
       await state.controller!.setZoomLevel(actualZoom);
       // Store the requested zoom for UI (not the clamped value)
       state = state.copyWith(currentZoom: zoom);
-      debugPrint('CameraController: Set zoom to ${actualZoom}x (UI shows ${zoom}x)');
+
     } catch (e) {
-      debugPrint('CameraController: Failed to set zoom level: $e');
+
     }
   }
 
@@ -382,21 +409,21 @@ class CameraController extends _$CameraController {
       final controllerMinZoom = await controller.getMinZoomLevel();
       final controllerMaxZoom = await controller.getMaxZoomLevel();
       
-      debugPrint('CameraController: Controller zoom values - Min: $controllerMinZoom, Max: $controllerMaxZoom');
+
       
       // Get device-specific zoom capabilities
       final deviceCapabilities = await ZoomHelper.getDeviceZoomCapabilities();
-      debugPrint('CameraController: Device capabilities - Min: ${deviceCapabilities.minZoom}, Max: ${deviceCapabilities.maxZoom}');
-      debugPrint('CameraController: Device presets: ${deviceCapabilities.presetZooms}');
+
+
       
       // Analyze camera configuration
       final cameras = state.availableCameras;
       final cameraInfo = CameraInfoService.analyzeCameras(cameras);
       
-      debugPrint('CameraController: Camera analysis:');
-      debugPrint('  - Has ultra-wide: ${cameraInfo.hasUltraWide}');
-      debugPrint('  - Has telephoto: ${cameraInfo.hasTelephoto}');
-      debugPrint('  - Back cameras: ${cameraInfo.backCameras}');
+
+
+
+
       
       // Determine effective zoom range based on camera analysis and controller capabilities
       double effectiveMinZoom = controllerMinZoom;
@@ -406,24 +433,24 @@ class CameraController extends _$CameraController {
       // we'll show 0.5x button but it will just use 1.0x
       if (cameraInfo.hasUltraWide && controllerMinZoom >= 1.0) {
         effectiveMinZoom = 0.5;
-        debugPrint('CameraController: Ultra-wide detected but controller min is $controllerMinZoom');
+
       }
       
       // Set appropriate max zoom based on camera configuration
       // If controller reports very limited zoom (like 1.0), use device defaults
       if (controllerMaxZoom <= 1.0) {
-        debugPrint('CameraController: Controller reports no zoom capability, using device defaults');
+
         effectiveMaxZoom = cameraInfo.hasTelephoto ? 30.0 : 8.0;
       } else if (cameraInfo.hasTelephoto) {
         // Pro model with telephoto - allow full zoom range
-        debugPrint('CameraController: Telephoto detected, allowing full zoom range up to ${effectiveMaxZoom}x');
+
       } else if (effectiveMaxZoom > 8.0) {
         // Non-Pro model - limit to reasonable digital zoom
         effectiveMaxZoom = 8.0;
-        debugPrint('CameraController: No telephoto detected, limiting max zoom to 8x');
+
       }
       
-      debugPrint('CameraController: Final zoom range - Min: $effectiveMinZoom, Max: $effectiveMaxZoom');
+
       
       state = state.copyWith(
         minZoom: effectiveMinZoom,
@@ -435,9 +462,9 @@ class CameraController extends _$CameraController {
       final initialZoom = 1.0.clamp(controllerMinZoom, controllerMaxZoom);
       await controller.setZoomLevel(initialZoom);
       
-      debugPrint('CameraController: Zoom initialized - Using device capabilities for UI');
+
     } catch (e) {
-      debugPrint('CameraController: Failed to initialize zoom: $e');
+
       // Default to a reasonable zoom range if initialization fails
       state = state.copyWith(
         minZoom: 1.0,
@@ -453,16 +480,34 @@ class CameraController extends _$CameraController {
     final permissionService = ref.read(permissionServiceProvider);
 
     // Use the retry mechanism to handle race conditions
-    final hasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
+    var hasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
       maxAttempts: 3,
       delay: const Duration(milliseconds: 100),
     );
 
     if (!hasPermissions) {
-      state = state.copyWith(
-        errorMessage: 'Camera and microphone permissions are required',
+      // Request permissions if not granted
+      final granted = await permissionService.requestCameraAndMicrophonePermissions();
+      
+      if (!granted) {
+        state = state.copyWith(
+          errorMessage: 'Camera and microphone permissions are required',
+        );
+        return;
+      }
+      
+      // Check again after requesting
+      hasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
+        maxAttempts: 3,
+        delay: const Duration(milliseconds: 100),
       );
-      return;
+      
+      if (!hasPermissions) {
+        state = state.copyWith(
+          errorMessage: 'Camera and microphone permissions are required',
+        );
+        return;
+      }
     }
 
     state = state.copyWith(isLoading: true);
@@ -472,6 +517,10 @@ class CameraController extends _$CameraController {
       
       // Initialize the camera service (including orientation service)
       await service.initialize();
+      
+      // Initialize metadata service for GPS and sensor data
+      final metadataService = ref.read(metadataServiceProvider);
+      await metadataService.initialize(captureLocation: _captureLocationMetadata);
 
       // Get available cameras
       final cameras = await service.getAvailableCameras();

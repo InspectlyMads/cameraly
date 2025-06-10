@@ -350,7 +350,7 @@ class _MediaViewerState extends State<MediaViewer> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor.withOpacity(0.1),
+                  color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
@@ -455,7 +455,7 @@ class _MediaViewerState extends State<MediaViewer> {
                 decoration: BoxDecoration(
                   border: Border(
                     top: BorderSide(
-                      color: Theme.of(context).dividerColor.withOpacity(0.2),
+                      color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
                     ),
                   ),
                 ),
@@ -507,7 +507,7 @@ class _MediaViewerState extends State<MediaViewer> {
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).dividerColor.withOpacity(0.2),
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
             ),
           ),
           child: Column(
@@ -574,7 +574,7 @@ class _MediaViewerState extends State<MediaViewer> {
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Icon(
@@ -631,7 +631,7 @@ class _MediaViewerState extends State<MediaViewer> {
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: accuracy,
-                      backgroundColor: color.withOpacity(0.2),
+                      backgroundColor: color.withValues(alpha: 0.2),
                       valueColor: AlwaysStoppedAnimation<Color>(color),
                       minHeight: 8,
                     ),

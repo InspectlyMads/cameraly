@@ -192,37 +192,6 @@ class MediaService {
     return deletedCount;
   }
 
-  /// Generate video thumbnail
-  Future<String?> generateVideoThumbnail(MediaItem videoItem) async {
-    if (videoItem.type != MediaType.video) return null;
-
-    try {
-      final controller = VideoPlayerController.file(File(videoItem.path));
-      await controller.initialize();
-
-      // Get thumbnail directory
-      final mediaDir = await getMediaDirectory();
-      final thumbnailDir = Directory(path.join(mediaDir.path, 'thumbnails'));
-      if (!await thumbnailDir.exists()) {
-        await thumbnailDir.create(recursive: true);
-      }
-
-      // Generate thumbnail path
-      final thumbnailFileName = '${videoItem.fileName}_thumb.jpg';
-      // final thumbnailPath = path.join(thumbnailDir.path, thumbnailFileName);
-      // TODO: Implement actual thumbnail generation using flutter_ffmpeg or similar
-
-      // For now, we'll return null since thumbnail generation is complex
-      // In a production app, you'd use a plugin like flutter_ffmpeg
-      await controller.dispose();
-
-      debugPrint('$_logTag: Video thumbnail generation not implemented yet');
-      return null;
-    } catch (e) {
-      debugPrint('$_logTag: Error generating video thumbnail: $e');
-      return null;
-    }
-  }
 
   /// Get video duration
   Future<Duration?> getVideoDuration(MediaItem videoItem) async {
@@ -246,16 +215,13 @@ class MediaService {
   Future<MediaItem> getMediaMetadata(MediaItem mediaItem) async {
     try {
       Duration? videoDuration;
-      String? thumbnailPath;
 
       if (mediaItem.type == MediaType.video) {
         videoDuration = await getVideoDuration(mediaItem);
-        thumbnailPath = await generateVideoThumbnail(mediaItem);
       }
 
       return mediaItem.copyWith(
         videoDuration: videoDuration,
-        thumbnailPath: thumbnailPath,
       );
     } catch (e) {
       debugPrint('$_logTag: Error getting metadata for ${mediaItem.path}: $e');

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../providers/permission_providers.dart';
-
 class PermissionTestScreen extends ConsumerStatefulWidget {
   const PermissionTestScreen({super.key});
 
@@ -74,13 +72,13 @@ Photos: ${_getStatusString(photosStatus)}
                   
                   // Request permissions one by one for better debugging
                   final cameraResult = await Permission.camera.request();
-                  print('Camera permission result: $cameraResult');
+                  debugPrint('Camera permission result: $cameraResult');
                   
                   final microphoneResult = await Permission.microphone.request();
-                  print('Microphone permission result: $microphoneResult');
+                  debugPrint('Microphone permission result: $microphoneResult');
                   
                   final photosResult = await Permission.photos.request();
-                  print('Photos permission result: $photosResult');
+                  debugPrint('Photos permission result: $photosResult');
                   
                   await _checkPermissions();
                 },
@@ -90,7 +88,7 @@ Photos: ${_getStatusString(photosStatus)}
               ElevatedButton(
                 onPressed: () async {
                   final opened = await openAppSettings();
-                  print('App settings opened: $opened');
+                  debugPrint('App settings opened: $opened');
                 },
                 child: const Text('Open App Settings'),
               ),

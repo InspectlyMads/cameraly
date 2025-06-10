@@ -5,6 +5,8 @@ import '../services/media_service.dart';
 
 part 'gallery_providers.g.dart';
 
+// ignore_for_file: deprecated_member_use_from_same_package
+
 // Service provider
 final mediaServiceProvider = Provider<MediaService>((ref) {
   return MediaService();

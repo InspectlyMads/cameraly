@@ -47,7 +47,7 @@ class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(opacity)
+      ..color = Colors.white.withValues(alpha: opacity)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 
@@ -95,7 +95,7 @@ class GridPainter extends CustomPainter {
 
     // Optional: Draw power points (intersections) with slightly thicker circles
     final powerPointPaint = Paint()
-      ..color = Colors.white.withOpacity(opacity * 0.8)
+      ..color = Colors.white.withValues(alpha: opacity * 0.8)
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
 
@@ -204,13 +204,13 @@ class _GridTypeButton extends StatelessWidget {
         height: 60,
         decoration: BoxDecoration(
           color: isSelected
-              ? Theme.of(context).primaryColor.withOpacity(0.2)
-              : Colors.grey.withOpacity(0.1),
+              ? Theme.of(context).primaryColor.withValues(alpha: 0.2)
+              : Colors.grey.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected
                 ? Theme.of(context).primaryColor
-                : Colors.grey.withOpacity(0.3),
+                : Colors.grey.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
         ),

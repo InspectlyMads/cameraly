@@ -192,7 +192,7 @@ class _MediaGridItemState extends State<MediaGridItem> {
         height: 24,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: widget.isSelected ? Theme.of(context).primaryColor : Colors.white.withOpacity(0.7),
+          color: widget.isSelected ? Theme.of(context).primaryColor : Colors.white.withValues(alpha: 0.7),
           border: Border.all(
             color: widget.isSelected ? Theme.of(context).primaryColor : Colors.grey,
             width: 2,

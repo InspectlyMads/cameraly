@@ -27,27 +27,37 @@ dependencies:
 
 ### Platform Setup
 
+**Important**: Permission descriptions must be added to YOUR app's platform files, not the package. The package will request permissions at runtime, but iOS and Android require these descriptions to be present in the consuming app.
+
 #### iOS
 
-Add the following to your `Info.plist`:
+Add the following to your app's `ios/Runner/Info.plist`:
 
 ```xml
 <key>NSCameraUsageDescription</key>
 <string>This app needs camera access to take photos and videos</string>
 <key>NSMicrophoneUsageDescription</key>
 <string>This app needs microphone access to record videos</string>
-<key>NSPhotoLibraryUsageDescription</key>
-<string>This app needs photo library access to save photos and videos</string>
+<!-- Only if captureLocationMetadata is enabled (default: true) -->
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>This app needs location access to add GPS metadata to photos</string>
 ```
 
 #### Android
 
-Add the following permissions to your `AndroidManifest.xml`:
+Add the following permissions to your app's `android/app/src/main/AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.CAMERA" />
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+<!-- Only if captureLocationMetadata is enabled (default: true) -->
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+<!-- For saving media -->
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 ```
 
 ### Basic Usage
@@ -71,11 +81,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: CameraScreen(
+        initialMode: CameraMode.photo,
         onMediaCaptured: (MediaItem media) {
           // Handle captured photo/video
           print('Captured: ${media.path}');
         },
-        showDebugInfo: false, // Set to true for orientation debug overlay
       ),
     );
   }
@@ -86,18 +96,41 @@ class MyApp extends StatelessWidget {
 
 ```dart
 CameraScreen(
+  initialMode: CameraMode.photo, // or .video, .combined
+  showGridButton: true, // Show grid toggle button
+  showGalleryButton: true, // Show gallery button
+  showCheckButton: true, // Show check/done button
+  captureLocationMetadata: true, // Capture GPS metadata (default: true)
   onMediaCaptured: (MediaItem media) {
     // Handle captured media
+  },
+  onGalleryPressed: () {
+    // Handle gallery button tap
+  },
+  onCheckPressed: () {
+    // Handle check button tap
   },
   onError: (String error) {
     // Handle errors
   },
-  showGrid: true, // Show composition grid
-  showDebugInfo: false, // Show orientation debug info
-  enableZoom: true, // Enable zoom controls
-  enableFocus: true, // Enable tap to focus
-  flashMode: FlashMode.auto, // Initial flash mode
-  cameraMode: CameraMode.photo, // Initial camera mode
+)
+```
+
+### Custom UI
+
+```dart
+CameraScreen(
+  initialMode: CameraMode.photo,
+  customWidgets: CameraCustomWidgets(
+    galleryButton: MyCustomGalleryWidget(),
+    checkButton: MyCustomCheckWidget(),
+    captureButton: MyCustomCaptureButton(),
+    flashControl: MyCustomFlashControl(),
+    leftSideWidget: MyCustomControlPanel(),
+  ),
+  onMediaCaptured: (media) {
+    // Handle capture
+  },
 )
 ```
 

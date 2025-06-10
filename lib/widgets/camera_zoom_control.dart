@@ -41,7 +41,6 @@ class CameraZoomControlState extends State<CameraZoomControl>
   bool _isPinching = false;
   bool _isSliderVisible = false;
   bool _isInteractingWithSlider = false;
-  double _initialScale = 1.0;
   
   // Define zoom presets based on max zoom
   late List<ZoomLevel> _zoomPresets;
@@ -205,7 +204,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
         vertical: isPortrait ? 4 : 2,
       ),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
+        color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Flex(
@@ -259,7 +258,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
+        color: Colors.black.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Stack(
@@ -270,7 +269,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
             data: SliderThemeData(
               trackHeight: 2,
               activeTrackColor: Colors.white,
-              inactiveTrackColor: Colors.white.withOpacity(0.3),
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
               thumbColor: Colors.white,
               thumbShape: const RoundSliderThumbShape(
                 enabledThumbRadius: 8,
@@ -279,7 +278,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
               overlayShape: const RoundSliderOverlayShape(
                 overlayRadius: 16,
               ),
-              overlayColor: Colors.white.withOpacity(0.3),
+              overlayColor: Colors.white.withValues(alpha: 0.3),
             ),
             child: Slider(
               value: value,
@@ -309,7 +308,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
+                color: Colors.black.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -333,7 +332,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
       height: 280,
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
+        color: Colors.black.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Stack(
@@ -346,7 +345,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
               data: SliderThemeData(
                 trackHeight: 2,
                 activeTrackColor: Colors.white,
-                inactiveTrackColor: Colors.white.withOpacity(0.3),
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
                 thumbColor: Colors.white,
                 thumbShape: const RoundSliderThumbShape(
                   enabledThumbRadius: 8,
@@ -355,7 +354,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
                 overlayShape: const RoundSliderOverlayShape(
                   overlayRadius: 16,
                 ),
-                overlayColor: Colors.white.withOpacity(0.3),
+                overlayColor: Colors.white.withValues(alpha: 0.3),
               ),
               child: SizedBox(
                 width: 280 - 32,
@@ -392,7 +391,7 @@ class CameraZoomControlState extends State<CameraZoomControl>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
+                  color: Colors.black.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(

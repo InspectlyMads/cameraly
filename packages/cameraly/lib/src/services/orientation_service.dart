@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:exif/exif.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
@@ -76,17 +75,17 @@ class OrientationService {
 
   /// Initialize the orientation service
   Future<void> initialize() async {
-    debugPrint('$_logTag: Initializing orientation service');
+
     
     // Get device info
     _cachedDeviceInfo = await _getDeviceInfo();
-    debugPrint('$_logTag: Device: ${_cachedDeviceInfo?.manufacturer} ${_cachedDeviceInfo?.model}');
+
     
     // Start sensor monitoring (skip in test environment)
     try {
       _startSensorMonitoring();
     } catch (e) {
-      debugPrint('$_logTag: Could not start sensor monitoring (likely in test environment): $e');
+
     }
   }
 
@@ -109,9 +108,9 @@ class OrientationService {
       lensDirection: lensDirection,
     );
     
-    debugPrint('$_logTag: Camera sensor orientation: ${camera.sensorOrientation}°');
-    debugPrint('$_logTag: Device orientation: ${deviceOrientation}°');
-    debugPrint('$_logTag: Correction offset: ${correction.rotationOffset}°');
+
+
+
     
     // Calculate rotation needed to correct the image
     // For back camera:
@@ -133,7 +132,7 @@ class OrientationService {
       rotation = (rotation + correction.rotationOffset) % 360;
     }
     
-    debugPrint('$_logTag: Calculated rotation: ${rotation}°');
+
     
     return OrientationData(
       deviceOrientation: deviceOrientation,
@@ -152,34 +151,15 @@ class OrientationService {
     );
   }
 
-  /// Write EXIF orientation data to image file
-  Future<void> writeExifOrientation(String imagePath, OrientationData orientationData) async {
-    try {
-      final file = File(imagePath);
-      final bytes = await file.readAsBytes();
-      
-      final data = await readExifFromBytes(bytes);
-      
-      // Calculate EXIF orientation value (1-8)
-      final exifOrientation = _calculateExifOrientation(orientationData.cameraRotation);
-      
-      // TODO: The exif package doesn't support writing, we need to use a different approach
-      // For production, consider using native platform code or a more comprehensive package
-      
-      debugPrint('$_logTag: Would set EXIF orientation to $exifOrientation for rotation ${orientationData.cameraRotation}');
-    } catch (e) {
-      debugPrint('$_logTag: Error writing EXIF data: $e');
-    }
-  }
 
   /// Apply orientation correction to image file
   /// Note: We're not manually rotating images anymore as the camera package
   /// should handle orientation through EXIF metadata
   Future<String?> applyOrientationCorrection(String imagePath, OrientationData orientationData) async {
-    debugPrint('$_logTag: Image captured with orientation data: ${orientationData.cameraRotation}°');
-    debugPrint('$_logTag: Device: ${orientationData.deviceManufacturer} ${orientationData.deviceModel}');
-    debugPrint('$_logTag: Sensor orientation: ${orientationData.sensorOrientation}°');
-    debugPrint('$_logTag: Device orientation: ${orientationData.deviceOrientation}°');
+
+
+
+
     
     // The camera package should have already set proper EXIF orientation
     // We're just logging the information for debugging purposes
@@ -196,14 +176,14 @@ class OrientationService {
     final corrections = _manufacturerCorrections[manufacturerLower];
     
     if (corrections == null) {
-      debugPrint('$_logTag: No corrections for manufacturer: $manufacturer, using defaults');
+
       return OrientationCorrection.standard();
     }
     
     // Check for model-specific correction
     final modelCorrection = corrections[model];
     if (modelCorrection != null) {
-      debugPrint('$_logTag: Using model-specific correction for $model: $modelCorrection°');
+
       return OrientationCorrection(
         rotationOffset: modelCorrection,
         flipHorizontal: false,
@@ -214,7 +194,7 @@ class OrientationService {
     final lensKey = lensDirection == CameraLensDirection.front ? 'front' : 'default';
     final correction = corrections[lensKey] ?? 0;
     
-    debugPrint('$_logTag: Using $lensKey correction for $manufacturer: $correction°');
+
     
     return OrientationCorrection(
       rotationOffset: correction,
@@ -225,7 +205,7 @@ class OrientationService {
   /// Calculate device orientation from accelerometer
   int _calculateDeviceOrientation() {
     if (_lastAccelerometerEvent == null) {
-      debugPrint('$_logTag: No accelerometer data available');
+
       return 0;
     }
     
@@ -238,7 +218,7 @@ class OrientationService {
     
     // Ignore if device is nearly flat (unreliable orientation)
     if (normG < 8.0) {
-      debugPrint('$_logTag: Device nearly flat, using last known orientation');
+
       return 0;
     }
     
@@ -284,7 +264,7 @@ class OrientationService {
   void _startSensorMonitoring() {
     // Skip sensor monitoring in test environment
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
-      debugPrint('$_logTag: Skipping sensor monitoring in test environment');
+
       return;
     }
     
@@ -297,11 +277,11 @@ class OrientationService {
           _lastAccelerometerEvent = event;
         },
         onError: (error) {
-          debugPrint('$_logTag: Accelerometer error: $error');
+
         },
       );
     } catch (e) {
-      debugPrint('$_logTag: Could not start accelerometer monitoring: $e');
+
     }
     
     try {
@@ -313,12 +293,12 @@ class OrientationService {
           _lastGyroscopeEvent = event;
         },
         onError: (error) {
-          debugPrint('$_logTag: Gyroscope error: $error');
+
           // Gyroscope not available on all devices, this is okay
         },
       );
     } catch (e) {
-      debugPrint('$_logTag: Could not start gyroscope monitoring: $e');
+
     }
   }
 
@@ -354,7 +334,7 @@ class OrientationService {
         );
       }
     } catch (e) {
-      debugPrint('$_logTag: Error getting device info: $e');
+
     }
     
     return const DeviceInfo(
@@ -363,31 +343,6 @@ class OrientationService {
     );
   }
 
-  /// Convert rotation degrees to EXIF orientation value
-  int _calculateExifOrientation(int rotation) {
-    // EXIF orientation values:
-    // 1 = 0 degrees: the correct orientation, no adjustment is required.
-    // 2 = 0 degrees, mirrored: image has been flipped back-to-front.
-    // 3 = 180 degrees: image is upside down.
-    // 4 = 180 degrees, mirrored: image has been flipped back-to-front and is upside down.
-    // 5 = 90 degrees: image has been flipped back-to-front and is on its side.
-    // 6 = 90 degrees, mirrored: image is on its side.
-    // 7 = 270 degrees: image has been flipped back-to-front and is on its far side.
-    // 8 = 270 degrees, mirrored: image is on its far side.
-    
-    switch (rotation) {
-      case 0:
-        return 1;
-      case 90:
-        return 6;
-      case 180:
-        return 3;
-      case 270:
-        return 8;
-      default:
-        return 1;
-    }
-  }
 
   /// Get debug information for testing
   Map<String, dynamic> getDebugInfo() {

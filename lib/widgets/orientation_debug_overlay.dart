@@ -29,7 +29,7 @@ class OrientationDebugOverlay extends ConsumerWidget {
         width: isLandscape ? 350 : null, // Fixed width in landscape
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Consumer(

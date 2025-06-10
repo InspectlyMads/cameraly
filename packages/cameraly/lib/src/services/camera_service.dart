@@ -136,15 +136,15 @@ class CameraService {
   Future<List<camera.CameraDescription>> getAvailableCameras() async {
     try {
       final cameras = await camera.availableCameras();
-      debugPrint('$_logTag: Found ${cameras.length} cameras');
+
       for (final cameraDesc in cameras) {
-        debugPrint('$_logTag: Camera: ${cameraDesc.name}');
-        debugPrint('$_logTag:   Lens Direction: ${cameraDesc.lensDirection}');
-        debugPrint('$_logTag:   Sensor Orientation: ${cameraDesc.sensorOrientation}');
+
+
+
       }
       return cameras;
     } catch (e) {
-      debugPrint('$_logTag: Error getting available cameras: $e');
+
       return [];
     }
   }
@@ -188,9 +188,9 @@ class CameraService {
     // Fallback to first available camera
     selectedCamera ??= cameras.first;
 
-    debugPrint('$_logTag: Initializing camera: ${selectedCamera.name}');
-    debugPrint('$_logTag: Requested direction: ${lensDirection.name}');
-    debugPrint('$_logTag: Selected camera direction: ${selectedCamera.lensDirection}');
+
+
+
 
     final controller = camera.CameraController(
       selectedCamera,
@@ -200,7 +200,7 @@ class CameraService {
     );
 
     await controller.initialize();
-    debugPrint('$_logTag: Camera initialized successfully');
+
 
     return controller;
   }
@@ -211,7 +211,7 @@ class CameraService {
     required List<camera.CameraDescription> cameras,
     required CameraLensDirection newLensDirection,
   }) async {
-    debugPrint('$_logTag: Switching to ${newLensDirection.name} camera');
+
 
     // Find camera with desired lens direction
     camera.CameraDescription? targetCamera;
@@ -227,11 +227,11 @@ class CameraService {
       throw Exception('No ${newLensDirection.name} camera found');
     }
 
-    debugPrint('$_logTag: Found target camera: ${targetCamera.name}');
+
 
     // Dispose current controller
     await currentController.dispose();
-    debugPrint('$_logTag: Disposed previous camera controller');
+
 
     // Initialize new camera
     final newController = camera.CameraController(
@@ -242,7 +242,7 @@ class CameraService {
     );
 
     await newController.initialize();
-    debugPrint('$_logTag: New camera initialized successfully');
+
 
     return newController;
   }
@@ -266,7 +266,7 @@ class CameraService {
     }
 
     await controller.setFlashMode(flashMode);
-    debugPrint('$_logTag: Flash mode set to $flashMode for ${cameraMode.name}');
+
   }
 
   /// Map photo flash modes to camera package flash modes
@@ -299,7 +299,7 @@ class CameraService {
   /// Dispose camera controller
   Future<void> disposeCamera(camera.CameraController? controller) async {
     if (controller != null && controller.value.isInitialized) {
-      debugPrint('$_logTag: Disposing camera controller');
+
       await controller.dispose();
     }
   }
@@ -387,13 +387,6 @@ class CameraService {
       orientationData,
     );
     
-    // Write EXIF metadata
-    if (correctedPath != null) {
-      await _orientationService.writeExifOrientation(
-        correctedPath,
-        orientationData,
-      );
-    }
     
     return correctedPath;
   }
@@ -417,9 +410,9 @@ class CameraService {
       await controller.setExposurePoint(point);
       await controller.setFocusPoint(point);
       
-      debugPrint('$_logTag: Focus point set to: $point');
+
     } catch (e) {
-      debugPrint('$_logTag: Error setting focus point: $e');
+
       rethrow;
     }
   }
@@ -437,9 +430,9 @@ class CameraService {
       await controller.setExposurePoint(null);
       await controller.setFocusPoint(null);
       
-      debugPrint('$_logTag: Focus reset to auto');
+
     } catch (e) {
-      debugPrint('$_logTag: Error resetting focus: $e');
+
     }
   }
 }

@@ -387,13 +387,6 @@ class CameraService {
       orientationData,
     );
     
-    // Write EXIF metadata
-    if (correctedPath != null) {
-      await _orientationService.writeExifOrientation(
-        correctedPath,
-        orientationData,
-      );
-    }
     
     return correctedPath;
   }
