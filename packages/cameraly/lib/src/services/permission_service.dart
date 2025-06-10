@@ -4,13 +4,13 @@ class PermissionService {
   /// Check if camera permission is granted
   Future<bool> hasCameraPermission() async {
     final status = await Permission.camera.status;
-    return status.isGranted;
+    return status.isGranted || status.isLimited;
   }
 
   /// Check if microphone permission is granted
   Future<bool> hasMicrophonePermission() async {
     final status = await Permission.microphone.status;
-    return status.isGranted;
+    return status.isGranted || status.isLimited;
   }
 
   /// Request camera permission
@@ -25,10 +25,37 @@ class PermissionService {
 
   /// Request both camera and microphone permissions
   Future<Map<Permission, PermissionStatus>> requestCameraPermissions() async {
-    return await [
-      Permission.camera,
-      Permission.microphone,
-    ].request();
+    // Request permissions one by one to ensure proper handling on iOS
+    final cameraStatus = await Permission.camera.request();
+    final microphoneStatus = await Permission.microphone.request();
+    
+    return {
+      Permission.camera: cameraStatus,
+      Permission.microphone: microphoneStatus,
+    };
+  }
+  
+  /// Check if both camera and microphone permissions are granted
+  Future<bool> checkCameraAndMicrophonePermissions() async {
+    return await hasAllCameraPermissions();
+  }
+  
+  /// Request both camera and microphone permissions and return success status
+  Future<bool> requestCameraAndMicrophonePermissions() async {
+    final results = await requestCameraPermissions();
+    return results[Permission.camera]?.isGranted == true && 
+           results[Permission.microphone]?.isGranted == true;
+  }
+  
+  /// Request location permission
+  Future<PermissionStatus> requestLocationPermission() async {
+    return await Permission.location.request();
+  }
+  
+  /// Check if location permission is granted
+  Future<bool> hasLocationPermission() async {
+    final status = await Permission.location.status;
+    return status.isGranted;
   }
 
   /// Check if both permissions are granted with retry mechanism

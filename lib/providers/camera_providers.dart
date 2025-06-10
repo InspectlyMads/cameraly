@@ -1,10 +1,15 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../services/camera_service.dart';
 import '../services/media_service.dart';
+import '../services/metadata_service.dart';
 import '../services/camera_ui_service.dart';
 import '../services/camera_error_handler.dart';
 import '../services/camera_info_service.dart';
@@ -13,9 +18,16 @@ import 'permission_providers.dart';
 
 part 'camera_providers.g.dart';
 
+// ignore_for_file: deprecated_member_use_from_same_package
+
 // Service provider
 final cameraServiceProvider = Provider<CameraService>((ref) {
   return CameraService();
+});
+
+// Metadata service provider
+final metadataServiceProvider = Provider<MetadataService>((ref) {
+  return MetadataService();
 });
 
 // Media service provider
@@ -261,6 +273,9 @@ class CameraController extends _$CameraController {
         await state.controller!.lockCaptureOrientation(deviceOrientation);
       }
       
+      // Record the time before capture for metadata
+      final captureStartTime = DateTime.now();
+      
       // Take the picture
       final imageFile = await state.controller!.takePicture();
       
@@ -270,6 +285,18 @@ class CameraController extends _$CameraController {
         debugPrint('CameraController: Unlocked capture orientation');
       }
 
+      // Capture metadata
+      final metadataService = ref.read(metadataServiceProvider);
+      final metadata = await metadataService.captureMetadata(
+        cameraController: state.controller!,
+        captureStartTime: captureStartTime,
+        cameraName: currentCamera.name,
+        zoomLevel: state.currentZoom,
+        flashMode: state.mode == CameraMode.photo 
+          ? state.photoFlashMode.toString() 
+          : state.videoFlashMode.toString(),
+      );
+      
       // Save the image to app directory
       final mediaService = ref.read(mediaServiceProvider);
       final imageBytes = await imageFile.readAsBytes();
@@ -284,6 +311,13 @@ class CameraController extends _$CameraController {
           imagePath: savedPath,
           orientationData: orientationData,
         );
+        
+        // Save metadata as JSON file alongside the photo
+        final metadataPath = '$savedPath.metadata.json';
+        await File(metadataPath).writeAsString(
+          jsonEncode(metadata.toJson()),
+        );
+        debugPrint('CameraController: Metadata saved to: $metadataPath');
         
         return camera.XFile(savedPath);
       }
@@ -472,6 +506,10 @@ class CameraController extends _$CameraController {
       
       // Initialize the camera service (including orientation service)
       await service.initialize();
+      
+      // Initialize metadata service for GPS and sensor data
+      final metadataService = ref.read(metadataServiceProvider);
+      await metadataService.initialize();
 
       // Get available cameras
       final cameras = await service.getAvailableCameras();

@@ -29,14 +29,17 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.0
   
-  # EXIF data
-  exif: ^3.3.0
+  # Image processing and EXIF data
+  image: ^4.0.17
   
   # JSON serialization
   json_annotation: ^4.9.0
   
   # Video playback (for thumbnails)
   video_player: ^2.9.5
+  
+  # Location services
+  geolocator: ^13.0.2
 
 dev_dependencies:
   flutter_test:

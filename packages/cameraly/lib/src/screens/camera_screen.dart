@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/media_item.dart';
+import '../models/camera_custom_widgets.dart';
 import '../providers/camera_providers.dart';
 import '../providers/permission_providers.dart';
 import '../services/camera_service.dart';
@@ -11,16 +12,17 @@ import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
 import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
 import '../widgets/focus_indicator.dart';
-import '../widgets/orientation_debug_overlay.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final CameraMode initialMode;
   final bool showGridButton;
   final bool showGalleryButton;
   final bool showCheckButton;
-  final bool showDebugInfo;
-  final Widget? customPortraitWidget;
-  final Widget? customLandscapeWidget;
+  final bool captureLocationMetadata;
+  
+  /// Custom widgets configuration
+  final CameraCustomWidgets? customWidgets;
+  
   final Function(MediaItem)? onMediaCaptured;
   final Function()? onGalleryPressed;
   final Function()? onCheckPressed;
@@ -32,9 +34,8 @@ class CameraScreen extends ConsumerStatefulWidget {
     this.showGridButton = false,
     this.showGalleryButton = true,
     this.showCheckButton = true,
-    this.showDebugInfo = false,
-    this.customPortraitWidget,
-    this.customLandscapeWidget,
+    this.captureLocationMetadata = true,
+    this.customWidgets,
     this.onMediaCaptured,
     this.onGalleryPressed,
     this.onCheckPressed,
@@ -47,12 +48,10 @@ class CameraScreen extends ConsumerStatefulWidget {
 
 class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBindingObserver {
   bool _hasInitializationFailed = false;
-  late bool _showDebugInfo;
   bool _isPinching = false;
   double _baseZoom = 1.0;
   Offset? _focusPoint;
   DateTime? _lastScaleUpdateTime;
-  int _focusTapCounter = 0; // Counter to force widget rebuild on each tap
   
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
@@ -60,7 +59,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   @override
   void initState() {
     super.initState();
-    _showDebugInfo = widget.showDebugInfo;
     WidgetsBinding.instance.addObserver(this);
 
     // Initialize camera with the specified mode
@@ -105,7 +103,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     final cameraController = ref.read(cameraControllerProvider.notifier);
     await cameraController.switchMode(widget.initialMode);
-    await cameraController.initializeCamera();
+    await cameraController.initializeCamera(captureLocationMetadata: widget.captureLocationMetadata);
 
     // Check if initialization failed due to permissions
     final cameraState = ref.read(cameraControllerProvider);
@@ -116,10 +114,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     }
   }
 
-  /// Retry initialization after permission grant
   Future<void> _retryInitialization() async {
-    // Add a small delay to ensure permissions are fully processed
-    await Future.delayed(const Duration(milliseconds: 200));
+    // Check permissions first
+    final permissionService = ref.read(permissionServiceProvider);
+    final hasPermissions = await permissionService.checkCameraAndMicrophonePermissions();
+
+    if (!hasPermissions) {
+      // Try to request permissions
+      final granted = await permissionService.requestCameraAndMicrophonePermissions();
+      if (!granted) {
+        return;
+      }
+    }
+
+    // Retry initialization
     await _initializeWithMode();
   }
 
@@ -160,42 +168,43 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     
     return OrientationBuilder(
       builder: (context, orientation) {
-        return GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTapDown: (details) {
-            // Only process tap if not pinching and enough time has passed since last scale
-            if (!_isPinching && (_lastScaleUpdateTime == null || 
-                DateTime.now().difference(_lastScaleUpdateTime!).inMilliseconds > 300)) {
-              _handleTapToFocus(details.localPosition, cameraState);
-            }
-          },
-          onScaleStart: (details) {
-            _baseZoom = cameraState.currentZoom;
-            _lastScaleUpdateTime = DateTime.now();
-          },
-          onScaleUpdate: (details) {
-            _lastScaleUpdateTime = DateTime.now();
-            // Only treat as pinch if scale differs significantly from 1.0
-            if ((details.scale - 1.0).abs() > 0.05) {
-              if (!_isPinching) {
-                _isPinching = true;
-                _zoomControlKey.currentState?.showSlider();
-              }
-              
-              final newZoom = (_baseZoom * details.scale)
-                  .clamp(cameraState.minZoom, cameraState.maxZoom);
-              ref.read(cameraControllerProvider.notifier).setZoomLevel(newZoom);
-            }
-          },
-          onScaleEnd: (_) {
-            if (_isPinching) {
-              _isPinching = false;
-              _zoomControlKey.currentState?.setPinching(false);
-            }
-          },
-          child: Stack(
-            children: [
-              Stack(
+        return Stack(
+          children: [
+            // Camera preview with gesture detection
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (details) {
+                // Only process tap if not pinching and enough time has passed since last scale
+                if (!_isPinching && (_lastScaleUpdateTime == null || 
+                    DateTime.now().difference(_lastScaleUpdateTime!).inMilliseconds > 300)) {
+                  _handleTapToFocus(details.localPosition, cameraState);
+                }
+              },
+              onScaleStart: (details) {
+                _baseZoom = cameraState.currentZoom;
+                _lastScaleUpdateTime = DateTime.now();
+              },
+              onScaleUpdate: (details) {
+                _lastScaleUpdateTime = DateTime.now();
+                // Only treat as pinch if scale differs significantly from 1.0
+                if ((details.scale - 1.0).abs() > 0.05) {
+                  if (!_isPinching) {
+                    _isPinching = true;
+                    _zoomControlKey.currentState?.showSlider();
+                  }
+                  
+                  final newZoom = (_baseZoom * details.scale)
+                      .clamp(cameraState.minZoom, cameraState.maxZoom);
+                  ref.read(cameraControllerProvider.notifier).setZoomLevel(newZoom);
+                }
+              },
+              onScaleEnd: (_) {
+                if (_isPinching) {
+                  _isPinching = false;
+                  _zoomControlKey.currentState?.setPinching(false);
+                }
+              },
+              child: Stack(
                 children: [
                   // Camera preview (standard approach)
                   _buildCameraPreview(cameraState.controller!),
@@ -206,17 +215,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                       gridType: GridType.ruleOfThirds,
                       opacity: 0.3,
                     ),
-
-                  // Orientation-specific UI overlay
-                  _buildOrientationSpecificUI(orientation, cameraState),
-                  
-                  // Zoom control overlay
-                  _buildZoomControl(cameraState),
                   
                   // Focus indicator
                   if (_focusPoint != null)
                     FocusIndicator(
-                      key: ValueKey('focus_$_focusTapCounter'),
                       position: _focusPoint!,
                       onComplete: () {
                         setState(() {
@@ -224,13 +226,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                         });
                       },
                     ),
-                  
-                  // Debug overlay (toggle with long press)
-                  OrientationDebugOverlay(showDebugInfo: _showDebugInfo),
                 ],
               ),
-            ],
-          ),
+            ),
+            
+            // UI overlay - outside of GestureDetector
+            _buildOrientationSpecificUI(orientation, cameraState),
+          ],
         );
       },
     );
@@ -240,13 +242,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final screenSize = MediaQuery.of(context).size;
     final safeArea = MediaQuery.of(context).padding;
 
-    // Recording UI requires special handling to ensure stop button visibility
-    if (cameraState.isRecording) {
-      final buttonSize = OrientationUIHelper.getCaptureButtonSize(
-        orientation: orientation,
-        screenSize: screenSize,
-      );
-
+    // Special handling for video mode in photo mode
+    if (cameraState.mode == CameraMode.video) {
       if (orientation == Orientation.landscape) {
         // Landscape: button on the right side, centered vertically
         return Container(
@@ -255,11 +252,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             alignment: Alignment.centerRight,
             child: Padding(
               padding: EdgeInsets.only(right: 16 + safeArea.right),
-              child: SizedBox(
-                width: buttonSize,
-                height: buttonSize,
-                child: _buildVideoRecordButton(cameraState),
-              ),
+              child: _buildVideoRecordButton(cameraState),
             ),
           ),
         );
@@ -271,11 +264,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: EdgeInsets.only(bottom: 32 + safeArea.bottom),
-              child: SizedBox(
-                width: buttonSize,
-                height: buttonSize,
-                child: _buildVideoRecordButton(cameraState),
-              ),
+              child: _buildVideoRecordButton(cameraState),
             ),
           ),
         );
@@ -371,6 +360,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     );
   }
 
+
   Widget _buildFlashControl() {
     final hasFlash = ref.watch(cameraHasFlashProvider);
     final cameraState = ref.watch(cameraControllerProvider);
@@ -399,14 +389,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       }
     }
 
+    // Use custom flash control if provided
+    if (widget.customWidgets?.flashControl != null) {
+      return widget.customWidgets!.flashControl!;
+    }
+
     return CircleAvatar(
       backgroundColor: Colors.black54,
+      radius: 24,
       child: IconButton(
-        icon: Icon(
-          flashIcon,
-          color: Colors.white,
-          size: 20,
-        ),
+        icon: Icon(flashIcon, color: Colors.white),
         onPressed: () {
           ref.read(cameraControllerProvider.notifier).cycleFlashMode();
         },
@@ -416,46 +408,43 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   Widget _buildCameraSwitchControl() {
     final canSwitch = ref.watch(canSwitchCameraProvider);
-    final cameraState = ref.watch(cameraControllerProvider);
 
     if (!canSwitch) {
       return const SizedBox(width: 48, height: 48); // Placeholder to maintain layout
     }
 
+    // Use custom camera switcher if provided
+    if (widget.customWidgets?.cameraSwitcher != null) {
+      return widget.customWidgets!.cameraSwitcher!;
+    }
+
     return CircleAvatar(
       backgroundColor: Colors.black54,
-      child: cameraState.isLoading
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            )
-          : IconButton(
-              icon: Icon(
-                Icons.flip_camera_ios, // Better camera switch icon
-                color: Colors.white,
-                size: 20,
-              ),
-              onPressed: () async {
-                await ref.read(cameraControllerProvider.notifier).switchCamera();
-              },
-            ),
+      radius: 24,
+      child: IconButton(
+        icon: const Icon(Icons.cameraswitch, color: Colors.white),
+        onPressed: () {
+          ref.read(cameraControllerProvider.notifier).switchCamera();
+        },
+      ),
     );
   }
 
   Widget _buildGridControl() {
-    final cameraState = ref.watch(cameraControllerProvider);
+    final showGrid = ref.watch(cameraControllerProvider.select((state) => state.showGrid));
+
+    // Use custom grid toggle if provided
+    if (widget.customWidgets?.gridToggle != null) {
+      return widget.customWidgets!.gridToggle!;
+    }
 
     return CircleAvatar(
       backgroundColor: Colors.black54,
+      radius: 24,
       child: IconButton(
         icon: Icon(
-          cameraState.showGrid ? Icons.grid_on : Icons.grid_off,
+          showGrid ? Icons.grid_on : Icons.grid_off,
           color: Colors.white,
-          size: 20,
         ),
         onPressed: () {
           ref.read(cameraControllerProvider.notifier).toggleGrid();
@@ -464,148 +453,135 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     );
   }
 
-
   Widget _buildCaptureButton(CameraState cameraState) {
-    // Check both our state and the controller's state to be absolutely sure
-    final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
+    // Use custom capture button if provided
+    if (widget.customWidgets?.captureButton != null) {
+      return widget.customWidgets!.captureButton!;
+    }
 
-    // Always show video controls if we're currently recording OR in video modes
-    // IMPORTANT: If recording, always show video button regardless of mode selection
-    final bool shouldShowVideoControls = isActuallyRecording || cameraState.mode == CameraMode.video || (cameraState.mode == CameraMode.combined && _isVideoModeSelected);
-
-    if (shouldShowVideoControls) {
+    if (cameraState.mode == CameraMode.photo) {
+      // Photo mode button
+      return _buildPhotoButton();
+    } else if (cameraState.mode == CameraMode.video) {
+      // Video mode button
       return _buildVideoRecordButton(cameraState);
     } else {
-      return _buildPhotoButton();
+      // Combined mode - dynamic button based on selected mode
+      return _isVideoModeSelected ? _buildVideoRecordButton(cameraState) : _buildPhotoButton();
     }
   }
 
   Widget _buildPhotoButton() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Use the available size from constraints
-        final size = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
-
-        return GestureDetector(
-          onTapDown: (_) {
-            HapticFeedback.lightImpact();
-          },
-          onTap: _takePhoto,
-          onLongPress: () {
-            setState(() {
-              _showDebugInfo = !_showDebugInfo;
-            });
-            HapticFeedback.mediumImpact();
-          },
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Outer ring
-              Container(
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 3,
-                  ),
-                ),
-              ),
-              // Inner circle
-              Container(
-                width: size * 0.8,
-                height: size * 0.8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
+    return GestureDetector(
+      onTapDown: (_) {
+        HapticFeedback.lightImpact();
       },
+      onTap: _takePhoto,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer ring
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white,
+                width: 4,
+              ),
+            ),
+          ),
+          // Inner circle
+          Container(
+            width: 56,
+            height: 56,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildVideoRecordButton(CameraState cameraState) {
-    // Use the same logic as landscape controls for consistency
-    final isRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
+    final isRecording = cameraState.isRecording;
+    const double size = 72.0;
+    const double innerSize = 32.0;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Use the available size from constraints
-        final size = constraints.maxWidth.isFinite ? constraints.maxWidth : 80.0;
-        return GestureDetector(
-          onTap: () {
-            if (isRecording) {
-              _stopVideoRecording();
-            } else {
-              _startVideoRecording();
-            }
-          },
-          onLongPress: () {
-            setState(() {
-              _showDebugInfo = !_showDebugInfo;
-            });
-            HapticFeedback.mediumImpact();
-          },
+    return GestureDetector(
+      onTap: () {
+        if (isRecording) {
+          _stopVideoRecording();
+        } else {
+          _startVideoRecording();
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isRecording ? Colors.white : Colors.transparent,
+          border: Border.all(
+            color: isRecording ? Colors.white : Colors.red,
+            width: 4,
+          ),
+        ),
+        child: Center(
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            width: size,
-            height: size,
+            width: isRecording ? innerSize : size - 16,
+            height: isRecording ? innerSize : size - 16,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isRecording ? Colors.white : Colors.transparent,
-              border: Border.all(
-                color: isRecording ? Colors.white : Colors.red,
-                width: 4,
-              ),
-              boxShadow: isRecording
-                  ? [
-                      BoxShadow(
-                        color: Colors.red.withValues(alpha: 0.5),
-                        blurRadius: 12,
-                        spreadRadius: 4,
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      ),
-                    ],
-            ),
-            child: Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: isRecording ? size * 0.4 : size * 0.75,
-                height: isRecording ? size * 0.4 : size * 0.75,
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(isRecording ? 8 : size),
-                ),
-              ),
+              shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
+              color: Colors.red,
+              borderRadius: isRecording ? BorderRadius.circular(8) : null,
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
+  bool get _isVideoModeSelected {
+    // This is managed locally for combined mode
+    // You might want to store this in a provider for persistence
+    return false; // Default to photo mode
+  }
 
-  // Combined mode state
-  bool _isVideoModeSelected = false;
+  void _handleTapToFocus(Offset position, CameraState cameraState) {
+    if (!cameraState.isInitialized || cameraState.controller == null) return;
+
+    // Calculate relative position (0-1)
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final Offset localPosition = renderBox.globalToLocal(position);
+    final Size size = renderBox.size;
+
+    final double x = localPosition.dx / size.width;
+    final double y = localPosition.dy / size.height;
+
+    // Set focus point for UI
+    setState(() {
+      _focusPoint = position;
+    });
+
+    // Set actual camera focus
+    ref.read(cameraControllerProvider.notifier).setFocusPoint(Offset(x, y));
+
+    // Haptic feedback
+    HapticFeedback.selectionClick();
+  }
 
   Widget _buildModeSelector() {
+    // Use custom mode switcher if provided
+    if (widget.customWidgets?.modeSwitcher != null) {
+      return widget.customWidgets!.modeSwitcher!;
+    }
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -620,7 +596,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     return GestureDetector(
       onTap: () {
         setState(() {
-          _isVideoModeSelected = label == 'VIDEO';
+          // Toggle mode locally
+          // In a real implementation, this should update the camera mode
         });
       },
       child: Container(
@@ -713,25 +690,34 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
             const SizedBox(height: 8),
             const Text(
-              'Please grant camera and microphone permissions to continue.',
+              'Please grant camera and microphone permissions',
               style: TextStyle(color: Colors.white70),
-              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () async {
-                final permissionNotifier = ref.read(permissionRequestProvider.notifier);
-                await permissionNotifier.requestCameraPermissions();
-                await _retryInitialization();
+                final permissionService = ref.read(permissionServiceProvider);
+                final granted = await permissionService.requestCameraAndMicrophonePermissions();
+                if (granted) {
+                  await _retryInitialization();
+                }
               },
               child: const Text('Grant Permissions'),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Go Back',
+                style: TextStyle(color: Colors.white70),
+              ),
             ),
           ],
         ),
       );
     }
 
-    // Default initialization state
+    // Show loading state
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -790,7 +776,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       }
     } catch (e) {
       // Error is logged in the camera provider, no need for UI notification
-      debugPrint('Failed to take photo: $e');
+
       widget.onError?.call('Failed to take photo: $e');
     }
   }
@@ -822,7 +808,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       await SystemChrome.setPreferredOrientations([]);
 
       // Error is logged in the camera provider, no need for UI notification
-      debugPrint('Failed to start recording: $e');
+
       widget.onError?.call('Failed to start recording: $e');
     }
   }
@@ -853,7 +839,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       await SystemChrome.setPreferredOrientations([]);
 
       // Error is logged in the camera provider, no need for UI notification
-      debugPrint('Failed to stop recording: $e');
+
       widget.onError?.call('Failed to stop recording: $e');
     }
   }
@@ -869,16 +855,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
         // Mode selector for combined mode (bottom-center)
         if (cameraState.mode == CameraMode.combined) _buildLandscapeModeSelector(screenSize, safeArea),
+        
+        // Zoom control
+        _buildZoomControl(cameraState),
       ],
     );
   }
 
   Widget _buildLandscapeRightControls(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
-    final buttonSize = OrientationUIHelper.getCaptureButtonSize(
-      orientation: Orientation.landscape,
-      screenSize: screenSize,
-    );
-
     // Check both our state and the controller's state to be absolutely sure
     final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
 
@@ -889,7 +873,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         top: 0,
         bottom: 0,
         child: Container(
-          width: buttonSize,
           alignment: Alignment.center,
           child: _buildCaptureButton(cameraState),
         ),
@@ -901,27 +884,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       right: 16 + safeArea.right,
       top: 0,
       bottom: 0,
-      child: SizedBox(
-        width: buttonSize,
-        child: Column(
-          // Normal state with all 3 elements
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Gallery button
-            _buildGalleryButton(),
+      child: Column(
+        // Normal state with all 3 elements
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Gallery button
+          _buildGalleryButton(),
 
-            // Capture button
-            SizedBox(
-              width: buttonSize,
-              height: buttonSize,
-              child: _buildCaptureButton(cameraState),
-            ),
+          // Capture button
+          _buildCaptureButton(cameraState),
 
-            // Check FAB
-            _buildCheckFab(),
-          ],
-        ),
+          // Check FAB
+          _buildCheckFab(),
+        ],
       ),
     );
   }
@@ -932,21 +908,51 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return const SizedBox.shrink();
     }
 
-    final galleryPosition = OrientationUIHelper.getGalleryButtonPosition(
-      screenSize: screenSize,
-      orientation: Orientation.landscape,
-      safeArea: safeArea,
-    );
-
-    return Stack(
-      children: [
-        // Flash + Camera switch buttons (moved from top-right to left-center)
-        Positioned(
-          left: galleryPosition.dx,
-          top: galleryPosition.dy - 60, // Position above where gallery was
-          child: _buildRightControlsColumn(),
+    // Custom left side widget
+    if (widget.customWidgets?.leftSideWidget != null) {
+      return Positioned(
+        left: 16 + safeArea.left,
+        top: 72 + safeArea.top, // Below back button
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Flash and camera controls in a column
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildFlashControl(),
+                const SizedBox(height: 8),
+                if (!cameraState.isRecording) _buildCameraSwitchControl(),
+                if (widget.showGridButton) ...[
+                  const SizedBox(height: 8),
+                  _buildGridControl(),
+                ],
+              ],
+            ),
+            const SizedBox(width: 16),
+            // Custom widget to the right
+            widget.customWidgets!.leftSideWidget!,
+          ],
         ),
-      ],
+      );
+    }
+
+    // Default: just flash and camera controls
+    return Positioned(
+      left: 16 + safeArea.left,
+      top: 72 + safeArea.top, // Below back button
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildFlashControl(),
+          const SizedBox(height: 8),
+          if (!cameraState.isRecording) _buildCameraSwitchControl(),
+          if (widget.showGridButton) ...[
+            const SizedBox(height: 8),
+            _buildGridControl(),
+          ],
+        ],
+      ),
     );
   }
 
@@ -958,16 +964,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return const SizedBox.shrink();
     }
 
-    final position = OrientationUIHelper.getModeSelectorPosition(
-      screenSize: screenSize,
-      orientation: Orientation.landscape,
-      safeArea: safeArea,
-    );
-
     return Positioned(
-      left: position.dx - 80, // Center the 160px wide selector
+      left: 0,
+      right: 0,
       bottom: safeArea.bottom + 16,
-      child: _buildModeSelector(),
+      child: Center(
+        child: _buildModeSelector(),
+      ),
     );
   }
 
@@ -979,16 +982,22 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
         // Mode selector for combined mode (above bottom controls)
         if (cameraState.mode == CameraMode.combined) _buildPortraitModeSelector(screenSize, safeArea),
+        
+        // Zoom control
+        _buildZoomControl(cameraState),
+        
+        // Custom left side widget (if provided)
+        if (widget.customWidgets?.leftSideWidget != null)
+          Positioned(
+            left: 16 + safeArea.left,
+            top: 72 + safeArea.top, // Position just below back button (16 + 40 + 16)
+            child: widget.customWidgets!.leftSideWidget!,
+          ),
       ],
     );
   }
 
   Widget _buildPortraitBottomControls(Size screenSize, EdgeInsets safeArea, CameraState cameraState) {
-    final buttonSize = OrientationUIHelper.getCaptureButtonSize(
-      orientation: Orientation.portrait,
-      screenSize: screenSize,
-    );
-
     return Positioned(
       bottom: 32 + safeArea.bottom,
       left: safeArea.left,
@@ -1000,11 +1009,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           if (!cameraState.isRecording) _buildGalleryButton() else const SizedBox(width: 60),
 
           // Main capture button (always show)
-          SizedBox(
-            width: buttonSize,
-            height: buttonSize,
-            child: _buildCaptureButton(cameraState),
-          ),
+          _buildCaptureButton(cameraState),
 
           // Check FAB - hide during recording
           if (!cameraState.isRecording) _buildCheckFab() else const SizedBox(width: 60),
@@ -1032,6 +1037,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildGalleryButton() {
+    // Use custom gallery button if provided
+    if (widget.customWidgets?.galleryButton != null) {
+      return widget.customWidgets!.galleryButton!;
+    }
+    
     if (!widget.showGalleryButton) {
       return const SizedBox(width: 60);
     }
@@ -1058,6 +1068,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildCheckFab() {
+    // Use custom check button if provided
+    if (widget.customWidgets?.checkButton != null) {
+      return widget.customWidgets!.checkButton!;
+    }
+    
     if (!widget.showCheckButton) {
       return const SizedBox(width: 60);
     }
@@ -1072,7 +1087,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           size: 24,
         ),
         onPressed: () {
-          widget.onCheckPressed?.call() ?? Navigator.of(context).pop();
+          if (widget.onCheckPressed != null) {
+            widget.onCheckPressed!();
+          } else {
+            Navigator.of(context).pop();
+          }
         },
       ),
     );
@@ -1093,9 +1112,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     
     // Position zoom control based on orientation
     if (orientation == Orientation.portrait) {
-      // Portrait: above capture button
+      // Portrait: above capture button, but higher if in combined mode
+      final bottomOffset = cameraState.mode == CameraMode.combined 
+          ? 200 + safeArea.bottom  // Higher to avoid mode selector
+          : 140 + safeArea.bottom; // Normal position
+          
       return Positioned(
-        bottom: 140 + safeArea.bottom,
+        bottom: bottomOffset,
         left: 0,
         right: 0,
         child: Center(
@@ -1111,18 +1134,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
       );
     } else {
-      // Landscape: vertically centered, to the left of capture buttons
-      // Get button size to calculate proper offset
-      final screenSize = MediaQuery.of(context).size;
-      final buttonSize = OrientationUIHelper.getCaptureButtonSize(
-        orientation: orientation,
-        screenSize: screenSize,
-      );
-      
+      // Landscape: on the right side next to capture button
       return Positioned(
-        right: buttonSize + 40 + safeArea.right, // Button width + spacing + safe area
-        top: screenSize.height * 0.2, // Start 20% from top for more space
-        bottom: screenSize.height * 0.2, // End 20% from bottom
+        right: 120 + safeArea.right, // Position to the left of the capture button column
+        top: 0,
+        bottom: 0,
         child: Center(
           child: CameraZoomControl(
             key: _zoomControlKey,
@@ -1136,37 +1152,5 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
       );
     }
-  }
-  
-  Future<void> _handleTapToFocus(Offset localPosition, CameraState cameraState) async {
-    if (!cameraState.isInitialized || cameraState.controller == null) return;
-    
-    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-    
-    // Convert tap position to camera coordinates (0.0 to 1.0)
-    final size = renderBox.size;
-    final offset = Offset(
-      localPosition.dx / size.width,
-      localPosition.dy / size.height,
-    );
-    
-    // Clamp values to ensure they're within valid range
-    final clampedOffset = Offset(
-      offset.dx.clamp(0.0, 1.0),
-      offset.dy.clamp(0.0, 1.0),
-    );
-    
-    // Show focus indicator at tap position
-    setState(() {
-      _focusPoint = localPosition;
-      _focusTapCounter++; // Increment counter to force new animation
-    });
-    
-    // Haptic feedback
-    HapticFeedback.lightImpact();
-    
-    // Set focus point
-    await ref.read(cameraControllerProvider.notifier).setFocusPoint(clampedOffset);
   }
 }

@@ -6,13 +6,13 @@ class CameraInfoService {
   
   /// Analyze camera characteristics to determine physical capabilities
   static CameraCharacteristics analyzeCameras(List<CameraDescription> cameras) {
-    debugPrint('$_logTag: Analyzing ${cameras.length} cameras');
+
     
     // Group cameras by lens direction
     final backCameras = cameras.where((c) => c.lensDirection == CameraLensDirection.back).toList();
     final frontCameras = cameras.where((c) => c.lensDirection == CameraLensDirection.front).toList();
     
-    debugPrint('$_logTag: Back cameras: ${backCameras.length}, Front cameras: ${frontCameras.length}');
+
     
     // Analyze back cameras (main camera system)
     bool hasUltraWide = false;
@@ -36,9 +36,9 @@ class CameraInfoService {
     // Log camera names for debugging
     for (int i = 0; i < cameras.length; i++) {
       final camera = cameras[i];
-      debugPrint('$_logTag: Camera $i: ${camera.name}');
-      debugPrint('$_logTag:   Direction: ${camera.lensDirection.name}');
-      debugPrint('$_logTag:   Orientation: ${camera.sensorOrientation}');
+
+
+
       
       // Try to infer camera type from name (some devices include hints)
       final nameLower = camera.name.toLowerCase();

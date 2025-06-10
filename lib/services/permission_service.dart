@@ -30,6 +30,17 @@ class PermissionService {
       Permission.microphone,
     ].request();
   }
+  
+  /// Request location permission
+  Future<PermissionStatus> requestLocationPermission() async {
+    return await Permission.location.request();
+  }
+  
+  /// Check if location permission is granted
+  Future<bool> hasLocationPermission() async {
+    final status = await Permission.location.status;
+    return status.isGranted;
+  }
 
   /// Check if both permissions are granted with retry mechanism
   /// This helps handle race conditions where permissions are just granted

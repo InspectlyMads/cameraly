@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 
 import 'orientation_data.dart';
+import 'photo_metadata.dart';
 
 enum MediaType { photo, video }
 
@@ -14,6 +15,7 @@ class MediaItem {
   final String? thumbnailPath;
   final Duration? videoDuration;
   final int? fileSize;
+  final PhotoMetadata? metadata;
 
   const MediaItem({
     required this.path,
@@ -24,6 +26,7 @@ class MediaItem {
     this.thumbnailPath,
     this.videoDuration,
     this.fileSize,
+    this.metadata,
   });
 
   /// Create MediaItem from file
@@ -54,6 +57,19 @@ class MediaItem {
           // Failed to parse orientation data
         }
       }
+      
+      // Try to load metadata from sidecar file
+      PhotoMetadata? metadata;
+      final metadataFile = File('$path.metadata.json');
+      if (await metadataFile.exists()) {
+        try {
+          final jsonStr = await metadataFile.readAsString();
+          final jsonData = json.decode(jsonStr);
+          metadata = PhotoMetadata.fromJson(jsonData);
+        } catch (e) {
+          // Failed to parse metadata
+        }
+      }
 
       return MediaItem(
         path: path,
@@ -61,6 +77,7 @@ class MediaItem {
         capturedAt: stat.modified,
         fileSize: stat.size,
         orientationInfo: orientationInfo,
+        metadata: metadata,
       );
     } catch (e) {
       return null; // Error reading file
@@ -80,6 +97,9 @@ class MediaItem {
     final lastDot = name.lastIndexOf('.');
     return lastDot > 0 ? name.substring(lastDot + 1).toLowerCase() : '';
   }
+  
+  /// Check if this media item is a video
+  bool get isVideo => type == MediaType.video;
 
   /// Get file size in human readable format
   String get fileSizeFormatted {
@@ -111,6 +131,7 @@ class MediaItem {
     String? thumbnailPath,
     Duration? videoDuration,
     int? fileSize,
+    PhotoMetadata? metadata,
   }) {
     return MediaItem(
       path: path ?? this.path,
@@ -121,6 +142,7 @@ class MediaItem {
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       videoDuration: videoDuration ?? this.videoDuration,
       fileSize: fileSize ?? this.fileSize,
+      metadata: metadata ?? this.metadata,
     );
   }
 
@@ -135,7 +157,8 @@ class MediaItem {
         other.orientationInfo == orientationInfo &&
         other.thumbnailPath == thumbnailPath &&
         other.videoDuration == videoDuration &&
-        other.fileSize == fileSize;
+        other.fileSize == fileSize &&
+        other.metadata == metadata;
   }
 
   @override
@@ -149,6 +172,7 @@ class MediaItem {
       thumbnailPath,
       videoDuration,
       fileSize,
+      metadata,
     );
   }
 

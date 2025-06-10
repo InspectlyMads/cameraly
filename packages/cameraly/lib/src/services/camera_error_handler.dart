@@ -46,7 +46,7 @@ class CameraErrorHandler {
   }
 
   static CameraErrorInfo _analyzeCameraException(CameraException error) {
-    debugPrint('$_logTag: CameraException - Code: ${error.code}, Description: ${error.description}');
+
 
     switch (error.code) {
       case 'CameraAccessDenied':
@@ -151,7 +151,7 @@ class CameraErrorHandler {
         }
 
         final delay = initialDelay * (attempt + 1);
-        debugPrint('$_logTag: Retry attempt ${attempt + 1} after ${delay.inMilliseconds}ms');
+
         await Future.delayed(delay);
       }
     }
