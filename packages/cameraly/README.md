@@ -118,14 +118,17 @@ CameraScreen(
 
 ### Custom UI
 
+Replace most UI elements with your own widgets:
+
 ```dart
 CameraScreen(
   initialMode: CameraMode.photo,
   customWidgets: CameraCustomWidgets(
     galleryButton: MyCustomGalleryWidget(),
     checkButton: MyCustomCheckWidget(),
-    captureButton: MyCustomCaptureButton(),
     flashControl: MyCustomFlashControl(),
+    cameraSwitcher: MyCustomCameraSwitcher(),
+    gridToggle: MyCustomGridToggle(),
     leftSideWidget: MyCustomControlPanel(),
   ),
   onMediaCaptured: (media) {
@@ -133,6 +136,8 @@ CameraScreen(
   },
 )
 ```
+
+**Note**: The capture button cannot be customized as it contains complex camera control logic.
 
 ## Architecture
 

@@ -16,9 +16,6 @@ class CameraCustomWidgets {
   /// (displayed on the right in portrait mode, bottom in landscape mode)
   final Widget? rightSideWidget;
   
-  /// Custom widget for the capture button
-  final Widget? captureButton;
-  
   /// Custom widget for the mode switcher
   final Widget? modeSwitcher;
   
@@ -36,7 +33,6 @@ class CameraCustomWidgets {
     this.checkButton,
     this.leftSideWidget,
     this.rightSideWidget,
-    this.captureButton,
     this.modeSwitcher,
     this.flashControl,
     this.cameraSwitcher,
@@ -49,7 +45,6 @@ class CameraCustomWidgets {
     Widget? checkButton,
     Widget? leftSideWidget,
     Widget? rightSideWidget,
-    Widget? captureButton,
     Widget? modeSwitcher,
     Widget? flashControl,
     Widget? cameraSwitcher,
@@ -60,7 +55,6 @@ class CameraCustomWidgets {
       checkButton: checkButton ?? this.checkButton,
       leftSideWidget: leftSideWidget ?? this.leftSideWidget,
       rightSideWidget: rightSideWidget ?? this.rightSideWidget,
-      captureButton: captureButton ?? this.captureButton,
       modeSwitcher: modeSwitcher ?? this.modeSwitcher,
       flashControl: flashControl ?? this.flashControl,
       cameraSwitcher: cameraSwitcher ?? this.cameraSwitcher,
@@ -86,9 +80,6 @@ class CameraCustomWidgetBuilders {
   /// Builder for the right side widget
   final CameraWidgetBuilder? rightSideWidgetBuilder;
   
-  /// Builder for the capture button
-  final CameraWidgetBuilder? captureButtonBuilder;
-  
   /// Builder for the mode switcher
   final CameraWidgetBuilder? modeSwitcherBuilder;
   
@@ -106,7 +97,6 @@ class CameraCustomWidgetBuilders {
     this.checkButtonBuilder,
     this.leftSideWidgetBuilder,
     this.rightSideWidgetBuilder,
-    this.captureButtonBuilder,
     this.modeSwitcherBuilder,
     this.flashControlBuilder,
     this.cameraSwitcherBuilder,

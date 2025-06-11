@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart' as camera;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -365,18 +366,32 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Widget _buildCameraPreview(camera.CameraController controller) {
     final orientation = MediaQuery.of(context).orientation;
     final cameraAspectRatio = controller.value.aspectRatio;
+    final cameraState = ref.read(cameraControllerProvider);
 
     // Invert aspect ratio for portrait orientation
     final adjustedAspectRatio = orientation == Orientation.portrait
         ? 1 / cameraAspectRatio // Invert for portrait
         : cameraAspectRatio; // Use as-is for landscape
 
-    return Center(
+    Widget preview = Center(
       child: AspectRatio(
         aspectRatio: adjustedAspectRatio,
         child: camera.CameraPreview(controller),
       ),
     );
+
+    // Mirror the preview for front camera on Android only
+    // iOS handles this automatically
+    if (defaultTargetPlatform == TargetPlatform.android && 
+        cameraState.lensDirection == CameraLensDirection.front) {
+      preview = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()..scale(-1.0, 1.0),
+        child: preview,
+      );
+    }
+
+    return preview;
   }
 
   Widget _buildTopControls(Orientation orientation) {
@@ -549,11 +564,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildCaptureButton(CameraState cameraState) {
-    // Use custom capture button if provided
-    if (widget.customWidgets?.captureButton != null) {
-      return widget.customWidgets!.captureButton!;
-    }
-
     if (cameraState.mode == CameraMode.photo) {
       // Photo mode button
       return _buildPhotoButton();
