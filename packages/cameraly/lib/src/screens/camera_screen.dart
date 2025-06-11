@@ -92,49 +92,64 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   @override
   void dispose() {
-    // Stop recording if in progress
-    final cameraState = ref.read(cameraControllerProvider);
-    if (cameraState.isRecording) {
-      // Stop recording without saving
-      ref.read(cameraControllerProvider.notifier).stopVideoRecording();
-    }
-    
-    WidgetsBinding.instance.removeObserver(this);
+    // Cancel timers first
     _videoDurationTimer?.cancel();
     _videoCountdownTimer?.cancel();
     _photoTimer?.cancel();
+    
+    // Remove observer before accessing ref
+    WidgetsBinding.instance.removeObserver(this);
+    
+    // Stop recording if in progress - check if widget is still mounted
+    try {
+      final cameraState = ref.read(cameraControllerProvider);
+      if (cameraState.isRecording) {
+        // Stop recording without saving
+        ref.read(cameraControllerProvider.notifier).stopVideoRecording();
+      }
+    } catch (e) {
+      // Widget already disposed, ignore
+    }
+    
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final cameraController = ref.read(cameraControllerProvider.notifier);
-    final cameraState = ref.read(cameraControllerProvider);
+    // Check if widget is still mounted before accessing ref
+    if (!mounted) return;
+    
+    try {
+      final cameraController = ref.read(cameraControllerProvider.notifier);
+      final cameraState = ref.read(cameraControllerProvider);
 
-    switch (state) {
-      case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-        // Stop recording if in progress
-        if (cameraState.isRecording) {
-          cameraController.stopVideoRecording();
-        }
-        // App is going to background, dispose camera to free resources
-        cameraController.pauseCamera();
-        break;
-      case AppLifecycleState.resumed:
-        // App is back in foreground, reinitialize camera
-        cameraController.resumeCamera();
-        break;
-      case AppLifecycleState.detached:
-        break;
-      case AppLifecycleState.hidden:
-        // Stop recording if in progress
-        if (cameraState.isRecording) {
-          cameraController.stopVideoRecording();
-        }
-        // On iOS, hidden state is similar to paused
-        cameraController.pauseCamera();
-        break;
+      switch (state) {
+        case AppLifecycleState.paused:
+        case AppLifecycleState.inactive:
+          // Stop recording if in progress
+          if (cameraState.isRecording) {
+            cameraController.stopVideoRecording();
+          }
+          // App is going to background, dispose camera to free resources
+          cameraController.pauseCamera();
+          break;
+        case AppLifecycleState.resumed:
+          // App is back in foreground, reinitialize camera
+          cameraController.resumeCamera();
+          break;
+        case AppLifecycleState.detached:
+          break;
+        case AppLifecycleState.hidden:
+          // Stop recording if in progress
+          if (cameraState.isRecording) {
+            cameraController.stopVideoRecording();
+          }
+          // On iOS, hidden state is similar to paused
+          cameraController.pauseCamera();
+          break;
+      }
+    } catch (e) {
+      // Widget disposed, ignore
     }
   }
 
@@ -511,18 +526,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         : targetAspectRatio;
 
     Widget preview = Center(
-      child: ClipRect(
-        child: AspectRatio(
-          aspectRatio: adjustedAspectRatio,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: controller.value.previewSize?.height ?? 1,
-              height: controller.value.previewSize?.width ?? 1,
-              child: camera.CameraPreview(controller),
-            ),
-          ),
-        ),
+      child: AspectRatio(
+        aspectRatio: adjustedAspectRatio,
+        child: camera.CameraPreview(controller),
       ),
     );
 

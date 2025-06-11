@@ -13,6 +13,9 @@
 - Video recording now stops when app goes to background
 - Proper cleanup of recording state on screen disposal
 - WillPopScope ensures back navigation is intercepted during recording
+- Fixed camera preview distortion in landscape mode (corrected width/height swap)
+- Fixed "Cannot use ref after widget was disposed" exceptions
+- Improved lifecycle management to prevent disposal race conditions
 
 ## [1.0.0] - 2025-01-06
 
