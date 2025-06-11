@@ -355,35 +355,6 @@ class HomeScreen extends StatelessWidget {
           initialMode: CameraMode.photo,
           showGridButton: true,
           customWidgets: CameraCustomWidgets(
-            // Custom capture button
-            captureButton: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [Colors.white, Colors.grey.shade300],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Container(
-                  width: 65,
-                  height: 65,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.red.shade400,
-                  ),
-                ),
-              ),
-            ),
-            
             // Custom gallery button
             galleryButton: Container(
               width: 50,
