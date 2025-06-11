@@ -32,11 +32,18 @@ class StorageService {
         }
       }
       
+      // iOS or fallback: Use a simpler check
+      if (Platform.isIOS) {
+        // On iOS, we'll be more optimistic since iOS manages storage differently
+        // iOS will show its own alert if storage is truly full
+        return true;
+      }
+      
       // Fallback: Check by attempting to create a test file
       final testFile = File('${directory.path}/storage_test.tmp');
       try {
-        // Try to create a 1MB test file
-        await testFile.writeAsBytes(List.filled(1024 * 1024, 0));
+        // Try to create a small test file (1KB instead of 1MB)
+        await testFile.writeAsBytes(List.filled(1024, 0));
         await testFile.delete();
         return true;
       } catch (e) {

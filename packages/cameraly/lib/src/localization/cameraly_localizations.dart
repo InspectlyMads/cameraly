@@ -86,6 +86,12 @@ class CameralyLocalizations {
   String get statusSaving => 'Saving...';
   String get statusNotEnoughStorage => 'Not enough storage space available';
   
+  // Dialogs
+  String get dialogStopRecordingTitle => 'Stop Recording?';
+  String get dialogStopRecordingMessage => 'You are currently recording. Do you want to stop and discard the video?';
+  String get dialogContinueRecording => 'Continue Recording';
+  String get dialogStopAndDiscard => 'Stop & Discard';
+  
   // Default instance
   static CameralyLocalizations _instance = CameralyLocalizations();
   

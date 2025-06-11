@@ -13,7 +13,7 @@ export 'src/models/camera_settings.dart';
 // Provider exports (for customization)
 export 'src/providers/camera_providers.dart';
 export 'src/providers/permission_providers.dart';
-export 'src/screens/camera_screen.dart';
+export 'src/screens/camera_screen.dart' show CameraView, CameraScreen;
 export 'src/services/camera_error_handler.dart';
 export 'src/services/camera_info_service.dart';
 // Service exports (for advanced users)

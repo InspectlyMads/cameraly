@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.1] - 2025-01-06
+
+### Fixed
+- Fixed "Not enough storage space" error when taking photos rapidly
+- Added capture throttling to prevent multiple simultaneous captures
+- Improved storage space checking (reduced from 50MB to 5MB for photos)
+- Added visual feedback when photo capture is in progress
+- Better handling of storage checks on iOS
+- Fixed video recording continuing after leaving the screen
+- Added confirmation dialog when navigating back during recording (both system back and app bar back button)
+- Video recording now stops when app goes to background
+- Proper cleanup of recording state on screen disposal
+- WillPopScope ensures back navigation is intercepted during recording
+
 ## [1.0.0] - 2025-01-06
 
 ### Added
