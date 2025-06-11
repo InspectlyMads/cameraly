@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +25,9 @@ class CameraScreen extends ConsumerStatefulWidget {
   /// Custom widgets configuration
   final CameraCustomWidgets? customWidgets;
   
+  /// Optional video duration limit in seconds
+  final int? videoDurationLimit;
+  
   final Function(MediaItem)? onMediaCaptured;
   final Function()? onGalleryPressed;
   final Function()? onCheckPressed;
@@ -36,6 +41,7 @@ class CameraScreen extends ConsumerStatefulWidget {
     this.showCheckButton = true,
     this.captureLocationMetadata = true,
     this.customWidgets,
+    this.videoDurationLimit,
     this.onMediaCaptured,
     this.onGalleryPressed,
     this.onCheckPressed,
@@ -52,6 +58,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   double _baseZoom = 1.0;
   Offset? _focusPoint;
   DateTime? _lastScaleUpdateTime;
+  Timer? _videoDurationTimer;
+  Timer? _videoCountdownTimer;
+  int _remainingSeconds = 0;
+  int _recordingSeconds = 0;
   
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
@@ -70,6 +80,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _videoDurationTimer?.cancel();
+    _videoCountdownTimer?.cancel();
     super.dispose();
   }
 
@@ -115,13 +127,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Future<void> _retryInitialization() async {
-    // Check permissions first
+    // Check permissions first based on mode
     final permissionService = ref.read(permissionServiceProvider);
-    final hasPermissions = await permissionService.checkCameraAndMicrophonePermissions();
+    final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
 
     if (!hasPermissions) {
-      // Try to request permissions
-      final granted = await permissionService.requestCameraAndMicrophonePermissions();
+      // Try to request permissions based on mode
+      final granted = await permissionService.requestPermissionsForMode(widget.initialMode);
       if (!granted) {
         return;
       }
@@ -242,33 +254,101 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final screenSize = MediaQuery.of(context).size;
     final safeArea = MediaQuery.of(context).padding;
 
-    // Special handling for video mode in photo mode
+    // Special handling for video mode
     if (cameraState.mode == CameraMode.video) {
-      if (orientation == Orientation.landscape) {
-        // Landscape: button on the right side, centered vertically
-        return Container(
-          color: Colors.transparent,
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: EdgeInsets.only(right: 16 + safeArea.right),
-              child: _buildVideoRecordButton(cameraState),
+      return Stack(
+        children: [
+          // Top controls (back button and torch during recording)
+          _buildTopControls(orientation),
+          
+          // Main controls
+          if (orientation == Orientation.landscape)
+            // Landscape video controls
+            Positioned(
+              right: 16 + safeArea.right,
+              top: 0,
+              bottom: 0,
+              child: Column(
+                mainAxisAlignment: cameraState.isRecording 
+                    ? MainAxisAlignment.center 
+                    : MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Gallery button - hide during recording
+                  if (!cameraState.isRecording) _buildGalleryButton(),
+                  
+                  // Capture section
+                  if (cameraState.isRecording) ...[
+                    // Torch control during recording
+                    _buildFlashControl(),
+                    const SizedBox(height: 32),
+                  ],
+                  
+                  // Show timer during recording
+                  if (cameraState.isRecording)
+                    _buildVideoCountdown(),
+                    
+                  _buildVideoRecordButton(cameraState),
+                  
+                  // Check button - hide during recording
+                  if (!cameraState.isRecording) _buildCheckFab(),
+                ],
+              ),
+            )
+          else
+            // Portrait video controls
+            Positioned(
+              bottom: 32 + safeArea.bottom,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Gallery button - hide during recording
+                  if (!cameraState.isRecording) 
+                    _buildGalleryButton() 
+                  else 
+                    const SizedBox(width: 60),
+                  
+                  // Column for countdown and record button
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Show timer during recording
+                      if (cameraState.isRecording) ...[
+                        _buildVideoCountdown(),
+                        const SizedBox(height: 8),
+                      ],
+                      
+                      // Video record button
+                      _buildVideoRecordButton(cameraState),
+                    ],
+                  ),
+                  
+                  // Check button - hide during recording
+                  if (!cameraState.isRecording) 
+                    _buildCheckFab() 
+                  else 
+                    const SizedBox(width: 60),
+                ],
+              ),
             ),
-          ),
-        );
-      } else {
-        // Portrait: button at the bottom center
-        return Container(
-          color: Colors.transparent,
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: EdgeInsets.only(bottom: 32 + safeArea.bottom),
-              child: _buildVideoRecordButton(cameraState),
+          
+          // Flash and camera controls on left side when not recording in landscape
+          if (orientation == Orientation.landscape && !cameraState.isRecording)
+            Positioned(
+              left: 16 + safeArea.left,
+              top: 72 + safeArea.top, // Below back button
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildFlashControl(),
+                  const SizedBox(height: 8),
+                  _buildCameraSwitchControl(),
+                ],
+              ),
             ),
-          ),
-        );
-      }
+        ],
+      );
     }
 
     return Stack(
@@ -303,12 +383,27 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final safeArea = MediaQuery.of(context).padding;
     final isRecording = ref.watch(cameraControllerProvider.select((state) => state.isRecording));
 
-    // Hide top controls during recording
+    // During recording, show only back button and torch control
     if (isRecording) {
-      return const Positioned(
-        top: 0,
-        left: 0,
-        child: SizedBox.shrink(),
+      return Positioned(
+        top: 16 + safeArea.top,
+        left: 16 + safeArea.left,
+        right: 16 + safeArea.right,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Back button
+            CircleAvatar(
+              backgroundColor: Colors.black54,
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+            // Torch control
+            _buildFlashControl(),
+          ],
+        ),
       );
     }
 
@@ -532,14 +627,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           ),
         ),
         child: Center(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: isRecording ? innerSize : size - 16,
-            height: isRecording ? innerSize : size - 16,
-            decoration: BoxDecoration(
-              shape: isRecording ? BoxShape.rectangle : BoxShape.circle,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(isRecording ? 8 : (size - 16) / 2),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: isRecording ? innerSize : size - 16,
+              height: isRecording ? innerSize : size - 16,
               color: Colors.red,
-              borderRadius: isRecording ? BorderRadius.circular(8) : null,
             ),
           ),
         ),
@@ -680,24 +774,28 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               color: Colors.white54,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Camera Permission Required',
-              style: TextStyle(
+            Text(
+              widget.initialMode == CameraMode.photo 
+                ? 'Camera Permission Required'
+                : 'Camera & Microphone Required',
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Please grant camera and microphone permissions',
-              style: TextStyle(color: Colors.white70),
+            Text(
+              widget.initialMode == CameraMode.photo
+                ? 'Please grant camera permission to take photos'
+                : 'Please grant camera and microphone permissions',
+              style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () async {
                 final permissionService = ref.read(permissionServiceProvider);
-                final granted = await permissionService.requestCameraAndMicrophonePermissions();
+                final granted = await permissionService.requestPermissionsForMode(widget.initialMode);
                 if (granted) {
                   await _retryInitialization();
                 }
@@ -803,6 +901,34 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       HapticFeedback.mediumImpact();
 
       await cameraController.startVideoRecording();
+      
+      // Reset recording seconds
+      setState(() {
+        _recordingSeconds = 0;
+        _remainingSeconds = widget.videoDurationLimit ?? 0;
+      });
+      
+      // Start countdown timer that updates every second (for all recordings)
+      _videoCountdownTimer?.cancel();
+      _videoCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() {
+          _recordingSeconds = timer.tick;
+          if (widget.videoDurationLimit != null && widget.videoDurationLimit! > 0) {
+            _remainingSeconds = widget.videoDurationLimit! - timer.tick;
+          }
+        });
+      });
+      
+      // Start duration timer if limit is set
+      if (widget.videoDurationLimit != null && widget.videoDurationLimit! > 0) {
+        _videoDurationTimer?.cancel();
+        
+        // Main timer that stops recording
+        _videoDurationTimer = Timer(Duration(seconds: widget.videoDurationLimit!), () {
+          // Auto-stop recording when duration limit is reached
+          _stopVideoRecording();
+        });
+      }
     } catch (e) {
       // Restore orientation freedom on error
       await SystemChrome.setPreferredOrientations([]);
@@ -817,6 +943,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final cameraController = ref.read(cameraControllerProvider.notifier);
 
     try {
+      // Cancel duration timers if active
+      _videoDurationTimer?.cancel();
+      _videoDurationTimer = null;
+      _videoCountdownTimer?.cancel();
+      _videoCountdownTimer = null;
+      
+      setState(() {
+        _remainingSeconds = 0;
+        _recordingSeconds = 0;
+      });
+      
       // Haptic feedback
       HapticFeedback.mediumImpact();
 
@@ -866,15 +1003,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Check both our state and the controller's state to be absolutely sure
     final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
 
-// When recording, show only the stop button centered on screen
+// When recording, show stop button with torch control above it
     if (isActuallyRecording) {
       return Positioned(
         right: 16 + safeArea.right,
         top: 0,
         bottom: 0,
-        child: Container(
-          alignment: Alignment.center,
-          child: _buildCaptureButton(cameraState),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Torch control for video recording
+            _buildFlashControl(),
+            const SizedBox(height: 32),
+            // Show timer during recording
+            _buildVideoCountdown(),
+            const SizedBox(height: 16),
+            // Stop recording button
+            _buildCaptureButton(cameraState),
+          ],
         ),
       );
     }
@@ -1093,6 +1239,57 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             Navigator.of(context).pop();
           }
         },
+      ),
+    );
+  }
+  
+  Widget _buildVideoCountdown() {
+    // Format elapsed time as MM:SS
+    final minutes = _recordingSeconds ~/ 60;
+    final seconds = _recordingSeconds % 60;
+    final elapsedTime = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    
+    // Check if we should show countdown
+    final hasLimit = widget.videoDurationLimit != null && widget.videoDurationLimit! > 0;
+    final showCountdown = hasLimit && _remainingSeconds <= 10;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: showCountdown && _remainingSeconds <= 5 ? Colors.red : Colors.black54,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Always show elapsed time
+          Text(
+            elapsedTime,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          // Show countdown when approaching limit
+          if (showCountdown) ...[
+            const SizedBox(width: 8),
+            Container(
+              width: 1,
+              height: 16,
+              color: Colors.white54,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _remainingSeconds.toString(),
+              style: TextStyle(
+                color: _remainingSeconds <= 5 ? Colors.white : Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

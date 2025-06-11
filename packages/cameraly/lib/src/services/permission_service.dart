@@ -1,5 +1,7 @@
 import 'package:permission_handler/permission_handler.dart';
 
+import '../services/camera_service.dart';
+
 class PermissionService {
   /// Check if camera permission is granted
   Future<bool> hasCameraPermission() async {
@@ -56,6 +58,37 @@ class PermissionService {
   Future<bool> hasLocationPermission() async {
     final status = await Permission.location.status;
     return status.isGranted;
+  }
+  
+  /// Check if only camera permission is granted (no microphone check)
+  Future<bool> hasCameraOnlyPermission() async {
+    return await hasCameraPermission();
+  }
+  
+  /// Request camera-only permission and return success status
+  Future<bool> requestCameraOnlyPermission() async {
+    final status = await requestCameraPermission();
+    return status.isGranted || status.isLimited;
+  }
+  
+  /// Check permissions based on camera mode
+  /// For photo mode, only camera permission is needed
+  /// For video/combined modes, both camera and microphone are needed
+  Future<bool> hasRequiredPermissionsForMode(CameraMode mode) async {
+    if (mode == CameraMode.photo) {
+      return await hasCameraOnlyPermission();
+    } else {
+      return await hasAllCameraPermissions();
+    }
+  }
+  
+  /// Request permissions based on camera mode
+  Future<bool> requestPermissionsForMode(CameraMode mode) async {
+    if (mode == CameraMode.photo) {
+      return await requestCameraOnlyPermission();
+    } else {
+      return await requestCameraAndMicrophonePermissions();
+    }
   }
 
   /// Check if both permissions are granted with retry mechanism
