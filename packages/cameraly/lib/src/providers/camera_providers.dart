@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../models/camera_settings.dart';
 import '../services/camera_service.dart';
 import '../services/media_service.dart';
 import '../services/metadata_service.dart';
@@ -43,19 +46,28 @@ Future<List<camera.CameraDescription>> availableCameras(AvailableCamerasRef ref)
 @riverpod
 class CameraController extends _$CameraController {
   bool _captureLocationMetadata = true;
+  CameraSettings _cameraSettings = const CameraSettings();
+  Timer? _retryTimer;
+  
   @override
   CameraState build() {
-    // Auto-dispose camera when provider is disposed
+    // Auto-dispose camera and services when provider is disposed
     ref.onDispose(() {
+      _retryTimer?.cancel();
       _disposeCamera();
+      _disposeServices();
     });
 
     return const CameraState();
   }
 
   /// Initialize camera system
-  Future<void> initializeCamera({bool captureLocationMetadata = true}) async {
+  Future<void> initializeCamera({
+    bool captureLocationMetadata = true,
+    CameraSettings? settings,
+  }) async {
     _captureLocationMetadata = captureLocationMetadata;
+    _cameraSettings = settings ?? const CameraSettings();
     await _initializeCamera();
   }
 
@@ -77,7 +89,7 @@ class CameraController extends _$CameraController {
       );
     }
 
-    // If switching to/from video mode, reinitialize to handle audio requirements
+    // If switching to/from video mode, reinitialize to handle audio requirements and quality settings
     if ((oldMode == CameraMode.video || newMode == CameraMode.video) && state.controller != null) {
       await _reinitializeCamera();
     }
@@ -532,10 +544,15 @@ class CameraController extends _$CameraController {
         return;
       }
 
-      // Initialize camera controller
+      // Initialize camera controller with quality settings
+      final resolution = state.mode == CameraMode.video 
+        ? CameraService.videoQualityToResolution(_cameraSettings.videoQuality)
+        : CameraService.photoQualityToResolution(_cameraSettings.photoQuality);
+        
       final controller = await service.initializeCamera(
         cameras: cameras,
         lensDirection: state.lensDirection,
+        resolution: resolution,
       );
 
       state = state.copyWith(
@@ -562,7 +579,8 @@ class CameraController extends _$CameraController {
 
       // Attempt recovery for recoverable errors
       if (errorInfo.isRecoverable && errorInfo.type != CameraErrorType.permissionDenied) {
-        Future.delayed(errorInfo.retryDelay ?? const Duration(seconds: 1), () {
+        _retryTimer?.cancel(); // Cancel any existing retry
+        _retryTimer = Timer(errorInfo.retryDelay ?? const Duration(seconds: 1), () {
           _initializeCamera();
         });
       }
@@ -594,6 +612,21 @@ class CameraController extends _$CameraController {
       );
     }
   }
+  
+  /// Private method to dispose services
+  Future<void> _disposeServices() async {
+    try {
+      // Dispose metadata service (which handles GPS and sensors)
+      final metadataService = ref.read(metadataServiceProvider);
+      metadataService.dispose();
+      
+      // Dispose camera service (which includes orientation service)
+      final cameraService = ref.read(cameraServiceProvider);
+      cameraService.dispose();
+    } catch (e) {
+      // Ignore disposal errors
+    }
+  }
 
   /// Pause camera (for app lifecycle management)
   Future<void> pauseCamera() async {
@@ -612,6 +645,36 @@ class CameraController extends _$CameraController {
   Future<void> resumeCamera() async {
     if (!state.isInitialized) {
       await _initializeCamera();
+    }
+  }
+  
+  /// Handle camera disconnection and attempt recovery
+  Future<void> handleCameraDisconnection() async {
+    state = state.copyWith(
+      errorMessage: 'Camera disconnected. Attempting to reconnect...',
+    );
+    
+    // Wait a moment before attempting reconnection
+    await Future.delayed(const Duration(seconds: 2));
+    
+    // Try to reinitialize
+    await _reinitializeCamera();
+  }
+  
+  /// Check camera health periodically
+  Future<bool> checkCameraHealth() async {
+    if (state.controller == null || !state.isInitialized) {
+      return false;
+    }
+    
+    try {
+      // Check if controller is still responsive
+      await state.controller!.getMinZoomLevel();
+      return true;
+    } catch (e) {
+      // Camera might be disconnected
+      await handleCameraDisconnection();
+      return false;
     }
   }
 }

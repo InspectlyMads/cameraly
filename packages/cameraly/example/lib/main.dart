@@ -198,6 +198,66 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           
+          // Photo Timer
+          _ExampleCard(
+            title: 'Photo Timer (3s)',
+            description: 'Photo with 3 second countdown',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CameraScreen(
+                  initialMode: CameraMode.photo,
+                  settings: const CameraSettings(
+                    photoTimerSeconds: 3,
+                  ),
+                  onMediaCaptured: (media) {
+                    // Photo captured
+                  },
+                ),
+              ),
+            ),
+          ),
+          
+          // High Quality
+          _ExampleCard(
+            title: 'Max Quality Photo',
+            description: 'Maximum resolution photos',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CameraScreen(
+                  initialMode: CameraMode.photo,
+                  settings: const CameraSettings(
+                    photoQuality: PhotoQuality.max,
+                  ),
+                  onMediaCaptured: (media) {
+                    // Photo captured
+                  },
+                ),
+              ),
+            ),
+          ),
+          
+          // Square Aspect Ratio
+          _ExampleCard(
+            title: 'Square Photos (1:1)',
+            description: 'Instagram-style square photos',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CameraScreen(
+                  initialMode: CameraMode.photo,
+                  settings: const CameraSettings(
+                    aspectRatio: CameraAspectRatio.ratio_1_1,
+                  ),
+                  onMediaCaptured: (media) {
+                    // Photo captured
+                  },
+                ),
+              ),
+            ),
+          ),
+          
           // Without Location
           _ExampleCard(
             title: 'Without Location Metadata',

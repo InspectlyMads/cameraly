@@ -117,9 +117,7 @@ class MediaService {
       if (metadata != null) {
         try {
           await _writeExifMetadata(filePath, metadata);
-
         } catch (e) {
-
           // Continue even if EXIF writing fails
         }
       }

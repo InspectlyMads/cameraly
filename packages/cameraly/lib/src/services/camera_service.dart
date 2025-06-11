@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'camera_error_handler.dart';
 import 'orientation_service.dart';
 import '../models/orientation_data.dart';
+import '../models/camera_settings.dart';
 
 enum CameraMode { photo, video, combined }
 
@@ -170,6 +171,7 @@ class CameraService {
   Future<camera.CameraController> initializeCamera({
     required List<camera.CameraDescription> cameras,
     required CameraLensDirection lensDirection,
+    camera.ResolutionPreset? resolution,
   }) async {
     if (cameras.isEmpty) {
       throw Exception('No cameras available');
@@ -194,7 +196,7 @@ class CameraService {
 
     final controller = camera.CameraController(
       selectedCamera,
-      camera.ResolutionPreset.high,
+      resolution ?? camera.ResolutionPreset.high,
       enableAudio: true,
       imageFormatGroup: camera.ImageFormatGroup.jpeg,
     );
@@ -433,6 +435,32 @@ class CameraService {
 
     } catch (e) {
 
+    }
+  }
+  
+  /// Convert photo quality to resolution preset
+  static camera.ResolutionPreset photoQualityToResolution(PhotoQuality quality) {
+    switch (quality) {
+      case PhotoQuality.low:
+        return camera.ResolutionPreset.low;
+      case PhotoQuality.medium:
+        return camera.ResolutionPreset.medium;
+      case PhotoQuality.high:
+        return camera.ResolutionPreset.high;
+      case PhotoQuality.max:
+        return camera.ResolutionPreset.max;
+    }
+  }
+  
+  /// Convert video quality to resolution preset
+  static camera.ResolutionPreset videoQualityToResolution(VideoQuality quality) {
+    switch (quality) {
+      case VideoQuality.hd:
+        return camera.ResolutionPreset.high; // 720p
+      case VideoQuality.fullHd:
+        return camera.ResolutionPreset.veryHigh; // 1080p
+      case VideoQuality.uhd:
+        return camera.ResolutionPreset.ultraHigh; // 4K if available
     }
   }
 }

@@ -8,13 +8,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/media_item.dart';
 import '../models/camera_custom_widgets.dart';
+import '../models/camera_settings.dart';
 import '../providers/camera_providers.dart';
 import '../providers/permission_providers.dart';
 import '../services/camera_service.dart';
+import '../services/storage_service.dart';
 import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
 import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
 import '../widgets/focus_indicator.dart';
+import '../localization/cameraly_localizations.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final CameraMode initialMode;
@@ -28,6 +31,9 @@ class CameraScreen extends ConsumerStatefulWidget {
   
   /// Optional video duration limit in seconds
   final int? videoDurationLimit;
+  
+  /// Camera settings for quality, aspect ratio, etc.
+  final CameraSettings? settings;
   
   final Function(MediaItem)? onMediaCaptured;
   final Function()? onGalleryPressed;
@@ -43,6 +49,7 @@ class CameraScreen extends ConsumerStatefulWidget {
     this.captureLocationMetadata = true,
     this.customWidgets,
     this.videoDurationLimit,
+    this.settings,
     this.onMediaCaptured,
     this.onGalleryPressed,
     this.onCheckPressed,
@@ -63,6 +70,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Timer? _videoCountdownTimer;
   int _remainingSeconds = 0;
   int _recordingSeconds = 0;
+  Timer? _photoTimer;
+  int _photoTimerCountdown = 0;
   
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
@@ -83,6 +92,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     WidgetsBinding.instance.removeObserver(this);
     _videoDurationTimer?.cancel();
     _videoCountdownTimer?.cancel();
+    _photoTimer?.cancel();
     super.dispose();
   }
 
@@ -116,7 +126,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     final cameraController = ref.read(cameraControllerProvider.notifier);
     await cameraController.switchMode(widget.initialMode);
-    await cameraController.initializeCamera(captureLocationMetadata: widget.captureLocationMetadata);
+    await cameraController.initializeCamera(
+      captureLocationMetadata: widget.captureLocationMetadata,
+      settings: widget.settings,
+    );
 
     // Check if initialization failed due to permissions
     final cameraState = ref.read(cameraControllerProvider);
@@ -245,6 +258,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             
             // UI overlay - outside of GestureDetector
             _buildOrientationSpecificUI(orientation, cameraState),
+            
+            // Photo timer countdown overlay
+            if (_photoTimerCountdown > 0)
+              _buildPhotoTimerOverlay(),
           ],
         );
       },
@@ -368,15 +385,45 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final cameraAspectRatio = controller.value.aspectRatio;
     final cameraState = ref.read(cameraControllerProvider);
 
+    // Calculate aspect ratio based on settings
+    double targetAspectRatio;
+    if (widget.settings?.aspectRatio != null) {
+      switch (widget.settings!.aspectRatio) {
+        case CameraAspectRatio.ratio_4_3:
+          targetAspectRatio = 4 / 3;
+          break;
+        case CameraAspectRatio.ratio_16_9:
+          targetAspectRatio = 16 / 9;
+          break;
+        case CameraAspectRatio.ratio_1_1:
+          targetAspectRatio = 1.0;
+          break;
+        case CameraAspectRatio.full:
+          targetAspectRatio = cameraAspectRatio;
+          break;
+      }
+    } else {
+      targetAspectRatio = cameraAspectRatio;
+    }
+
     // Invert aspect ratio for portrait orientation
     final adjustedAspectRatio = orientation == Orientation.portrait
-        ? 1 / cameraAspectRatio // Invert for portrait
-        : cameraAspectRatio; // Use as-is for landscape
+        ? 1 / targetAspectRatio
+        : targetAspectRatio;
 
     Widget preview = Center(
-      child: AspectRatio(
-        aspectRatio: adjustedAspectRatio,
-        child: camera.CameraPreview(controller),
+      child: ClipRect(
+        child: AspectRatio(
+          aspectRatio: adjustedAspectRatio,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: controller.value.previewSize?.height ?? 1,
+              height: controller.value.previewSize?.width ?? 1,
+              child: camera.CameraPreview(controller),
+            ),
+          ),
+        ),
       ),
     );
 
@@ -756,12 +803,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 ref.read(cameraControllerProvider.notifier).clearError();
                 _initializeWithMode();
               },
-              child: const Text('Retry'),
+              child: Text(cameralyL10n.buttonRetry),
             ),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Go Back'),
+              child: Text(cameralyL10n.buttonGoBack),
             ),
           ],
         ),
@@ -810,14 +857,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   await _retryInitialization();
                 }
               },
-              child: const Text('Grant Permissions'),
+              child: Text(cameralyL10n.buttonGrantPermissions),
             ),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
-                'Go Back',
-                style: TextStyle(color: Colors.white70),
+              child: Text(
+                cameralyL10n.buttonGoBack,
+                style: const TextStyle(color: Colors.white70),
               ),
             ),
           ],
@@ -834,18 +881,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Initializing Camera',
-            style: TextStyle(
+          Text(
+            cameralyL10n.statusInitializingCamera,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Setting up camera preview...',
-            style: TextStyle(color: Colors.white70),
+          Text(
+            cameralyL10n.statusSettingUpCamera,
+            style: const TextStyle(color: Colors.white70),
           ),
           const SizedBox(height: 24),
 
@@ -865,11 +912,59 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Future<void> _takePhoto() async {
+    // Check if photo timer is set
+    final timerSeconds = widget.settings?.photoTimerSeconds;
+    if (timerSeconds != null && timerSeconds > 0) {
+      // Start timer countdown
+      setState(() {
+        _photoTimerCountdown = timerSeconds;
+      });
+      
+      _photoTimer?.cancel();
+      _photoTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() {
+          _photoTimerCountdown--;
+        });
+        
+        // Play countdown sound if enabled
+        if (widget.settings?.enableSounds ?? true) {
+          HapticFeedback.lightImpact();
+        }
+        
+        if (_photoTimerCountdown <= 0) {
+          timer.cancel();
+          _capturePhotoNow();
+        }
+      });
+    } else {
+      // Take photo immediately
+      _capturePhotoNow();
+    }
+  }
+  
+  Future<void> _capturePhotoNow() async {
+    // Check storage space first
+    final hasSpace = await StorageService.hasEnoughSpace(requiredMB: 50);
+    if (!hasSpace && mounted) {
+      widget.onError?.call('Not enough storage space');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(cameralyL10n.errorStorageFull),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
     final cameraController = ref.read(cameraControllerProvider.notifier);
 
     try {
       // Haptic feedback
-      HapticFeedback.mediumImpact();
+      if (widget.settings?.enableHaptics ?? true) {
+        HapticFeedback.mediumImpact();
+      }
 
       final imageFile = await cameraController.takePicture();
 
@@ -884,16 +979,32 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       }
     } catch (e) {
       // Error is logged in the camera provider, no need for UI notification
-
-      widget.onError?.call('Failed to take photo: $e');
+      widget.onError?.call(cameralyL10n.errorCaptureFailed);
     }
   }
 
   Future<void> _startVideoRecording() async {
+    // Check storage space first (need more for video)
+    final requiredMB = widget.settings?.maxVideoSizeMB ?? 500;
+    final hasSpace = await StorageService.hasEnoughSpace(requiredMB: requiredMB);
+    if (!hasSpace && mounted) {
+      widget.onError?.call(cameralyL10n.statusNotEnoughStorage);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(cameralyL10n.statusNotEnoughStorage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
     final cameraController = ref.read(cameraControllerProvider.notifier);
 
     try {
       // Get current orientation and lock to it during recording
+      if (!mounted) return;
       final currentOrientation = MediaQuery.of(context).orientation;
       if (currentOrientation == Orientation.portrait) {
         await SystemChrome.setPreferredOrientations([
@@ -1257,7 +1368,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Format elapsed time as MM:SS
     final minutes = _recordingSeconds ~/ 60;
     final seconds = _recordingSeconds % 60;
-    final elapsedTime = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final elapsedTime = cameralyL10n.recordingDuration('${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}');
     
     // Check if we should show countdown
     final hasLimit = widget.videoDurationLimit != null && widget.videoDurationLimit! > 0;
@@ -1291,7 +1402,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
             const SizedBox(width: 8),
             Text(
-              _remainingSeconds.toString(),
+              cameralyL10n.recordingCountdown(_remainingSeconds),
               style: TextStyle(
                 color: _remainingSeconds <= 5 ? Colors.white : Colors.white,
                 fontSize: 18,
@@ -1300,6 +1411,39 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
           ],
         ],
+      ),
+    );
+  }
+  
+  Widget _buildPhotoTimerOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black54,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black87,
+              border: Border.all(
+                color: Colors.white,
+                width: 3,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                cameralyL10n.photoTimerCountdown(_photoTimerCountdown),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 64,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
