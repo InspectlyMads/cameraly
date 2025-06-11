@@ -55,18 +55,37 @@ class HomeScreen extends StatelessWidget {
               final micStatus = await Permission.microphone.status;
               final locationStatus = await Permission.location.status;
               
-              if (!cameraStatus.isGranted) {
-                await Permission.camera.request();
-              }
-              
-              if (!micStatus.isGranted) {
-                await Permission.microphone.request();
-              }
-              
-              if (!locationStatus.isGranted) {
-                await Permission.location.request();
+              // Show current status first
+              if (context.mounted) {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Permission Status'),
+                    content: Text(
+                      'Camera: ${cameraStatus.name}\n'
+                      'Microphone: ${micStatus.name}\n'
+                      'Location: ${locationStatus.name}',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
               }
             },
+          ),
+          
+          // Reset Permissions (iOS Simulator only)
+          _ExampleCard(
+            title: 'Photo Mode (Fresh Permissions)',
+            description: 'Test photo mode with no prior permissions',
+            onTap: () => _openCamera(
+              context,
+              mode: CameraMode.photo,
+            ),
           ),
           
           const SizedBox(height: 16),
@@ -88,6 +107,48 @@ class HomeScreen extends StatelessWidget {
             onTap: () => _openCamera(
               context,
               mode: CameraMode.video,
+            ),
+          ),
+          
+          // Video Mode with Duration Limit
+          _ExampleCard(
+            title: 'Video Mode (10s limit)',
+            description: 'Video recording with 10 second duration limit',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CameraScreen(
+                  initialMode: CameraMode.video,
+                  videoDurationLimit: 10,
+                  onMediaCaptured: (media) {
+                    // Video captured successfully
+                  },
+                  onError: (error) {
+                    // Handle error silently
+                  },
+                ),
+              ),
+            ),
+          ),
+          
+          // Video Mode with Short Duration Limit
+          _ExampleCard(
+            title: 'Video Mode (15s limit)',
+            description: 'Video recording with 15 second duration limit',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CameraScreen(
+                  initialMode: CameraMode.video,
+                  videoDurationLimit: 15,
+                  onMediaCaptured: (media) {
+                    // Video captured successfully
+                  },
+                  onError: (error) {
+                    // Handle error silently
+                  },
+                ),
+              ),
             ),
           ),
           

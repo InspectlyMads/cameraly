@@ -479,32 +479,32 @@ class CameraController extends _$CameraController {
     // Check permissions using the permission service with retry mechanism
     final permissionService = ref.read(permissionServiceProvider);
 
-    // Use the retry mechanism to handle race conditions
-    var hasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
-      maxAttempts: 3,
-      delay: const Duration(milliseconds: 100),
-    );
+    // Check permissions based on current mode
+    var hasPermissions = await permissionService.hasRequiredPermissionsForMode(state.mode);
 
     if (!hasPermissions) {
-      // Request permissions if not granted
-      final granted = await permissionService.requestCameraAndMicrophonePermissions();
+      // Request permissions based on mode
+      final granted = await permissionService.requestPermissionsForMode(state.mode);
       
       if (!granted) {
+        final errorMessage = state.mode == CameraMode.photo 
+          ? 'Camera permission is required'
+          : 'Camera and microphone permissions are required';
         state = state.copyWith(
-          errorMessage: 'Camera and microphone permissions are required',
+          errorMessage: errorMessage,
         );
         return;
       }
       
       // Check again after requesting
-      hasPermissions = await permissionService.hasAllCameraPermissionsWithRetry(
-        maxAttempts: 3,
-        delay: const Duration(milliseconds: 100),
-      );
+      hasPermissions = await permissionService.hasRequiredPermissionsForMode(state.mode);
       
       if (!hasPermissions) {
+        final errorMessage = state.mode == CameraMode.photo 
+          ? 'Camera permission is required'
+          : 'Camera and microphone permissions are required';
         state = state.copyWith(
-          errorMessage: 'Camera and microphone permissions are required',
+          errorMessage: errorMessage,
         );
         return;
       }
