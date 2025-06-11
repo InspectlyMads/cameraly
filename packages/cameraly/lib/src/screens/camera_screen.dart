@@ -73,6 +73,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Timer? _photoTimer;
   int _photoTimerCountdown = 0;
   
+  // Capture throttling
+  bool _isCapturing = false;
+  
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
 
@@ -89,6 +92,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   @override
   void dispose() {
+    // Stop recording if in progress
+    final cameraState = ref.read(cameraControllerProvider);
+    if (cameraState.isRecording) {
+      // Stop recording without saving
+      ref.read(cameraControllerProvider.notifier).stopVideoRecording();
+    }
+    
     WidgetsBinding.instance.removeObserver(this);
     _videoDurationTimer?.cancel();
     _videoCountdownTimer?.cancel();
@@ -99,10 +109,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final cameraController = ref.read(cameraControllerProvider.notifier);
+    final cameraState = ref.read(cameraControllerProvider);
 
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
+        // Stop recording if in progress
+        if (cameraState.isRecording) {
+          cameraController.stopVideoRecording();
+        }
         // App is going to background, dispose camera to free resources
         cameraController.pauseCamera();
         break;
@@ -113,6 +128,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       case AppLifecycleState.detached:
         break;
       case AppLifecycleState.hidden:
+        // Stop recording if in progress
+        if (cameraState.isRecording) {
+          cameraController.stopVideoRecording();
+        }
         // On iOS, hidden state is similar to paused
         cameraController.pauseCamera();
         break;
@@ -156,17 +175,97 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Retry initialization
     await _initializeWithMode();
   }
+  
+  Future<void> _handleBackPress() async {
+    final cameraState = ref.read(cameraControllerProvider);
+    
+    // If recording, show confirmation dialog
+    if (cameraState.isRecording) {
+      final shouldStop = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(cameralyL10n.dialogStopRecordingTitle),
+          content: Text(cameralyL10n.dialogStopRecordingMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(cameralyL10n.dialogContinueRecording),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(cameralyL10n.dialogStopAndDiscard),
+            ),
+          ],
+        ),
+      );
+      
+      if (shouldStop == true) {
+        // Stop recording without saving
+        await ref.read(cameraControllerProvider.notifier).stopVideoRecording();
+        // Stop timers
+        _videoDurationTimer?.cancel();
+        _videoCountdownTimer?.cancel();
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      }
+    } else {
+      // Not recording, can pop normally
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: _buildCameraInterface(),
-          ),
-        ],
+    // ignore: deprecated_member_use
+    return WillPopScope(
+      onWillPop: () async {
+        final cameraState = ref.read(cameraControllerProvider);
+        
+        // If recording, show confirmation dialog
+        if (cameraState.isRecording) {
+          final shouldStop = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: Text(cameralyL10n.dialogStopRecordingTitle),
+              content: Text(cameralyL10n.dialogStopRecordingMessage),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(cameralyL10n.dialogContinueRecording),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(cameralyL10n.dialogStopAndDiscard),
+                ),
+              ],
+            ),
+          );
+          
+          if (shouldStop == true) {
+            // Stop recording without saving
+            await ref.read(cameraControllerProvider.notifier).stopVideoRecording();
+            // Stop timers
+            _videoDurationTimer?.cancel();
+            _videoCountdownTimer?.cancel();
+            return true; // Allow pop
+          }
+          return false; // Prevent pop
+        }
+        
+        return true; // Allow pop when not recording
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: _buildCameraInterface(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -459,7 +558,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               backgroundColor: Colors.black54,
               child: IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => _handleBackPress(),
               ),
             ),
             // Torch control
@@ -626,9 +725,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Widget _buildPhotoButton() {
     return GestureDetector(
       onTapDown: (_) {
-        HapticFeedback.lightImpact();
+        if (!_isCapturing) {
+          HapticFeedback.lightImpact();
+        }
       },
-      onTap: _takePhoto,
+      onTap: _isCapturing ? null : _takePhoto,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -639,18 +740,19 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white,
+                color: _isCapturing ? Colors.white54 : Colors.white,
                 width: 4,
               ),
             ),
           ),
           // Inner circle
-          Container(
-            width: 56,
-            height: 56,
-            decoration: const BoxDecoration(
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: _isCapturing ? 48 : 56,
+            height: _isCapturing ? 48 : 56,
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white,
+              color: _isCapturing ? Colors.white54 : Colors.white,
             ),
           ),
         ],
@@ -912,6 +1014,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Future<void> _takePhoto() async {
+    // Prevent multiple captures
+    if (_isCapturing) return;
+    
     // Check if photo timer is set
     final timerSeconds = widget.settings?.photoTimerSeconds;
     if (timerSeconds != null && timerSeconds > 0) {
@@ -943,24 +1048,31 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
   
   Future<void> _capturePhotoNow() async {
-    // Check storage space first
-    final hasSpace = await StorageService.hasEnoughSpace(requiredMB: 50);
-    if (!hasSpace && mounted) {
-      widget.onError?.call('Not enough storage space');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(cameralyL10n.errorStorageFull),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
+    // Prevent multiple captures
+    if (_isCapturing) return;
     
-    final cameraController = ref.read(cameraControllerProvider.notifier);
-
+    setState(() {
+      _isCapturing = true;
+    });
+    
     try {
+      // Check storage space first (5MB should be enough for a photo)
+      final hasSpace = await StorageService.hasEnoughSpace(requiredMB: 5);
+      if (!hasSpace && mounted) {
+        widget.onError?.call('Not enough storage space');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(cameralyL10n.errorStorageFull),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      final cameraController = ref.read(cameraControllerProvider.notifier);
+
       // Haptic feedback
       if (widget.settings?.enableHaptics ?? true) {
         HapticFeedback.mediumImpact();
@@ -976,10 +1088,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           capturedAt: DateTime.now(),
         );
         widget.onMediaCaptured?.call(mediaItem);
+        
+        // Add a small delay before allowing next capture
+        await Future.delayed(const Duration(milliseconds: 500));
       }
     } catch (e) {
       // Error is logged in the camera provider, no need for UI notification
       widget.onError?.call(cameralyL10n.errorCaptureFailed);
+    } finally {
+      // Always reset the capturing flag
+      if (mounted) {
+        setState(() {
+          _isCapturing = false;
+        });
+      }
     }
   }
 
@@ -1503,5 +1625,58 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
       );
     }
+  }
+}
+
+/// Wrapper widget that provides the necessary ProviderScope for CameraScreen
+/// This makes the package self-contained and easier to use
+class CameraView extends StatelessWidget {
+  final CameraMode initialMode;
+  final bool showGridButton;
+  final bool showGalleryButton;
+  final bool showCheckButton;
+  final bool captureLocationMetadata;
+  final CameraCustomWidgets? customWidgets;
+  final int? videoDurationLimit;
+  final CameraSettings? settings;
+  final Function(MediaItem)? onMediaCaptured;
+  final Function()? onGalleryPressed;
+  final Function()? onCheckPressed;
+  final Function(String)? onError;
+
+  const CameraView({
+    super.key,
+    required this.initialMode,
+    this.showGridButton = false,
+    this.showGalleryButton = true,
+    this.showCheckButton = true,
+    this.captureLocationMetadata = true,
+    this.customWidgets,
+    this.videoDurationLimit,
+    this.settings,
+    this.onMediaCaptured,
+    this.onGalleryPressed,
+    this.onCheckPressed,
+    this.onError,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ProviderScope(
+      child: CameraScreen(
+        initialMode: initialMode,
+        showGridButton: showGridButton,
+        showGalleryButton: showGalleryButton,
+        showCheckButton: showCheckButton,
+        captureLocationMetadata: captureLocationMetadata,
+        customWidgets: customWidgets,
+        videoDurationLimit: videoDurationLimit,
+        settings: settings,
+        onMediaCaptured: onMediaCaptured,
+        onGalleryPressed: onGalleryPressed,
+        onCheckPressed: onCheckPressed,
+        onError: onError,
+      ),
+    );
   }
 }
