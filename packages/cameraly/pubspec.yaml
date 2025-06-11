@@ -1,7 +1,10 @@
 name: cameraly
-description: A comprehensive Flutter camera package with advanced features including orientation handling, flash modes, zoom controls, and focus management.
-version: 0.1.0
+description: A comprehensive Flutter camera package with advanced features including orientation handling, metadata capture, custom UI, and smart permissions.
+version: 1.0.0
 homepage: https://github.com/yourusername/cameraly
+repository: https://github.com/yourusername/cameraly
+issue_tracker: https://github.com/yourusername/cameraly/issues
+documentation: https://github.com/yourusername/cameraly/wiki
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -51,3 +54,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+# Package metadata
+platforms:
+  android:
+  ios:
+
+topics:
+  - camera
+  - photo
+  - video
+  - media
+  - capture

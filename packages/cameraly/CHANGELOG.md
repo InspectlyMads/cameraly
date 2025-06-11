@@ -1,9 +1,9 @@
 # Changelog
 
-## [0.1.0] - 2025-01-06
+## [1.0.0] - 2025-01-06
 
 ### Added
-- Initial release of Cameraly package
+- Initial stable release of Cameraly package
 - Complete camera functionality with photo and video capture
 - Orientation handling for correct photo/video orientation
 - Comprehensive metadata capture (GPS, device sensors, camera settings)
@@ -23,12 +23,32 @@
 - **Camera Modes**: Photo, Video, and Combined modes
 - **Orientation Support**: Automatic orientation detection and correction
 - **Metadata Capture**: GPS location, altitude, speed, camera settings
-- **Custom UI**: Replace any UI element with custom widgets
+- **Custom UI**: Replace UI elements with custom widgets (except capture button)
 - **Smart Permissions**: Only requests microphone for video modes
 - **Platform Optimizations**: Android selfie preview mirroring
 - **Video Controls**: Duration limits with countdown timer
 - **Zoom Controls**: Smooth zoom with visual feedback
 - **Focus Control**: Tap anywhere to focus with animated indicator
+- **Quality Settings**: Photo and video quality presets
+- **Photo Timer**: 3, 5, 10 second countdown timer
+- **Aspect Ratios**: 4:3, 16:9, 1:1, and full sensor
+- **Error Recovery**: Storage checks, camera reconnection handling
+- **Haptic Feedback**: Configurable haptic and sound feedback
+- **Memory Management**: Automatic cleanup and optimization
+- **Localization Support**: Override all UI strings with custom translations
+
+### Localization
+- Complete localization support for all UI strings
+- Easy integration with existing localization solutions (easy_localization, etc.)
+- Default English strings with override capability
+- Support for dynamic strings with parameters
+
+### Memory Management
+- Automatic periodic cleanup of old media files
+- Configurable retention policies (age and file count)
+- Memory usage monitoring and statistics
+- Stream-based file operations for large images
+- Proper disposal of services and subscriptions
 
 ### Platform Support
 - iOS 12.0+
