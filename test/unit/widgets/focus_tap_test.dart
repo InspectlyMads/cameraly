@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
-import 'package:camera_test/widgets/focus_indicator.dart';
+import 'package:cameraly/widgets/focus_indicator.dart';
 
 void main() {
   group('Focus Indicator Tests', () {

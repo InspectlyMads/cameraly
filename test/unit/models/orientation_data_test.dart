@@ -1,4 +1,4 @@
-import 'package:camera_test/models/orientation_data.dart';
+import 'package:cameraly/models/orientation_data.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

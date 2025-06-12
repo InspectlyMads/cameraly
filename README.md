@@ -1,4 +1,4 @@
-# camera_test
+# cameraly
 
 A new Flutter project.
 

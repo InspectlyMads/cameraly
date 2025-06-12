@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:camera_test/providers/camera_providers.dart';
+import 'package:cameraly/providers/camera_providers.dart';
 
 void main() {
   group('Camera Grid Tests', () {

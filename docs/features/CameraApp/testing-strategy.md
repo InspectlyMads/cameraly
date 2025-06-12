@@ -173,7 +173,7 @@ testWidgets('Full app navigation flow', (tester) async {
 
 ### Task 4 - Advanced Camera System (Critical Orientation Testing)
 ```dart
-// test/unit/controllers/orientation_aware_camera_test.dart
+// test/unit/controllers/orientation_aware_cameraly.dart
 group('OrientationAwareCameraController', () {
   testWidgets('Detects orientation changes correctly', (tester) async {
     final mockSensors = MockSensorsService();

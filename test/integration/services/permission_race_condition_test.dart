@@ -1,6 +1,6 @@
-import 'package:camera_test/providers/camera_providers.dart';
-import 'package:camera_test/providers/permission_providers.dart';
-import 'package:camera_test/services/permission_service.dart';
+import 'package:cameraly/providers/camera_providers.dart';
+import 'package:cameraly/providers/permission_providers.dart';
+import 'package:cameraly/services/permission_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:permission_handler/permission_handler.dart';

@@ -1,5 +1,5 @@
-import 'package:camera_test/screens/home_screen.dart';
-import 'package:camera_test/services/camera_service.dart';
+import 'package:cameraly/screens/home_screen.dart';
+import 'package:cameraly/services/camera_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

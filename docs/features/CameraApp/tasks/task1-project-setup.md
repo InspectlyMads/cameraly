@@ -8,7 +8,7 @@ Set up the Flutter project with a robust state management architecture capable o
 ## Subtasks
 
 ### 1.1 Create Flutter Project
-- [ ] Create new Flutter project: `flutter create camera_test`
+- [ ] Create new Flutter project: `flutter create cameraly`
 - [ ] Verify project builds successfully on Android
 - [ ] Set minimum SDK version in `android/app/build.gradle` (API 21+ recommended for camera package)
 

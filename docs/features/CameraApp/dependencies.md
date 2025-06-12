@@ -86,7 +86,7 @@ dependencies:
 
 ## Complete pubspec.yaml Template (Actual Current Versions)
 ```yaml
-name: camera_test
+name: cameraly
 description: Flutter camera orientation testing MVP
 version: 1.0.0+1
 
