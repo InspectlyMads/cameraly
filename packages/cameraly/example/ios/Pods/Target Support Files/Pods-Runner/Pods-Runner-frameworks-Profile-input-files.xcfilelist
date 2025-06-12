@@ -1,7 +1,0 @@
-${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh
-${BUILT_PRODUCTS_DIR}/camera_avfoundation/camera_avfoundation.framework
-${BUILT_PRODUCTS_DIR}/device_info_plus/device_info_plus.framework
-${BUILT_PRODUCTS_DIR}/geolocator_apple/geolocator_apple.framework
-${BUILT_PRODUCTS_DIR}/path_provider_foundation/path_provider_foundation.framework
-${BUILT_PRODUCTS_DIR}/sensors_plus/sensors_plus.framework
-${BUILT_PRODUCTS_DIR}/video_player_avfoundation/video_player_avfoundation.framework
