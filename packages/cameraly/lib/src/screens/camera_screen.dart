@@ -152,6 +152,38 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       // Widget disposed, ignore
     }
   }
+  
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    
+    // Handle orientation changes by reinitializing camera
+    // This fixes "BufferQueue has been abandoned" errors on Android
+    if (!mounted) return;
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      
+      try {
+        final cameraState = ref.read(cameraControllerProvider);
+        final cameraController = ref.read(cameraControllerProvider.notifier);
+        
+        // Only reinitialize if camera is currently initialized and not recording
+        if (cameraState.isInitialized && !cameraState.isRecording && !cameraState.isLoading) {
+          debugPrint('🔄 Orientation changed - reinitializing camera to prevent buffer errors');
+          
+          // Pause and resume camera to force reinitialization
+          await cameraController.pauseCamera();
+          await Future.delayed(const Duration(milliseconds: 300)); // Small delay for stability
+          if (mounted) {
+            await cameraController.resumeCamera();
+          }
+        }
+      } catch (e) {
+        debugPrint('Error handling orientation change: $e');
+      }
+    });
+  }
 
   Future<void> _initializeWithMode() async {
     setState(() {
@@ -1441,23 +1473,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return const SizedBox(width: 60);
     }
     
-    return GestureDetector(
-      onTap: () {
-        widget.onGalleryPressed?.call();
-      },
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white, width: 2),
-        ),
-        child: const Icon(
+    return CircleAvatar(
+      backgroundColor: Colors.black54,
+      radius: 30,
+      child: IconButton(
+        icon: const Icon(
           Icons.photo_library,
           color: Colors.white,
           size: 24,
         ),
+        onPressed: () {
+          widget.onGalleryPressed?.call();
+        },
       ),
     );
   }
