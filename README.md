@@ -332,7 +332,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Credits
 
-Built with ❤️ by the Cameraly team.
+Built with ❤️ by the Inspectly team.
 
 Special thanks to all [contributors](https://github.com/InspectlyMads/cameraly/graphs/contributors) who have helped make this package better.
 
