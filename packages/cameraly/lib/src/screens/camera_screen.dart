@@ -17,6 +17,7 @@ import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
 import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
 import '../widgets/focus_indicator.dart';
+import '../widgets/countdown_widget.dart';
 import '../localization/cameraly_localizations.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {

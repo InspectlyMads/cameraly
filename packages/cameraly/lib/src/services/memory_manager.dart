@@ -52,7 +52,7 @@ class MemoryManager {
       );
       
       if (deletedCount > 0) {
-        print('[MemoryManager] Cleaned up $deletedCount old media files');
+        // print('[MemoryManager] Cleaned up $deletedCount old media files');
       }
       
       // Force garbage collection hint
@@ -60,7 +60,7 @@ class MemoryManager {
       await Future.delayed(const Duration(milliseconds: 100));
       
     } catch (e) {
-      print('[MemoryManager] Cleanup error: $e');
+      // print('[MemoryManager] Cleanup error: $e');
     } finally {
       _isCleaningUp = false;
     }
@@ -114,7 +114,7 @@ class MemoryManager {
         await entity.delete(recursive: true);
       }
     } catch (e) {
-      print('[MemoryManager] Error clearing media: $e');
+      // print('[MemoryManager] Error clearing media: $e');
     }
   }
 }
