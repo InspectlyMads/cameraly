@@ -1,200 +1,343 @@
 # Cameraly
 
-A comprehensive Flutter camera package with advanced features including orientation handling, metadata capture, custom UI, and smart permissions.
+A comprehensive Flutter camera package with advanced features including orientation handling, metadata capture, custom UI, and smart permissions management.
 
 [![pub package](https://img.shields.io/pub/v/cameraly.svg)](https://pub.dev/packages/cameraly)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 
-- 📸 **Photo & Video Capture** - High-quality photo and video recording
-- 🔄 **Orientation Handling** - Automatic orientation detection and correction
-- 📍 **Metadata Capture** - GPS location, device sensors, and camera settings
-- 🎨 **Custom UI** - Replace UI elements with your own widgets
-- 🔐 **Smart Permissions** - Mode-specific permission handling
-- 🎯 **Tap to Focus** - Touch anywhere to focus
-- 🔍 **Zoom Controls** - Pinch to zoom with visual feedback
-- ⚡ **Flash Modes** - Context-aware flash options
-- 📐 **Grid Overlay** - Rule of thirds composition guide
-- ⏱️ **Photo Timer** - Countdown timer for photos
-- 💾 **Memory Management** - Automatic cleanup and optimization
+### 📸 Core Camera Features
+- **Photo & Video Capture** - High-quality photo and video recording
+- **Multiple Camera Modes** - Photo, Video, and Combined modes
+- **Front/Back Camera** - Easy camera switching with smooth transitions
+- **Flash Control** - Smart flash modes (Off/Auto/On for photos, Off/Torch for video)
+- **Zoom Control** - Pinch-to-zoom and slider control with smooth animations
+- **Focus Control** - Tap-to-focus with visual feedback
+- **Grid Overlay** - Rule of thirds grid for better composition
+
+### 🎯 Advanced Features
+- **Orientation Handling** - Correct photo/video orientation regardless of device position
+- **Location Metadata** - Optional GPS metadata capture (EXIF)
+- **Custom Aspect Ratios** - 16:9, 4:3, 1:1, or full sensor
+- **Photo Timer** - Configurable countdown timer (3s, 5s, 10s)
+- **Video Duration Limits** - Set maximum recording duration with countdown
+- **Photo Quality Control** - Low, Medium, High, Very High, Max quality options
+- **Smart Permissions** - Intelligent permission handling with race condition prevention
+
+### 🎨 UI Customization
+- **Custom Widgets** - Replace any UI element with your own widgets
+- **Theming Support** - Full control over colors, styles, and layouts
+- **Orientation-Specific Layouts** - Optimized UI for portrait and landscape
+- **Localization Ready** - Easy to add multiple language support
+
+### 📱 Platform Support
+- **iOS** ✅ (iOS 11.0+)
+- **Android** ✅ (API 21+)
+- **Web** 🚧 (Coming soon)
+- **macOS** 🚧 (Coming soon)
 
 ## Installation
 
-Add this to your `pubspec.yaml`:
+Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  cameraly: ^1.0.0
+  cameraly: ^1.0.1
 ```
 
-## Basic Usage
+### iOS Setup
+
+Add the following to your `Info.plist`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>This app needs camera access to take photos and videos</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>This app needs microphone access to record videos with audio</string>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>This app needs location access to add GPS data to photos</string>
+```
+
+### Android Setup
+
+Add the following permissions to your `AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+```
+
+## Quick Start
+
+### Basic Usage
 
 ```dart
 import 'package:cameraly/cameraly.dart';
+import 'package:flutter/material.dart';
 
-// Simple camera screen
+// Simple photo capture
 Navigator.push(
   context,
   MaterialPageRoute(
     builder: (context) => CameraScreen(
-      mode: CameraMode.combined,
-      onMediaCaptured: (XFile? media) {
-        // Handle captured photo/video
-        print('Media captured: ${media?.path}');
+      initialMode: CameraMode.photo,
+      onMediaCaptured: (MediaItem media) {
+        print('Photo saved at: ${media.path}');
       },
     ),
   ),
 );
 ```
 
-## Advanced Configuration
-
-### Custom Settings
+### Video Recording with Duration Limit
 
 ```dart
 CameraScreen(
-  mode: CameraMode.photo,
-  settings: CameraSettings(
-    photoQuality: PhotoQuality.high,
-    videoQuality: VideoQuality.fullHd,
-    aspectRatio: CameraAspectRatio.ratio_16_9,
-    photoTimerSeconds: 5,
-    enableSounds: true,
-    enableHaptics: true,
-    autoSaveToGallery: true,
-  ),
-  onMediaCaptured: (media) { /* ... */ },
-)
-```
-
-### Custom UI
-
-```dart
-CameraScreen(
-  customWidgets: CameraCustomWidgets(
-    topControls: MyCustomTopBar(),
-    bottomControls: MyCustomBottomBar(),
-    flashButton: MyCustomFlashButton(),
-    gridButton: MyCustomGridButton(),
-    switchCameraButton: MyCustomSwitchButton(),
-  ),
-  onMediaCaptured: (media) { /* ... */ },
-)
-```
-
-### Metadata Capture
-
-```dart
-CameraScreen(
-  captureLocationMetadata: true, // Enable GPS
-  onMediaCaptured: (media) async {
-    // Access metadata
-    final item = await MediaItem.fromFile(File(media.path));
-    print('Location: ${item.metadata?.latitude}, ${item.metadata?.longitude}');
-    print('Device: ${item.metadata?.deviceModel}');
-    print('Zoom: ${item.metadata?.zoomLevel}');
+  initialMode: CameraMode.video,
+  videoDurationLimit: 30, // 30 seconds max
+  onMediaCaptured: (MediaItem media) {
+    print('Video saved at: ${media.path}');
+  },
+  onError: (String error) {
+    print('Error: $error');
   },
 )
 ```
 
-## Localization
-
-Cameraly supports custom localization for all UI strings. You can provide your own translations:
-
-```dart
-// Create custom localization class
-class MyCameraLocalizations extends CameralyLocalizations {
-  @override
-  String get modePhoto => 'photo_mode'.tr(); // Using easy_localization
-  
-  @override
-  String get modeVideo => 'video_mode'.tr();
-  
-  @override
-  String get flashOff => 'flash_off'.tr();
-  
-  // ... override all strings
-}
-
-// Set custom localization before using camera
-void main() {
-  CameralyLocalizations.setInstance(MyCameraLocalizations());
-  runApp(MyApp());
-}
-```
-
-## Memory Management
-
-Cameraly includes built-in memory management to prevent memory leaks and optimize performance:
-
-```dart
-// Start automatic memory cleanup
-MemoryManager.startPeriodicCleanup(
-  interval: Duration(hours: 12),
-  maxMediaAge: Duration(days: 7),
-  maxMediaFiles: 500,
-);
-
-// Manual cleanup
-await MemoryManager.performCleanup();
-
-// Check memory usage
-final stats = await MemoryManager.getMemoryStats();
-print('Memory usage: ${stats.totalMemoryMB}MB');
-```
-
-## Platform Setup
-
-### iOS
-
-Add to `ios/Runner/Info.plist`:
-
-```xml
-<key>NSCameraUsageDescription</key>
-<string>This app needs camera access to take photos and videos</string>
-<key>NSMicrophoneUsageDescription</key>
-<string>This app needs microphone access to record videos</string>
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>This app needs location access to tag photos with location</string>
-```
-
-### Android
-
-Add to `android/app/src/main/AndroidManifest.xml`:
-
-```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-```
-
-## Camera Modes
-
-- `CameraMode.photo` - Photo only (no microphone permission needed)
-- `CameraMode.video` - Video only
-- `CameraMode.combined` - Both photo and video
-
-## Error Handling
+### Combined Mode (Photo + Video)
 
 ```dart
 CameraScreen(
-  onError: (error) {
-    // Handle camera errors
-    if (error.type == CameraErrorType.permissionDenied) {
-      // Show permission dialog
+  initialMode: CameraMode.combined,
+  showGridButton: true,
+  onMediaCaptured: (MediaItem media) {
+    if (media.type == MediaType.photo) {
+      print('Photo captured');
+    } else {
+      print('Video recorded');
     }
   },
 )
 ```
 
-## Documentation
+## Advanced Usage
 
-- [Implementation Guide](IMPLEMENTATION_GUIDE.md) - Complete step-by-step implementation guide
-- [Quick Start Guide](QUICK_START.md) - Quick reference for common use cases
-- [API Reference](API_REFERENCE.md) - Complete API documentation
-- [Example App](example/) - Full working example with all features
+### Custom UI Elements
+
+```dart
+CameraScreen(
+  initialMode: CameraMode.photo,
+  customWidgets: CameraCustomWidgets(
+    // Custom gallery button
+    galleryButton: Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: Colors.purple,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(Icons.photo_library, color: Colors.white),
+    ),
+    
+    // Custom capture button
+    captureButton: YourCustomCaptureButton(),
+    
+    // Custom flash control
+    flashControl: YourCustomFlashButton(),
+    
+    // Add custom widgets to the left side
+    leftSideWidget: Column(
+      children: [
+        IconButton(icon: Icon(Icons.filter), onPressed: () {}),
+        IconButton(icon: Icon(Icons.timer), onPressed: () {}),
+      ],
+    ),
+  ),
+)
+```
+
+### Camera Settings
+
+```dart
+CameraScreen(
+  initialMode: CameraMode.photo,
+  settings: const CameraSettings(
+    // Photo settings
+    photoQuality: PhotoQuality.high,
+    aspectRatio: CameraAspectRatio.ratio_16_9,
+    photoTimerSeconds: 3,
+    
+    // Focus and exposure
+    enableAutoFocus: true,
+    enableAutoExposure: true,
+    
+    // Initial camera
+    initialCameraLens: CameraLensDirection.back,
+  ),
+  captureLocationMetadata: true, // Add GPS to photos
+)
+```
+
+### Handling Permissions
+
+The package handles permissions automatically, but you can also manage them manually:
+
+```dart
+// Check permissions before opening camera
+final hasPermissions = await CameraPermissionHelper.checkPermissions(
+  requireAudio: true, // For video mode
+  requireLocation: true, // For GPS metadata
+);
+
+if (!hasPermissions) {
+  final granted = await CameraPermissionHelper.requestPermissions(
+    requireAudio: true,
+    requireLocation: true,
+  );
+  
+  if (!granted) {
+    // Handle permission denial
+  }
+}
+```
+
+### Minimal UI Mode
+
+```dart
+CameraScreen(
+  initialMode: CameraMode.photo,
+  showGalleryButton: false,
+  showCheckButton: false,
+  showGridButton: false,
+  onMediaCaptured: (media) {
+    // Auto-close after capture
+    Navigator.pop(context, media);
+  },
+)
+```
+
+## Features in Detail
+
+### 🎬 Smart Orientation Handling
+
+Cameraly ensures photos and videos are always correctly oriented:
+- Handles device rotation during capture
+- Fixes orientation metadata automatically
+- Works across all Android devices and orientations
+- No more sideways or upside-down media!
+
+### 📍 Location Metadata
+
+When enabled, Cameraly adds GPS coordinates to photos:
+```dart
+CameraScreen(
+  captureLocationMetadata: true,
+  onMediaCaptured: (media) {
+    // Photo EXIF data includes GPS coordinates
+  },
+)
+```
+
+### ⏱️ Photo Timer
+
+Perfect for selfies and group photos:
+```dart
+CameraScreen(
+  settings: const CameraSettings(
+    photoTimerSeconds: 5, // 5-second countdown
+  ),
+)
+```
+
+### 🎥 Video Recording Features
+
+- Duration limits with countdown display
+- Torch mode for continuous lighting
+- Pause/resume recording (device dependent)
+- Audio level monitoring (coming soon)
+
+### 🔐 Smart Permission Management
+
+Cameraly includes intelligent permission handling:
+- Requests only required permissions based on mode
+- Handles race conditions during initialization
+- Graceful degradation when permissions are denied
+- Clear user feedback for permission states
+
+## Memory Management
+
+Cameraly includes built-in memory optimization:
+- Automatic cleanup of temporary files
+- Efficient bitmap handling
+- Memory pressure monitoring
+- Configurable cache limits
+
+## Example App
+
+Check out the [example app](example/) for comprehensive demonstrations of all features:
+
+```bash
+cd example
+flutter run
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Black Screen on Android**
+   - Ensure you have the correct permissions in AndroidManifest.xml
+   - Check that your device supports Camera2 API
+
+2. **Orientation Issues**
+   - Cameraly handles this automatically, but ensure you're using the latest version
+   - For custom implementations, use the `OrientationService` class
+
+3. **Permission Errors**
+   - iOS: Ensure Info.plist descriptions are present
+   - Android: Check that permissions are declared in the manifest
+
+### Debug Mode
+
+Enable debug logging:
+```dart
+CameraScreen(
+  enableDebugLogs: true,
+  // ... other parameters
+)
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+1. Clone the repository
+2. Run `flutter pub get`
+3. Run the example app to test changes
+
+### Running Tests
+
+```bash
+flutter test
+```
 
 ## License
 
-MIT License - see LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Credits
+
+Built with ❤️ by the Cameraly team.
+
+Special thanks to all [contributors](https://github.com/InspectlyMads/cameraly/graphs/contributors) who have helped make this package better.
+
+## Support
+
+- 📧 Email: dev@inspectly.com
+- 🐛 Issues: [GitHub Issues](https://github.com/InspectlyMads/cameraly/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/InspectlyMads/cameraly/discussions)
