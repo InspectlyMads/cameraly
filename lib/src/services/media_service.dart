@@ -57,11 +57,27 @@ class GalleryState {
 
 class MediaService {
   static const String _logTag = 'MediaService';
+  
+  // Custom save path can be set by the app
+  static String? _customSavePath;
+  
+  /// Set a custom save path for media files
+  static void setCustomSavePath(String? path) {
+    _customSavePath = path;
+  }
 
   /// Get the directory where captured media is stored
   Future<Directory> getMediaDirectory() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final mediaDir = Directory(path.join(appDir.path, 'captured_media'));
+    Directory mediaDir;
+    
+    if (_customSavePath != null) {
+      // Use custom path if provided
+      mediaDir = Directory(_customSavePath!);
+    } else {
+      // Default to app documents directory
+      final appDir = await getApplicationDocumentsDirectory();
+      mediaDir = Directory(path.join(appDir.path, 'captured_media'));
+    }
 
     // Create directory if it doesn't exist
     if (!await mediaDir.exists()) {
@@ -105,8 +121,8 @@ class MediaService {
   Future<String?> savePhoto(Uint8List imageData, {String? fileName, OrientationData? orientationData, PhotoMetadata? metadata}) async {
     try {
       final mediaDir = await getMediaDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final finalFileName = fileName ?? 'photo_$timestamp.jpg';
+      final timestamp = DateTime.now().microsecondsSinceEpoch;
+      final finalFileName = fileName ?? 'capture_$timestamp.jpg';
       final filePath = path.join(mediaDir.path, finalFileName);
 
       // Write initial file
@@ -136,7 +152,7 @@ class MediaService {
     try {
       final mediaDir = await getMediaDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final finalFileName = fileName ?? 'video_$timestamp.mp4';
+      final finalFileName = fileName ?? 'recording_$timestamp.mp4';
       final targetPath = path.join(mediaDir.path, finalFileName);
 
       final sourceFile = File(sourcePath);
