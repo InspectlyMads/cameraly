@@ -433,28 +433,23 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               top: 0,
               bottom: 0,
               child: Column(
-                mainAxisAlignment: cameraState.isRecording 
-                    ? MainAxisAlignment.center 
-                    : MainAxisAlignment.spaceEvenly,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   // Gallery button - hide during recording
-                  if (!cameraState.isRecording) _buildGalleryButton(),
+                  if (!cameraState.isRecording) 
+                    _buildGalleryButton()
+                  else
+                    const SizedBox(height: 60), // Maintain spacing
                   
-                  // Capture section
-                  if (cameraState.isRecording) ...[
-                    // Torch control during recording
-                    _buildFlashControl(),
-                    const SizedBox(height: 32),
-                  ],
                   
-                  // Show timer during recording
-                  if (cameraState.isRecording)
-                    _buildVideoCountdown(),
-                    
+                  // Video record button
                   _buildVideoRecordButton(cameraState),
                   
                   // Check button - hide during recording
-                  if (!cameraState.isRecording) _buildCheckFab(),
+                  if (!cameraState.isRecording) 
+                    _buildCheckFab()
+                  else
+                    const SizedBox(height: 60), // Maintain spacing
                 ],
               ),
             )
@@ -497,8 +492,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               ),
             ),
           
-          // Flash and camera controls on left side when not recording in landscape
-          if (orientation == Orientation.landscape && !cameraState.isRecording)
+          // Flash and camera controls on left side (always visible in landscape)
+          if (orientation == Orientation.landscape)
             Positioned(
               left: 16 + safeArea.left,
               top: 72 + safeArea.top, // Below back button
@@ -507,10 +502,21 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 children: [
                   _buildFlashControl(),
                   const SizedBox(height: 8),
-                  _buildCameraSwitchControl(),
+                  if (!cameraState.isRecording) _buildCameraSwitchControl(),
                 ],
               ),
             ),
+          
+          // Timer during recording - positioned above center
+          if (orientation == Orientation.landscape && cameraState.isRecording)
+            Positioned(
+              right: 16 + safeArea.right,
+              top: screenSize.height / 2 - 100, // Above center
+              child: _buildVideoCountdown(),
+            ),
+          
+          // Zoom control for video mode
+          _buildZoomControl(cameraState),
         ],
       );
     }
@@ -580,9 +586,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   Widget _buildTopControls(Orientation orientation) {
     final safeArea = MediaQuery.of(context).padding;
-    final isRecording = ref.watch(cameraControllerProvider.select((state) => state.isRecording));
+    final cameraState = ref.watch(cameraControllerProvider);
+    final isRecording = cameraState.isRecording;
 
-    // During recording, show only back button and torch control
+    // During recording, show only back button and torch control (torch only in portrait)
     if (isRecording) {
       return Positioned(
         top: 16 + safeArea.top,
@@ -599,8 +606,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 onPressed: () => _handleBackPress(),
               ),
             ),
-            // Torch control
-            _buildFlashControl(),
+            // Torch control only in portrait mode (landscape has it on the left side)
+            if (orientation == Orientation.portrait || cameraState.mode != CameraMode.video)
+              _buildFlashControl()
+            else
+              const SizedBox.shrink(),
           ],
         ),
       );
@@ -1274,6 +1284,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         // Mode selector for combined mode (bottom-center)
         if (cameraState.mode == CameraMode.combined) _buildLandscapeModeSelector(screenSize, safeArea),
         
+        // Video timer during recording - positioned above the center
+        if (cameraState.isRecording && cameraState.mode == CameraMode.video)
+          Positioned(
+            right: 16 + safeArea.right,
+            top: screenSize.height / 2 - 100, // Above center
+            child: _buildVideoCountdown(),
+          ),
+        
         // Zoom control
         _buildZoomControl(cameraState),
       ],
@@ -1284,24 +1302,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Check both our state and the controller's state to be absolutely sure
     final bool isActuallyRecording = cameraState.isRecording || (cameraState.controller?.value.isRecordingVideo ?? false);
 
-// When recording, show stop button with torch control above it
+// When recording, show stop button centered
     if (isActuallyRecording) {
       return Positioned(
         right: 16 + safeArea.right,
         top: 0,
         bottom: 0,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Torch control for video recording
-            _buildFlashControl(),
-            const SizedBox(height: 32),
-            // Show timer during recording
-            _buildVideoCountdown(),
-            const SizedBox(height: 16),
-            // Stop recording button
-            _buildCaptureButton(cameraState),
-          ],
+        child: Center(
+          child: _buildCaptureButton(cameraState),
         ),
       );
     }
@@ -1473,18 +1481,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return const SizedBox(width: 60);
     }
     
-    return CircleAvatar(
+    return FloatingActionButton(
       backgroundColor: Colors.black54,
-      radius: 30,
-      child: IconButton(
-        icon: const Icon(
-          Icons.photo_library,
-          color: Colors.white,
-          size: 24,
-        ),
-        onPressed: () {
-          widget.onGalleryPressed?.call();
-        },
+      onPressed: () {
+        widget.onGalleryPressed?.call();
+      },
+      child: const Icon(
+        Icons.photo_library,
+        color: Colors.white,
+        size: 24,
       ),
     );
   }
@@ -1608,20 +1613,20 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return const SizedBox.shrink();
     }
     
-    // Hide zoom control during recording
-    if (cameraState.isRecording) {
-      return const SizedBox.shrink();
-    }
-    
     final orientation = MediaQuery.of(context).orientation;
     final safeArea = MediaQuery.of(context).padding;
     
     // Position zoom control based on orientation
     if (orientation == Orientation.portrait) {
-      // Portrait: above capture button, but higher if in combined mode
-      final bottomOffset = cameraState.mode == CameraMode.combined 
-          ? 200 + safeArea.bottom  // Higher to avoid mode selector
-          : 140 + safeArea.bottom; // Normal position
+      // Portrait: above capture button, adjusted for different modes
+      double bottomOffset;
+      if (cameraState.mode == CameraMode.combined) {
+        bottomOffset = 200 + safeArea.bottom;  // Higher to avoid mode selector
+      } else if (cameraState.mode == CameraMode.video && cameraState.isRecording) {
+        bottomOffset = 180 + safeArea.bottom;  // Higher to avoid timer overlap
+      } else {
+        bottomOffset = 140 + safeArea.bottom;  // Normal position
+      }
           
       return Positioned(
         bottom: bottomOffset,
