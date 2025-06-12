@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+**/build/
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +44,15 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Example app specific
+packages/cameraly/example/android/.gradle/
+packages/cameraly/example/android/gradle/
+packages/cameraly/example/android/local.properties
+packages/cameraly/example/android/gradlew
+packages/cameraly/example/android/gradlew.bat
+packages/cameraly/example/ios/Podfile.lock
+
+# Dart build artifacts
+*.dill
+*.dill.track.dill
