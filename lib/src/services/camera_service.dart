@@ -172,6 +172,7 @@ class CameraService {
     required List<camera.CameraDescription> cameras,
     required CameraLensDirection lensDirection,
     camera.ResolutionPreset? resolution,
+    bool enableAudio = true,
   }) async {
     if (cameras.isEmpty) {
       throw Exception('No cameras available');
@@ -197,7 +198,7 @@ class CameraService {
     final controller = camera.CameraController(
       selectedCamera,
       resolution ?? camera.ResolutionPreset.high,
-      enableAudio: true,
+      enableAudio: enableAudio,
       imageFormatGroup: camera.ImageFormatGroup.jpeg,
     );
 
@@ -212,6 +213,7 @@ class CameraService {
     required camera.CameraController currentController,
     required List<camera.CameraDescription> cameras,
     required CameraLensDirection newLensDirection,
+    bool enableAudio = true,
   }) async {
 
 
@@ -239,7 +241,7 @@ class CameraService {
     final newController = camera.CameraController(
       targetCamera,
       camera.ResolutionPreset.high,
-      enableAudio: true,
+      enableAudio: enableAudio,
       imageFormatGroup: camera.ImageFormatGroup.jpeg,
     );
 

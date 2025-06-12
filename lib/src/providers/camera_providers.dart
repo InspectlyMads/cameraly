@@ -114,6 +114,7 @@ class CameraController extends _$CameraController {
         currentController: state.controller!,
         cameras: state.availableCameras,
         newLensDirection: newLensDirection,
+        enableAudio: state.mode != CameraMode.photo,
       );
 
       state = state.copyWith(
@@ -491,10 +492,16 @@ class CameraController extends _$CameraController {
     // Check permissions using the permission service with retry mechanism
     final permissionService = ref.read(permissionServiceProvider);
 
+    // Debug: Log current mode
+    debugPrint('🎥 Initializing camera in mode: ${state.mode}');
+
     // Check permissions based on current mode
     var hasPermissions = await permissionService.hasRequiredPermissionsForMode(state.mode);
 
     if (!hasPermissions) {
+      // Debug: Log what permissions we're about to request
+      debugPrint('🔐 Requesting permissions for mode: ${state.mode}');
+      
       // Request permissions based on mode
       final granted = await permissionService.requestPermissionsForMode(state.mode);
       
@@ -553,6 +560,7 @@ class CameraController extends _$CameraController {
         cameras: cameras,
         lensDirection: state.lensDirection,
         resolution: resolution,
+        enableAudio: state.mode != CameraMode.photo, // Only enable audio for video/combined modes
       );
 
       state = state.copyWith(

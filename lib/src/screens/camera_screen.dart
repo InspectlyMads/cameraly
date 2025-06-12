@@ -191,8 +191,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       _hasInitializationFailed = false;
     });
 
+    debugPrint('🚀 CameraScreen: Initializing with mode: ${widget.initialMode}');
+    
     final cameraController = ref.read(cameraControllerProvider.notifier);
     await cameraController.switchMode(widget.initialMode);
+    
+    debugPrint('🚀 CameraScreen: Mode switched, now initializing camera');
+    
     await cameraController.initializeCamera(
       captureLocationMetadata: widget.captureLocationMetadata,
       settings: widget.settings,

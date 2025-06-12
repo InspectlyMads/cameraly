@@ -17,16 +17,24 @@ class PermissionService {
 
   /// Request camera permission
   Future<PermissionStatus> requestCameraPermission() async {
+    print('🎯 requestCameraPermission: Requesting ONLY camera permission');
     return await Permission.camera.request();
   }
 
   /// Request microphone permission
   Future<PermissionStatus> requestMicrophonePermission() async {
+    print('🎤 WARNING: requestMicrophonePermission called!');
+    print('🎤 Stack trace:');
+    print(StackTrace.current);
     return await Permission.microphone.request();
   }
 
   /// Request both camera and microphone permissions
   Future<Map<Permission, PermissionStatus>> requestCameraPermissions() async {
+    print('⚠️ WARNING: requestCameraPermissions() called - this requests BOTH camera AND microphone!');
+    print('⚠️ Stack trace:');
+    print(StackTrace.current);
+    
     // Request permissions one by one to ensure proper handling on iOS
     final cameraStatus = await Permission.camera.request();
     final microphoneStatus = await Permission.microphone.request();
@@ -67,7 +75,9 @@ class PermissionService {
   
   /// Request camera-only permission and return success status
   Future<bool> requestCameraOnlyPermission() async {
+    print('🔍 requestCameraOnlyPermission: Requesting ONLY camera permission');
     final status = await requestCameraPermission();
+    print('🔍 Camera permission status: $status');
     return status.isGranted || status.isLimited;
   }
   
@@ -85,8 +95,10 @@ class PermissionService {
   /// Request permissions based on camera mode
   Future<bool> requestPermissionsForMode(CameraMode mode) async {
     if (mode == CameraMode.photo) {
+      print('📸 Photo mode: Requesting CAMERA ONLY permission');
       return await requestCameraOnlyPermission();
     } else {
+      print('🎥 Video/Combined mode: Requesting CAMERA + MICROPHONE permissions');
       return await requestCameraAndMicrophonePermissions();
     }
   }
