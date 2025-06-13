@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:image/image.dart' as img;
+import 'package:native_exif/native_exif.dart';
 
 import '../models/media_item.dart';
 import '../models/orientation_data.dart';
@@ -132,10 +133,14 @@ class MediaService {
       // Write EXIF metadata if provided
       if (metadata != null) {
         try {
+          debugPrint('📍 Attempting to write EXIF metadata...');
           await _writeExifMetadata(filePath, metadata);
         } catch (e) {
+          debugPrint('❌ Failed to write EXIF metadata: $e');
           // Continue even if EXIF writing fails
         }
+      } else {
+        debugPrint('⚠️ No metadata provided to savePhoto');
       }
 
 
@@ -300,18 +305,75 @@ class MediaService {
 
   /// Write EXIF metadata to image file
   Future<void> _writeExifMetadata(String imagePath, PhotoMetadata metadata) async {
+    debugPrint('📍 Writing EXIF metadata to $imagePath');
+    debugPrint('📍 GPS data: lat=${metadata.latitude}, lon=${metadata.longitude}');
+    
+    try {
+      // Use native_exif for writing GPS data
+      final exif = await Exif.fromPath(imagePath);
+      
+      // Set basic metadata
+      await exif.writeAttributes({
+        'Make': metadata.deviceManufacturer,
+        'Model': metadata.deviceModel,
+        'Software': 'Cameraly ${metadata.osVersion}',
+        'DateTime': metadata.capturedAt.toIso8601String().replaceAll('T', ' ').substring(0, 19),
+      });
+      
+      // Set GPS data if available
+      if (metadata.latitude != null && metadata.longitude != null) {
+        debugPrint('📍 Writing GPS coordinates using native_exif');
+        
+        // Write GPS coordinates
+        await exif.writeAttributes({
+          'GPSLatitude': metadata.latitude!.abs().toString(),
+          'GPSLatitudeRef': metadata.latitude! >= 0 ? 'N' : 'S',
+          'GPSLongitude': metadata.longitude!.abs().toString(),
+          'GPSLongitudeRef': metadata.longitude! >= 0 ? 'E' : 'W',
+        });
+        
+        if (metadata.altitude != null) {
+          await exif.writeAttribute('GPSAltitude', metadata.altitude!.abs().toString());
+          await exif.writeAttribute('GPSAltitudeRef', metadata.altitude! >= 0 ? '0' : '1');
+        }
+        
+        debugPrint('✅ GPS data written with native_exif');
+        
+        // Verify by reading back
+        final attributes = await exif.getAttributes();
+        debugPrint('📋 Verified GPS data: lat=${attributes?['GPSLatitude']}, lon=${attributes?['GPSLongitude']}');
+      }
+      
+      await exif.close();
+      debugPrint('✅ EXIF metadata written successfully');
+      
+    } catch (e) {
+      debugPrint('❌ Error writing EXIF with native_exif: $e');
+      
+      // Fallback to image package method (keeping original code for non-GPS data)
+      await _writeExifWithImagePackage(imagePath, metadata);
+    }
+  }
+  
+  /// Fallback method using image package for non-GPS EXIF data
+  Future<void> _writeExifWithImagePackage(String imagePath, PhotoMetadata metadata) async {
+    debugPrint('📍 Fallback: Writing non-GPS EXIF metadata with image package');
+    
     final file = File(imagePath);
     final bytes = await file.readAsBytes();
     
     // Decode the image
-    final image = img.decodeImage(bytes);
+    final decoder = img.JpegDecoder();
+    final image = decoder.decode(bytes);
     if (image == null) {
-
+      debugPrint('❌ Failed to decode image for EXIF writing');
       return;
     }
     
-    // Ensure EXIF data exists
-    image.exif = img.ExifData();
+    // Preserve existing EXIF or create new
+    if (image.exif.isEmpty) {
+      image.exif = img.ExifData();
+    }
     
     // Set basic EXIF tags
     image.exif.imageIfd['Make'] = metadata.deviceManufacturer;
@@ -326,6 +388,9 @@ class MediaService {
     
     // Set GPS data if available
     if (metadata.latitude != null && metadata.longitude != null) {
+      debugPrint('📍 Writing GPS coordinates to EXIF');
+      debugPrint('📍 Latitude: ${metadata.latitude}, Longitude: ${metadata.longitude}');
+      
       image.exif.gpsIfd['GPSLatitudeRef'] = metadata.latitude! >= 0 ? 'N' : 'S';
       image.exif.gpsIfd['GPSLatitude'] = _convertToGPSRationals(metadata.latitude!);
       image.exif.gpsIfd['GPSLongitudeRef'] = metadata.longitude! >= 0 ? 'E' : 'W';
@@ -334,6 +399,7 @@ class MediaService {
       if (metadata.altitude != null) {
         image.exif.gpsIfd['GPSAltitudeRef'] = metadata.altitude! >= 0 ? 0 : 1;
         image.exif.gpsIfd['GPSAltitude'] = [metadata.altitude!.abs().toInt(), 1];
+        debugPrint('📍 Altitude: ${metadata.altitude}');
       }
       
       if (metadata.speed != null) {
@@ -341,12 +407,17 @@ class MediaService {
         final speedKmh = metadata.speed! * 3.6;
         image.exif.gpsIfd['GPSSpeed'] = [(speedKmh * 100).toInt(), 100];
         image.exif.gpsIfd['GPSSpeedRef'] = 'K'; // K for km/h
+        debugPrint('📍 Speed: ${metadata.speed} m/s (${speedKmh} km/h)');
       }
       
       // Set GPS timestamp
       final gpsTimeStr = metadata.capturedAt.toIso8601String().split('T')[1].substring(0, 8);
       image.exif.gpsIfd['GPSTimeStamp'] = gpsTimeStr;
       image.exif.gpsIfd['GPSDateStamp'] = metadata.capturedAt.toIso8601String().split('T')[0];
+      
+      debugPrint('📍 GPS EXIF data prepared, writing to image...');
+    } else {
+      debugPrint('⚠️ No GPS data available - lat: ${metadata.latitude}, lon: ${metadata.longitude}');
     }
     
     // Custom data as user comment
@@ -371,11 +442,22 @@ class MediaService {
       image.exif.exifIfd['DigitalZoomRatio'] = [(metadata.zoomLevel! * 100).toInt(), 100];
     }
     
-    // Encode back to JPEG with EXIF
-    final newBytes = img.encodeJpg(image, quality: 95);
+    // Encode back to JPEG with EXIF using the encoder that preserves EXIF
+    final encoder = img.JpegEncoder(quality: 95);
+    final newBytes = encoder.encode(image);
     await file.writeAsBytes(newBytes);
     
-
+    debugPrint('✅ EXIF metadata written successfully');
+    
+    // Verify GPS data was written (for debugging)
+    final verifyDecoder = img.JpegDecoder();
+    final verifyImage = verifyDecoder.decode(newBytes);
+    if (verifyImage?.exif.gpsIfd['GPSLatitude'] != null) {
+      debugPrint('✅ Verified: GPS data exists in written image');
+    } else {
+      debugPrint('❌ Warning: GPS data not found in written image');
+      debugPrint('📋 EXIF GPS IFD keys: ${verifyImage?.exif.gpsIfd.keys.toList()}');
+    }
   }
   
   /// Convert decimal degrees to GPS rationals

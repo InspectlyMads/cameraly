@@ -1,7 +1,10 @@
 import 'package:cameraly/cameraly.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:gal/gal.dart';
+import 'package:native_exif/native_exif.dart';
 
 void main() {
   runApp(
@@ -92,8 +95,8 @@ class HomeScreen extends StatelessWidget {
           
           // Photo Mode
           _ExampleCard(
-            title: 'Photo Mode',
-            description: 'Basic photo capture with default UI',
+            title: 'Photo Mode (with GPS)',
+            description: 'Captures photos with GPS metadata - saves to gallery',
             onTap: () => _openCamera(
               context,
               mode: CameraMode.photo,
@@ -269,6 +272,45 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           
+          // GPS Debug Mode
+          _ExampleCard(
+            title: 'GPS Debug Mode',
+            description: 'Shows GPS status and saves with detailed logs',
+            onTap: () {
+              debugPrint('=== GPS DEBUG MODE STARTED ===');
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CameraScreen(
+                    initialMode: CameraMode.photo,
+                    captureLocationMetadata: true,
+                    onMediaCaptured: (media) async {
+                      debugPrint('📸 Photo captured: ${media.path}');
+                      await _saveToGallery(context, media);
+                      
+                      // Also read back EXIF to verify
+                      try {
+                        if (media.type == MediaType.photo) {
+                          final exif = await Exif.fromPath(media.path);
+                          final attributes = await exif.getAttributes();
+                          debugPrint('📋 EXIF Attributes after save:');
+                          attributes?.forEach((key, value) {
+                            if (key.contains('GPS') || key.contains('Make') || key.contains('Model')) {
+                              debugPrint('   $key: $value');
+                            }
+                          });
+                          await exif.close();
+                        }
+                      } catch (e) {
+                        debugPrint('❌ Error reading EXIF: $e');
+                      }
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+          
           // Hidden Gallery/Check
           _ExampleCard(
             title: 'Minimal UI',
@@ -283,6 +325,46 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+  
+  static Future<void> _saveToGallery(BuildContext context, MediaItem media) async {
+    try {
+      // Request storage permission if needed
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (!hasAccess) {
+        await Gal.requestAccess(toAlbum: true);
+      }
+      
+      // Save to gallery - this preserves all metadata including EXIF
+      if (media.type == MediaType.photo) {
+        await Gal.putImage(media.path, album: 'Cameraly Test');
+      } else {
+        await Gal.putVideo(media.path, album: 'Cameraly Test');
+      }
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${media.type == MediaType.photo ? "Photo" : "Video"} saved to gallery with metadata!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      debugPrint('✅ Saved to gallery: ${media.path}');
+      debugPrint('📍 Check the photo in your gallery app for GPS metadata');
+    } catch (e) {
+      debugPrint('❌ Failed to save to gallery: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save to gallery: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _openCamera(
@@ -302,8 +384,9 @@ class HomeScreen extends StatelessWidget {
           captureLocationMetadata: captureLocation,
           showGalleryButton: showGallery,
           showCheckButton: showCheck,
-          onMediaCaptured: (media) {
-            // Media captured successfully
+          onMediaCaptured: (media) async {
+            // Save to gallery with metadata preserved
+            await _saveToGallery(context, media);
           },
           onGalleryPressed: () {
             // Handle gallery button tap
@@ -350,8 +433,9 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          onMediaCaptured: (media) {
-            // Media captured successfully
+          onMediaCaptured: (media) async {
+            // Save to gallery with metadata preserved
+            await _saveToGallery(context, media);
           },
           onGalleryPressed: () {
             // Handle gallery button tap
@@ -399,8 +483,9 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          onMediaCaptured: (media) {
-            // Media captured successfully
+          onMediaCaptured: (media) async {
+            // Save to gallery with metadata preserved
+            await _saveToGallery(context, media);
           },
         ),
       ),
@@ -475,8 +560,9 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          onMediaCaptured: (media) {
-            // Media captured successfully
+          onMediaCaptured: (media) async {
+            // Save to gallery with metadata preserved
+            await _saveToGallery(context, media);
           },
           onGalleryPressed: () {
             // Handle gallery button tap

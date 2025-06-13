@@ -34,24 +34,33 @@ class MetadataService {
   /// Initialize the metadata service
   Future<void> initialize({bool captureLocation = true}) async {
     _captureLocationEnabled = captureLocation;
+    print('📍 MetadataService.initialize: captureLocation=$captureLocation');
     
     if (captureLocation) {
       // Check location permission
       var permission = await Geolocator.checkPermission();
+      print('📍 Location permission status: $permission');
       
       // Request permission if not granted
       if (permission == LocationPermission.denied) {
+        print('📍 Requesting location permission...');
         permission = await Geolocator.requestPermission();
+        print('📍 Location permission after request: $permission');
       }
       
       // Only proceed if permission is granted
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        print('📍 Location permission granted, getting initial location...');
         // Get initial location
         await _updateLocation();
         
         // Start listening to location updates
         _startLocationUpdates();
+      } else {
+        print('📍 Location permission denied or restricted');
       }
+    } else {
+      print('📍 Location capture disabled by user');
     }
     
     // Start listening to accelerometer
@@ -85,8 +94,10 @@ class MetadataService {
     
     // Ensure we have recent location data if enabled
     if (_captureLocationEnabled && _shouldUpdateLocation()) {
+      print('📍 Updating location before capture...');
       await _updateLocation();
     }
+    print('📍 Current location: lat=${_lastPosition?.latitude}, lon=${_lastPosition?.longitude}, enabled=$_captureLocationEnabled');
     
     // Get device info
     final deviceInfo = await _getDeviceInfo();
@@ -163,9 +174,11 @@ class MetadataService {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
+        print('📍 Location services disabled on device');
         return;
       }
       
+      print('📍 Getting current position...');
       _lastPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -173,7 +186,9 @@ class MetadataService {
         ),
       );
       _lastLocationUpdate = DateTime.now();
+      print('📍 Got position: lat=${_lastPosition?.latitude}, lon=${_lastPosition?.longitude}');
     } catch (e) {
+      print('📍 Error getting location: $e');
       // Silently fail if location cannot be obtained
     }
   }

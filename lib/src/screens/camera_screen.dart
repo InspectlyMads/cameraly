@@ -26,6 +26,7 @@ class CameraScreen extends ConsumerStatefulWidget {
   final bool showGalleryButton;
   final bool showCheckButton;
   final bool captureLocationMetadata;
+  final bool autoSaveToGallery;
   
   /// Custom widgets configuration
   final CameraCustomWidgets? customWidgets;
@@ -48,6 +49,7 @@ class CameraScreen extends ConsumerStatefulWidget {
     this.showGalleryButton = true,
     this.showCheckButton = true,
     this.captureLocationMetadata = true,
+    this.autoSaveToGallery = false,
     this.customWidgets,
     this.videoDurationLimit,
     this.settings,
