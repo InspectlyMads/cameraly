@@ -30,9 +30,16 @@ class MetadataService {
   
   // Track if location capture is enabled
   bool _captureLocationEnabled = false;
+  bool _isInitialized = false;
   
   /// Initialize the metadata service
   Future<void> initialize({bool captureLocation = true}) async {
+    // Prevent re-initialization
+    if (_isInitialized) {
+      print('📍 MetadataService already initialized, skipping');
+      return;
+    }
+    
     _captureLocationEnabled = captureLocation;
     print('📍 MetadataService.initialize: captureLocation=$captureLocation');
     
@@ -63,6 +70,8 @@ class MetadataService {
       print('📍 Location capture disabled by user');
     }
     
+    _isInitialized = true;
+    
     // Start listening to accelerometer
     _startAccelerometerUpdates();
     
@@ -74,6 +83,7 @@ class MetadataService {
   void dispose() {
     _positionSubscription?.cancel();
     _accelerometerSubscription?.cancel();
+    _isInitialized = false;
   }
   
   /// Capture current metadata for a photo

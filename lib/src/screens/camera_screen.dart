@@ -81,6 +81,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
+  
+  // Orientation handling
+  DateTime? _lastOrientationChange;
+  static const _orientationDebounceMs = 1000; // Debounce orientation changes
 
   @override
   void initState() {
@@ -160,6 +164,19 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   void didChangeMetrics() {
     super.didChangeMetrics();
     
+    // Only handle orientation changes on Android
+    // iOS handles orientation differently and doesn't need this workaround
+    if (Theme.of(context).platform != TargetPlatform.android) {
+      return;
+    }
+    
+    // Debounce orientation changes to prevent rapid reinitialization
+    final now = DateTime.now();
+    if (_lastOrientationChange != null &&
+        now.difference(_lastOrientationChange!).inMilliseconds < _orientationDebounceMs) {
+      return;
+    }
+    
     // Handle orientation changes by reinitializing camera
     // This fixes "BufferQueue has been abandoned" errors on Android
     if (!mounted) return;
@@ -173,6 +190,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         
         // Only reinitialize if camera is currently initialized and not recording
         if (cameraState.isInitialized && !cameraState.isRecording && !cameraState.isLoading) {
+          // Update last orientation change time
+          _lastOrientationChange = DateTime.now();
+          
           debugPrint('🔄 Orientation changed - reinitializing camera to prevent buffer errors');
           
           // Pause and resume camera to force reinitialization
@@ -189,6 +209,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Future<void> _initializeWithMode() async {
+    // Prevent multiple initializations
+    final cameraState = ref.read(cameraControllerProvider);
+    if (cameraState.isLoading) {
+      debugPrint('⚠️ CameraScreen: Already initializing, skipping duplicate call');
+      return;
+    }
+    
     setState(() {
       _hasInitializationFailed = false;
     });
@@ -206,8 +233,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     );
 
     // Check if initialization failed due to permissions
-    final cameraState = ref.read(cameraControllerProvider);
-    if (cameraState.errorMessage != null && cameraState.errorMessage!.contains('permissions')) {
+    final updatedCameraState = ref.read(cameraControllerProvider);
+    if (updatedCameraState.errorMessage != null && updatedCameraState.errorMessage!.contains('permissions')) {
       setState(() {
         _hasInitializationFailed = true;
       });
