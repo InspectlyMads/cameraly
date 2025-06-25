@@ -30,6 +30,7 @@ class CameraState {
   final double currentZoom;
   final double minZoom;
   final double maxZoom;
+  final bool isTransitioning;
 
   const CameraState({
     this.controller,
@@ -46,6 +47,7 @@ class CameraState {
     this.currentZoom = 1.0,
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
+    this.isTransitioning = false,
   });
 
   CameraState copyWith({
@@ -63,6 +65,7 @@ class CameraState {
     double? currentZoom,
     double? minZoom,
     double? maxZoom,
+    bool? isTransitioning,
   }) {
     return CameraState(
       controller: controller ?? this.controller,
@@ -79,6 +82,7 @@ class CameraState {
       currentZoom: currentZoom ?? this.currentZoom,
       minZoom: minZoom ?? this.minZoom,
       maxZoom: maxZoom ?? this.maxZoom,
+      isTransitioning: isTransitioning ?? this.isTransitioning,
     );
   }
 
@@ -99,7 +103,8 @@ class CameraState {
         other.showGrid == showGrid &&
         other.currentZoom == currentZoom &&
         other.minZoom == minZoom &&
-        other.maxZoom == maxZoom;
+        other.maxZoom == maxZoom &&
+        other.isTransitioning == isTransitioning;
   }
 
   @override
@@ -119,6 +124,7 @@ class CameraState {
       currentZoom,
       minZoom,
       maxZoom,
+      isTransitioning,
     );
   }
 }

@@ -422,7 +422,9 @@ class CameraController extends _$CameraController {
       final controllerMinZoom = await controller.getMinZoomLevel();
       final controllerMaxZoom = await controller.getMaxZoomLevel();
       
-
+      debugPrint('📷 Camera zoom capabilities:');
+      debugPrint('  Controller min zoom: $controllerMinZoom');
+      debugPrint('  Controller max zoom: $controllerMaxZoom');
       
       // Get device-specific zoom capabilities
       final deviceCapabilities = await ZoomHelper.getDeviceZoomCapabilities();
@@ -433,6 +435,10 @@ class CameraController extends _$CameraController {
       final cameras = state.availableCameras;
       final cameraInfo = CameraInfoService.analyzeCameras(cameras);
       
+      debugPrint('  Detected cameras: ${cameras.length}');
+      debugPrint('  Has ultra-wide: ${cameraInfo.hasUltraWide}');
+      debugPrint('  Has telephoto: ${cameraInfo.hasTelephoto}');
+      
 
 
 
@@ -442,10 +448,10 @@ class CameraController extends _$CameraController {
       double effectiveMinZoom = controllerMinZoom;
       double effectiveMaxZoom = controllerMaxZoom;
       
-      // If we detected ultra-wide camera but controller reports min >= 1.0,
-      // we'll show 0.5x button but it will just use 1.0x
-      if (cameraInfo.hasUltraWide && controllerMinZoom >= 1.0) {
-        effectiveMinZoom = 0.5;
+      // Only show 0.5x button if the controller actually supports zoom < 1.0
+      // Don't show it if controller min zoom is 1.0 or higher
+      if (cameraInfo.hasUltraWide && controllerMinZoom < 1.0) {
+        effectiveMinZoom = controllerMinZoom;
 
       }
       
@@ -463,7 +469,8 @@ class CameraController extends _$CameraController {
 
       }
       
-
+      
+      debugPrint('  Effective zoom range: ${effectiveMinZoom}x - ${effectiveMaxZoom}x');
       
       state = state.copyWith(
         minZoom: effectiveMinZoom,
@@ -597,14 +604,19 @@ class CameraController extends _$CameraController {
 
   /// Private method to reinitialize camera (e.g., for mode changes)
   Future<void> _reinitializeCamera() async {
-    if (state.controller != null) {
-      await ref.read(cameraServiceProvider).disposeCamera(state.controller);
-    }
-
+    // Store the controller reference before nulling it
+    final oldController = state.controller;
+    
+    // Immediately null the controller to prevent UI from using it
     state = state.copyWith(
       controller: null,
       isInitialized: false,
     );
+    
+    // Now dispose the old controller
+    if (oldController != null) {
+      await ref.read(cameraServiceProvider).disposeCamera(oldController);
+    }
 
     await _initializeCamera();
   }
@@ -693,6 +705,9 @@ class CameraController extends _$CameraController {
   Future<void> updateCameraOrientation() async {
     if (state.controller == null || !state.isInitialized) return;
     
+    // Set transitioning state immediately
+    state = state.copyWith(isTransitioning: true);
+    
     try {
       // For Android, we need to handle the surface recreation during orientation changes
       // Save current camera state before reinitializing
@@ -714,14 +729,17 @@ class CameraController extends _$CameraController {
         await setZoomLevel(currentZoom);
       }
       
-      // Restore flash modes
+      // Restore flash modes and clear transition state
       state = state.copyWith(
         photoFlashMode: photoFlashMode,
         videoFlashMode: videoFlashMode,
+        isTransitioning: false,
       );
       
     } catch (e) {
       debugPrint('Error updating camera orientation: $e');
+      // Clear transition state on error
+      state = state.copyWith(isTransitioning: false);
     }
   }
   

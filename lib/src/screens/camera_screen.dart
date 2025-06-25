@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -84,6 +86,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   // Orientation handling
   DateTime? _lastOrientationChange;
   Timer? _orientationDebounceTimer;
+  
+  // Track if camera has been initialized at least once
+  bool _hasBeenInitializedOnce = false;
+  
+  // For capturing last frame during transitions
+  final GlobalKey _cameraPreviewKey = GlobalKey();
+  ui.Image? _lastCameraFrame;
 
   @override
   void initState() {
@@ -104,6 +113,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _photoTimer?.cancel();
     _orientationDebounceTimer?.cancel();
     
+    // Dispose captured frame
+    _lastCameraFrame?.dispose();
+    
     // Remove observer before accessing ref
     WidgetsBinding.instance.removeObserver(this);
     
@@ -119,6 +131,26 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     }
     
     super.dispose();
+  }
+  
+  Future<void> _captureLastFrame() async {
+    try {
+      final RenderRepaintBoundary? boundary = 
+          _cameraPreviewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      
+      if (boundary != null) {
+        final ui.Image image = await boundary.toImage(pixelRatio: 1.0);
+        
+        // Dispose old image if exists
+        _lastCameraFrame?.dispose();
+        
+        setState(() {
+          _lastCameraFrame = image;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to capture last frame: $e');
+    }
   }
 
   @override
@@ -178,10 +210,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         final cameraState = ref.read(cameraControllerProvider);
         final cameraController = ref.read(cameraControllerProvider.notifier);
         
-        // Only handle if camera is initialized and not recording
+        // Only handle if camera is initialized and not recording or transitioning
         if (cameraState.isInitialized && 
             !cameraState.isRecording && 
             !cameraState.isLoading &&
+            !cameraState.isTransitioning &&
             cameraState.controller != null) {
           
           // Check if enough time has passed since last orientation change
@@ -196,6 +229,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           // For Android, we need to handle surface changes during orientation
           if (Theme.of(context).platform == TargetPlatform.android) {
             debugPrint('🔄 Handling orientation change for Android');
+            
+            // Capture current frame before transition
+            await _captureLastFrame();
+            
             // This will reinitialize the camera to handle surface recreation
             await cameraController.updateCameraOrientation();
           }
@@ -356,8 +393,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final errorMessage = ref.watch(cameraControllerProvider.select((state) => state.errorMessage));
     final isInitialized = ref.watch(cameraControllerProvider.select((state) => state.isInitialized));
     final hasController = ref.watch(cameraControllerProvider.select((state) => state.controller != null));
+    final isTransitioning = ref.watch(cameraControllerProvider.select((state) => state.isTransitioning));
 
-    if (isLoading) {
+    // Update our initialization tracking
+    if (isInitialized && hasController && !_hasBeenInitializedOnce) {
+      _hasBeenInitializedOnce = true;
+    }
+
+    if (isLoading && !_hasBeenInitializedOnce) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -365,7 +408,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return _buildErrorState(errorMessage);
     }
 
-    if (!isInitialized || !hasController) {
+    // During orientation transitions, keep showing the camera UI
+    // Only show initialization screen on first load
+    if (!_hasBeenInitializedOnce && (!isInitialized || !hasController)) {
       return _buildPermissionOrInitializationState();
     }
 
@@ -411,8 +456,40 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               },
               child: Stack(
                 children: [
-                  // Camera preview (standard approach)
-                  _buildCameraPreview(cameraState.controller!),
+                  // Camera preview - safely handle controller state
+                  Builder(
+                    builder: (context) {
+                      // During transitions after initial load, show last frame
+                      if (isTransitioning && _hasBeenInitializedOnce && _lastCameraFrame != null) {
+                        return _buildLastFramePreview();
+                      }
+                      
+                      // Show camera preview if controller is available
+                      if (cameraState.controller != null) {
+                        return _buildCameraPreview(cameraState.controller!);
+                      }
+                      
+                      // Default to last frame if available, otherwise black
+                      if (_lastCameraFrame != null && _hasBeenInitializedOnce) {
+                        return _buildLastFramePreview();
+                      }
+                      
+                      return Container(color: Colors.black);
+                    },
+                  ),
+                  
+                  // Show subtle loading indicator during transitions
+                  if (isTransitioning && _hasBeenInitializedOnce)
+                    const Center(
+                      child: SizedBox(
+                        width: 50,
+                        height: 50,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+                        ),
+                      ),
+                    ),
 
                   // Grid overlay
                   if (cameraState.showGrid)
@@ -566,6 +643,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildCameraPreview(camera.CameraController controller) {
+    // Check if controller is properly initialized
+    if (!controller.value.isInitialized) {
+      return Container(color: Colors.black);
+    }
+    
     final orientation = MediaQuery.of(context).orientation;
     final cameraAspectRatio = controller.value.aspectRatio;
     final cameraState = ref.read(cameraControllerProvider);
@@ -599,7 +681,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     Widget preview = Center(
       child: AspectRatio(
         aspectRatio: adjustedAspectRatio,
-        child: camera.CameraPreview(controller),
+        child: RepaintBoundary(
+          key: _cameraPreviewKey,
+          child: camera.CameraPreview(controller),
+        ),
       ),
     );
 
@@ -615,6 +700,19 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     }
 
     return preview;
+  }
+  
+  Widget _buildLastFramePreview() {
+    if (_lastCameraFrame == null) {
+      return Container(color: Colors.black);
+    }
+    
+    return Center(
+      child: RawImage(
+        image: _lastCameraFrame,
+        fit: BoxFit.cover,
+      ),
+    );
   }
 
   Widget _buildTopControls(Orientation orientation) {
