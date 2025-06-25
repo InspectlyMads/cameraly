@@ -639,19 +639,38 @@ class CameraController extends _$CameraController {
   /// Pause camera (for app lifecycle management)
   Future<void> pauseCamera() async {
     if (state.controller != null && state.isInitialized) {
-      // Stop any ongoing recording
-      if (state.isRecording) {
-        await stopVideoRecording();
+      try {
+        // Stop any ongoing recording
+        if (state.isRecording) {
+          await stopVideoRecording();
+        }
+        
+        // Pause the preview instead of disposing the camera
+        // This maintains the camera connection while saving resources
+        if (!state.controller!.value.isPreviewPaused) {
+          await state.controller!.pausePreview();
+        }
+      } catch (e) {
+        debugPrint('Error pausing camera preview: $e');
       }
-      
-      // Dispose the camera controller to free resources
-      await _disposeCamera();
     }
   }
 
   /// Resume camera (for app lifecycle management)
   Future<void> resumeCamera() async {
-    if (!state.isInitialized) {
+    if (state.controller != null && state.isInitialized) {
+      try {
+        // Resume the preview if it was paused
+        if (state.controller!.value.isPreviewPaused) {
+          await state.controller!.resumePreview();
+        }
+      } catch (e) {
+        debugPrint('Error resuming camera preview: $e');
+        // If resume fails, try reinitializing as fallback
+        await _initializeCamera();
+      }
+    } else if (!state.isInitialized) {
+      // Initialize camera if not already initialized
       await _initializeCamera();
     }
   }
@@ -667,6 +686,43 @@ class CameraController extends _$CameraController {
     
     // Try to reinitialize
     await _reinitializeCamera();
+  }
+  
+  /// Update camera orientation without full reinitialization
+  /// Used for handling orientation changes on Android
+  Future<void> updateCameraOrientation() async {
+    if (state.controller == null || !state.isInitialized) return;
+    
+    try {
+      // For Android, we need to handle the surface recreation during orientation changes
+      // Save current camera state before reinitializing
+      final currentZoom = state.currentZoom;
+      final photoFlashMode = state.photoFlashMode;
+      final videoFlashMode = state.videoFlashMode;
+      
+      // Stop any ongoing recording
+      if (state.isRecording) {
+        await stopVideoRecording();
+      }
+      
+      // Reinitialize the camera to handle surface changes
+      // This is necessary because the surface has been destroyed during orientation change
+      await _reinitializeCamera();
+      
+      // Restore zoom level after reinitialization
+      if (state.controller != null && currentZoom > 1.0) {
+        await setZoomLevel(currentZoom);
+      }
+      
+      // Restore flash modes
+      state = state.copyWith(
+        photoFlashMode: photoFlashMode,
+        videoFlashMode: videoFlashMode,
+      );
+      
+    } catch (e) {
+      debugPrint('Error updating camera orientation: $e');
+    }
   }
   
   /// Check camera health periodically

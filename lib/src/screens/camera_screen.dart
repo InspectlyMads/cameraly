@@ -17,7 +17,6 @@ import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
 import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
 import '../widgets/focus_indicator.dart';
-import '../widgets/countdown_widget.dart';
 import '../localization/cameraly_localizations.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
@@ -84,7 +83,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   
   // Orientation handling
   DateTime? _lastOrientationChange;
-  static const _orientationDebounceMs = 1000; // Debounce orientation changes
+  Timer? _orientationDebounceTimer;
 
   @override
   void initState() {
@@ -103,6 +102,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _videoDurationTimer?.cancel();
     _videoCountdownTimer?.cancel();
     _photoTimer?.cancel();
+    _orientationDebounceTimer?.cancel();
     
     // Remove observer before accessing ref
     WidgetsBinding.instance.removeObserver(this);
@@ -164,42 +164,40 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   void didChangeMetrics() {
     super.didChangeMetrics();
     
-    // Only handle orientation changes on Android
-    // iOS handles orientation differently and doesn't need this workaround
-    if (Theme.of(context).platform != TargetPlatform.android) {
-      return;
-    }
-    
-    // Debounce orientation changes to prevent rapid reinitialization
-    final now = DateTime.now();
-    if (_lastOrientationChange != null &&
-        now.difference(_lastOrientationChange!).inMilliseconds < _orientationDebounceMs) {
-      return;
-    }
-    
-    // Handle orientation changes by reinitializing camera
-    // This fixes "BufferQueue has been abandoned" errors on Android
+    // Handle orientation changes to fix camera surface issues
     if (!mounted) return;
     
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    // Cancel any pending orientation change
+    _orientationDebounceTimer?.cancel();
+    
+    // Debounce orientation changes to prevent multiple reinitializations
+    _orientationDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
       if (!mounted) return;
       
       try {
         final cameraState = ref.read(cameraControllerProvider);
         final cameraController = ref.read(cameraControllerProvider.notifier);
         
-        // Only reinitialize if camera is currently initialized and not recording
-        if (cameraState.isInitialized && !cameraState.isRecording && !cameraState.isLoading) {
-          // Update last orientation change time
-          _lastOrientationChange = DateTime.now();
+        // Only handle if camera is initialized and not recording
+        if (cameraState.isInitialized && 
+            !cameraState.isRecording && 
+            !cameraState.isLoading &&
+            cameraState.controller != null) {
           
-          debugPrint('🔄 Orientation changed - reinitializing camera to prevent buffer errors');
+          // Check if enough time has passed since last orientation change
+          final now = DateTime.now();
+          if (_lastOrientationChange != null &&
+              now.difference(_lastOrientationChange!).inMilliseconds < 1000) {
+            return;
+          }
           
-          // Pause and resume camera to force reinitialization
-          await cameraController.pauseCamera();
-          await Future.delayed(const Duration(milliseconds: 300)); // Small delay for stability
-          if (mounted) {
-            await cameraController.resumeCamera();
+          _lastOrientationChange = now;
+          
+          // For Android, we need to handle surface changes during orientation
+          if (Theme.of(context).platform == TargetPlatform.android) {
+            debugPrint('🔄 Handling orientation change for Android');
+            // This will reinitialize the camera to handle surface recreation
+            await cameraController.updateCameraOrientation();
           }
         }
       } catch (e) {
@@ -211,8 +209,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Future<void> _initializeWithMode() async {
     // Prevent multiple initializations
     final cameraState = ref.read(cameraControllerProvider);
-    if (cameraState.isLoading) {
-      debugPrint('⚠️ CameraScreen: Already initializing, skipping duplicate call');
+    if (cameraState.isLoading || cameraState.isInitialized) {
+      debugPrint('⚠️ CameraScreen: Already ${cameraState.isLoading ? "initializing" : "initialized"}, skipping duplicate call');
       return;
     }
     
