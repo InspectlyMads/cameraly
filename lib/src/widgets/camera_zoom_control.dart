@@ -386,21 +386,18 @@ class CameraZoomControlState extends State<CameraZoomControl>
           Positioned(
             left: 0,
             top: 0,
-            child: RotatedBox(
-              quarterTurns: 1,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${widget.currentZoom.toStringAsFixed(1)}x',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${widget.currentZoom.toStringAsFixed(1)}x',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
