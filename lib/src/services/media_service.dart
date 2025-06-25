@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:collection';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
@@ -11,6 +13,81 @@ import 'package:native_exif/native_exif.dart';
 import '../models/media_item.dart';
 import '../models/orientation_data.dart';
 import '../models/photo_metadata.dart';
+
+/// Task for queued EXIF writing
+class ExifWriteTask {
+  final String filePath;
+  final PhotoMetadata metadata;
+  final DateTime queuedAt;
+  
+  ExifWriteTask({
+    required this.filePath,
+    required this.metadata,
+  }) : queuedAt = DateTime.now();
+}
+
+/// Background EXIF write queue that processes metadata writes asynchronously
+class ExifWriteQueue {
+  static final Queue<ExifWriteTask> _queue = Queue<ExifWriteTask>();
+  static bool _isProcessing = false;
+  static Timer? _processTimer;
+  
+  /// Add a task to the queue
+  static void addTask(String filePath, PhotoMetadata metadata) {
+    _queue.add(ExifWriteTask(
+      filePath: filePath,
+      metadata: metadata,
+    ));
+    
+    // Start processing if not already running
+    if (!_isProcessing) {
+      _startProcessing();
+    }
+  }
+  
+  /// Start processing the queue
+  static void _startProcessing() {
+    if (_isProcessing) return;
+    
+    _isProcessing = true;
+    _processTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      _processNextTask();
+    });
+  }
+  
+  /// Process the next task in the queue
+  static Future<void> _processNextTask() async {
+    if (_queue.isEmpty) {
+      _processTimer?.cancel();
+      _isProcessing = false;
+      return;
+    }
+    
+    final task = _queue.removeFirst();
+    
+    try {
+      // Check if file still exists (might have been deleted)
+      final file = File(task.filePath);
+      if (await file.exists()) {
+        await MediaService._writeExifMetadataStatic(task.filePath, task.metadata);
+        debugPrint('✅ Background EXIF write completed for ${task.filePath}');
+      }
+    } catch (e) {
+      debugPrint('❌ Background EXIF write failed: $e');
+      // Don't re-queue failed tasks to avoid infinite loops
+    }
+  }
+  
+  /// Get queue size for debugging
+  static int get queueSize => _queue.length;
+  
+  /// Clear the queue (useful for cleanup)
+  static void clear() {
+    _queue.clear();
+    _processTimer?.cancel();
+    _isProcessing = false;
+  }
+}
 
 class GalleryState {
   final List<MediaItem> mediaItems;
@@ -57,8 +134,6 @@ class GalleryState {
 }
 
 class MediaService {
-  static const String _logTag = 'MediaService';
-  
   // Custom save path can be set by the app
   static String? _customSavePath;
   
@@ -130,15 +205,10 @@ class MediaService {
       final file = File(filePath);
       await file.writeAsBytes(imageData);
 
-      // Write EXIF metadata if provided
+      // Queue EXIF metadata writing for background processing
       if (metadata != null) {
-        try {
-          debugPrint('📍 Attempting to write EXIF metadata...');
-          await _writeExifMetadata(filePath, metadata);
-        } catch (e) {
-          debugPrint('❌ Failed to write EXIF metadata: $e');
-          // Continue even if EXIF writing fails
-        }
+        debugPrint('📍 Queuing EXIF metadata for background writing...');
+        ExifWriteQueue.addTask(filePath, metadata);
       } else {
         debugPrint('⚠️ No metadata provided to savePhoto');
       }
@@ -304,7 +374,7 @@ class MediaService {
   }
 
   /// Write EXIF metadata to image file
-  Future<void> _writeExifMetadata(String imagePath, PhotoMetadata metadata) async {
+  static Future<void> _writeExifMetadataStatic(String imagePath, PhotoMetadata metadata) async {
     debugPrint('📍 Writing EXIF metadata to $imagePath');
     debugPrint('📍 GPS data: lat=${metadata.latitude}, lon=${metadata.longitude}');
     
@@ -356,7 +426,7 @@ class MediaService {
   }
   
   /// Fallback method using image package for non-GPS EXIF data
-  Future<void> _writeExifWithImagePackage(String imagePath, PhotoMetadata metadata) async {
+  static Future<void> _writeExifWithImagePackage(String imagePath, PhotoMetadata metadata) async {
     debugPrint('📍 Fallback: Writing non-GPS EXIF metadata with image package');
     
     final file = File(imagePath);
@@ -407,7 +477,7 @@ class MediaService {
         final speedKmh = metadata.speed! * 3.6;
         image.exif.gpsIfd['GPSSpeed'] = [(speedKmh * 100).toInt(), 100];
         image.exif.gpsIfd['GPSSpeedRef'] = 'K'; // K for km/h
-        debugPrint('📍 Speed: ${metadata.speed} m/s (${speedKmh} km/h)');
+        debugPrint('📍 Speed: ${metadata.speed} m/s ($speedKmh km/h)');
       }
       
       // Set GPS timestamp
@@ -461,7 +531,7 @@ class MediaService {
   }
   
   /// Convert decimal degrees to GPS rationals
-  List<List<int>> _convertToGPSRationals(double decimal) {
+  static List<List<int>> _convertToGPSRationals(double decimal) {
     final absDecimal = decimal.abs();
     final degrees = absDecimal.floor();
     final minutes = ((absDecimal - degrees) * 60).floor();

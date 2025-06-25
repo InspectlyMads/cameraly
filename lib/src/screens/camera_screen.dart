@@ -1160,6 +1160,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       }
 
       final imageFile = await cameraController.takePicture();
+      
+      // Reset capture flag immediately after camera has taken the photo
+      // This allows for faster consecutive captures
+      if (mounted) {
+        setState(() {
+          _isCapturing = false;
+        });
+      }
 
       if (imageFile != null && mounted) {
         // Photo saved successfully
@@ -1169,15 +1177,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           capturedAt: DateTime.now(),
         );
         widget.onMediaCaptured?.call(mediaItem);
-        
-        // Add a small delay before allowing next capture
-        await Future.delayed(const Duration(milliseconds: 500));
       }
     } catch (e) {
       // Error is logged in the camera provider, no need for UI notification
       widget.onError?.call(cameralyL10n.errorCaptureFailed);
-    } finally {
-      // Always reset the capturing flag
+      // Reset capture flag on error
       if (mounted) {
         setState(() {
           _isCapturing = false;
