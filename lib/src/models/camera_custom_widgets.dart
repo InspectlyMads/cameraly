@@ -27,6 +27,9 @@ class CameraCustomWidgets {
   
   /// Custom widget for grid toggle button
   final Widget? gridToggle;
+  
+  /// Custom widget for back button
+  final Widget? backButton;
 
   const CameraCustomWidgets({
     this.galleryButton,
@@ -37,6 +40,7 @@ class CameraCustomWidgets {
     this.flashControl,
     this.cameraSwitcher,
     this.gridToggle,
+    this.backButton,
   });
   
   /// Create a copy with updated values
@@ -49,6 +53,7 @@ class CameraCustomWidgets {
     Widget? flashControl,
     Widget? cameraSwitcher,
     Widget? gridToggle,
+    Widget? backButton,
   }) {
     return CameraCustomWidgets(
       galleryButton: galleryButton ?? this.galleryButton,
@@ -59,6 +64,7 @@ class CameraCustomWidgets {
       flashControl: flashControl ?? this.flashControl,
       cameraSwitcher: cameraSwitcher ?? this.cameraSwitcher,
       gridToggle: gridToggle ?? this.gridToggle,
+      backButton: backButton ?? this.backButton,
     );
   }
 }
@@ -91,6 +97,9 @@ class CameraCustomWidgetBuilders {
   
   /// Builder for grid toggle
   final CameraWidgetBuilder? gridToggleBuilder;
+  
+  /// Builder for back button
+  final CameraWidgetBuilder? backButtonBuilder;
 
   const CameraCustomWidgetBuilders({
     this.galleryButtonBuilder,
@@ -101,5 +110,6 @@ class CameraCustomWidgetBuilders {
     this.flashControlBuilder,
     this.cameraSwitcherBuilder,
     this.gridToggleBuilder,
+    this.backButtonBuilder,
   });
 }

@@ -631,14 +631,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Back button
-            CircleAvatar(
-              backgroundColor: Colors.black54,
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => _handleBackPress(),
+            // Back button - use custom if provided
+            widget.customWidgets?.backButton ??
+              CircleAvatar(
+                backgroundColor: Colors.black54,
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => _handleBackPress(),
+                ),
               ),
-            ),
             // Torch control only in portrait mode (landscape has it on the left side)
             if (orientation == Orientation.portrait || cameraState.mode != CameraMode.video)
               _buildFlashControl()
@@ -657,14 +658,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Back button
-          CircleAvatar(
-            backgroundColor: Colors.black54,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
+          // Back button - use custom if provided
+          widget.customWidgets?.backButton ??
+            CircleAvatar(
+              backgroundColor: Colors.black54,
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
             ),
-          ),
 
           // Right side controls - only show in portrait mode
           if (OrientationUIHelper.isPortrait(orientation)) _buildRightControlsColumn(),
@@ -731,14 +733,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return widget.customWidgets!.flashControl!;
     }
 
-    return CircleAvatar(
-      backgroundColor: Colors.black54,
-      radius: 24,
-      child: IconButton(
-        icon: Icon(flashIcon, color: Colors.white),
-        onPressed: () {
-          ref.read(cameraControllerProvider.notifier).cycleFlashMode();
-        },
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: CircleAvatar(
+        backgroundColor: Colors.transparent,
+        radius: 24,
+        child: IconButton(
+          icon: Icon(flashIcon, color: Colors.white),
+          onPressed: () {
+            ref.read(cameraControllerProvider.notifier).cycleFlashMode();
+          },
+        ),
       ),
     );
   }
@@ -755,14 +767,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return widget.customWidgets!.cameraSwitcher!;
     }
 
-    return CircleAvatar(
-      backgroundColor: Colors.black54,
-      radius: 24,
-      child: IconButton(
-        icon: const Icon(Icons.cameraswitch, color: Colors.white),
-        onPressed: () {
-          ref.read(cameraControllerProvider.notifier).switchCamera();
-        },
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: CircleAvatar(
+        backgroundColor: Colors.transparent,
+        radius: 24,
+        child: IconButton(
+          icon: const Icon(Icons.cameraswitch, color: Colors.white),
+          onPressed: () {
+            ref.read(cameraControllerProvider.notifier).switchCamera();
+          },
+        ),
       ),
     );
   }
@@ -775,17 +797,27 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return widget.customWidgets!.gridToggle!;
     }
 
-    return CircleAvatar(
-      backgroundColor: Colors.black54,
-      radius: 24,
-      child: IconButton(
-        icon: Icon(
-          showGrid ? Icons.grid_on : Icons.grid_off,
-          color: Colors.white,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1.5,
         ),
-        onPressed: () {
-          ref.read(cameraControllerProvider.notifier).toggleGrid();
-        },
+      ),
+      child: CircleAvatar(
+        backgroundColor: Colors.transparent,
+        radius: 24,
+        child: IconButton(
+          icon: Icon(
+            showGrid ? Icons.grid_on : Icons.grid_off,
+            color: Colors.white,
+          ),
+          onPressed: () {
+            ref.read(cameraControllerProvider.notifier).toggleGrid();
+          },
+        ),
       ),
     );
   }
@@ -1518,15 +1550,26 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return const SizedBox(width: 60);
     }
     
-    return FloatingActionButton(
-      backgroundColor: Colors.black54,
-      onPressed: () {
-        widget.onGalleryPressed?.call();
-      },
-      child: const Icon(
-        Icons.photo_library,
-        color: Colors.white,
-        size: 24,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: FloatingActionButton(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        onPressed: () {
+          widget.onGalleryPressed?.call();
+        },
+        child: const Icon(
+          Icons.photo_library,
+          color: Colors.white,
+          size: 24,
+        ),
       ),
     );
   }
