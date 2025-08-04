@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'dart:collection';
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
@@ -25,6 +27,14 @@ class ExifWriteTask {
     required this.filePath,
     required this.metadata,
   }) : queuedAt = DateTime.now();
+}
+
+/// Data class for isolate communication
+class _IsolateData {
+  final RootIsolateToken rootIsolateToken;
+  final ExifWriteTask task;
+  
+  _IsolateData({required this.rootIsolateToken, required this.task});
 }
 
 /// Background EXIF write queue that processes metadata writes in an isolate
@@ -74,49 +84,95 @@ class ExifWriteQueue {
         return;
       }
       
-      // Process in isolate to avoid blocking UI
-      await Isolate.run(() async {
-        final tempPath = '${task.filePath}.exif_tmp';
-        
-        try {
-          // Copy original to temp file
-          await File(task.filePath).copy(tempPath);
-          debugPrint('📄 Created temp file for EXIF processing: $tempPath');
+      // Get root isolate token for platform channel access
+      final RootIsolateToken? rootIsolateToken = RootIsolateToken.instance;
+      if (rootIsolateToken == null) {
+        debugPrint('⚠️ No root isolate token, falling back to main thread EXIF processing');
+        await _processTaskOnMainThread(task);
+        return;
+      }
+      
+      // Process in isolate with proper initialization
+      try {
+        await Isolate.run(() async {
+          // Initialize BackgroundIsolateBinaryMessenger for platform channels
+          BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
           
-          // Write EXIF metadata to temp file
-          await _writeExifMetadataInIsolate(tempPath, task.metadata);
+          final tempPath = '${task.filePath}.exif_tmp';
           
-          // Atomically replace original with EXIF-enhanced version
-          // This prevents corruption if app is reading the file
-          final tempFile = File(tempPath);
-          if (await tempFile.exists()) {
-            await tempFile.rename(task.filePath);
-            debugPrint('✅ EXIF metadata written successfully to ${task.filePath}');
-          }
-        } catch (e) {
-          debugPrint('❌ EXIF processing failed: $e');
-          // Clean up temp file if it exists
           try {
+            // Copy original to temp file
+            await File(task.filePath).copy(tempPath);
+            debugPrint('📄 Created temp file for EXIF processing: $tempPath');
+            
+            // Write EXIF metadata to temp file
+            await _writeExifMetadataInIsolate(tempPath, task.metadata);
+            
+            // Atomically replace original with EXIF-enhanced version
             final tempFile = File(tempPath);
             if (await tempFile.exists()) {
-              await tempFile.delete();
+              await tempFile.rename(task.filePath);
+              debugPrint('✅ EXIF metadata written successfully to ${task.filePath}');
             }
-          } catch (_) {}
-          throw e;
-        }
-      });
+          } catch (e) {
+            debugPrint('❌ EXIF processing failed in isolate: $e');
+            // Clean up temp file if it exists
+            try {
+              final tempFile = File(tempPath);
+              if (await tempFile.exists()) {
+                await tempFile.delete();
+              }
+            } catch (_) {}
+            throw e;
+          }
+        });
+      } catch (e) {
+        debugPrint('❌ Isolate execution failed: $e');
+        debugPrint('⚠️ Falling back to main thread EXIF processing');
+        // Fallback to main thread if isolate fails
+        await _processTaskOnMainThread(task);
+      }
     } catch (e) {
       debugPrint('❌ Background EXIF write failed: $e');
       // Don't re-queue failed tasks to avoid infinite loops
     }
   }
   
-  /// Write EXIF metadata (static version for isolate)
-  static Future<void> _writeExifMetadataInIsolate(String imagePath, PhotoMetadata metadata) async {
-    // This is a copy of MediaService._writeExifMetadataStatic
-    // but made static for isolate use
+  
+  /// Process task on main thread (fallback)
+  static Future<void> _processTaskOnMainThread(ExifWriteTask task) async {
+    final tempPath = '${task.filePath}.exif_tmp';
     
-    debugPrint('📍 Writing EXIF metadata to $imagePath');
+    try {
+      // Copy original to temp file
+      await File(task.filePath).copy(tempPath);
+      debugPrint('📄 Created temp file for EXIF processing: $tempPath');
+      
+      // Write EXIF metadata to temp file
+      await MediaService._writeExifMetadataStatic(tempPath, task.metadata);
+      
+      // Atomically replace original with EXIF-enhanced version
+      final tempFile = File(tempPath);
+      if (await tempFile.exists()) {
+        await tempFile.rename(task.filePath);
+        debugPrint('✅ EXIF metadata written successfully to ${task.filePath}');
+      }
+    } catch (e) {
+      debugPrint('❌ EXIF processing failed: $e');
+      // Clean up temp file if it exists
+      try {
+        final tempFile = File(tempPath);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (_) {}
+      rethrow;
+    }
+  }
+  
+  /// Write EXIF metadata in isolate (static for isolate access)
+  static Future<void> _writeExifMetadataInIsolate(String imagePath, PhotoMetadata metadata) async {
+    debugPrint('📍 Writing EXIF metadata to $imagePath in isolate');
     debugPrint('📍 GPS data: lat=${metadata.latitude}, lon=${metadata.longitude}');
     
     try {
@@ -152,10 +208,10 @@ class ExifWriteQueue {
       }
       
       await exif.close();
-      debugPrint('✅ EXIF metadata written successfully');
+      debugPrint('✅ EXIF metadata written successfully in isolate');
       
     } catch (e) {
-      debugPrint('❌ Error writing EXIF: $e');
+      debugPrint('❌ Error writing EXIF in isolate: $e');
       throw e;
     }
   }
