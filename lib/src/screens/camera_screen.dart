@@ -818,7 +818,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return Container(color: Colors.black);
     }
     
-    return Center(
+    // Fill the entire available space with the captured frame
+    return SizedBox.expand(
       child: RawImage(
         image: _lastCameraFrame,
         fit: BoxFit.cover,
