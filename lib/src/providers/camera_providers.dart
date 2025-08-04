@@ -648,71 +648,111 @@ class CameraController extends _$CameraController {
     }
   }
 
+  /// Dispose camera completely (for Android background handling)
+  Future<void> disposeCamera() async {
+    debugPrint('📱 disposeCamera called - disposing camera completely');
+    await _disposeCamera();
+  }
+
   /// Pause camera (for app lifecycle management)
   Future<void> pauseCamera() async {
+    debugPrint('📱 pauseCamera called - controller exists: ${state.controller != null}, initialized: ${state.isInitialized}');
     if (state.controller != null && state.isInitialized) {
       try {
         // Stop any ongoing recording
         if (state.isRecording) {
+          debugPrint('🎥 Stopping recording before pause');
           await stopVideoRecording();
         }
         
         // Pause the preview instead of disposing the camera
         // This maintains the camera connection while saving resources
         if (!state.controller!.value.isPreviewPaused) {
+          debugPrint('⏸️ Pausing camera preview');
           await state.controller!.pausePreview();
+          debugPrint('✅ Camera preview paused successfully');
+        } else {
+          debugPrint('ℹ️ Camera preview already paused');
         }
       } catch (e) {
-        debugPrint('Error pausing camera preview: $e');
+        debugPrint('❌ Error pausing camera preview: $e');
       }
+    } else {
+      debugPrint('⚠️ Cannot pause - camera not initialized');
     }
   }
 
   /// Resume camera (for app lifecycle management)
   Future<void> resumeCamera() async {
+    debugPrint('📱 resumeCamera called - controller exists: ${state.controller != null}, initialized: ${state.isInitialized}, loading: ${state.isLoading}, transitioning: ${state.isTransitioning}');
+    
     // Prevent concurrent operations
     if (state.isLoading || state.isTransitioning) {
-      debugPrint('Camera is already in transition, skipping resume');
+      debugPrint('⚠️ Camera is already in transition, skipping resume');
       return;
     }
     
     if (state.controller != null && state.isInitialized) {
       try {
         // Check if controller is still valid
-        if (!state.controller!.value.isInitialized) {
-          debugPrint('Camera controller not initialized, reinitializing');
+        final isControllerInitialized = state.controller!.value.isInitialized;
+        final isPreviewPaused = state.controller!.value.isPreviewPaused;
+        debugPrint('📷 Controller state - initialized: $isControllerInitialized, preview paused: $isPreviewPaused');
+        
+        if (!isControllerInitialized) {
+          debugPrint('⚠️ Camera controller not initialized, reinitializing');
           await _initializeCamera();
           return;
         }
         
         // Resume the preview if it was paused
-        if (state.controller!.value.isPreviewPaused) {
-          debugPrint('Resuming camera preview');
-          await state.controller!.resumePreview();
+        if (isPreviewPaused) {
+          debugPrint('▶️ Resuming camera preview');
+          // Try to resume with a timeout to prevent hanging
+          try {
+            await state.controller!.resumePreview().timeout(
+              const Duration(seconds: 3),
+              onTimeout: () {
+                throw TimeoutException('Camera resume timed out after 3 seconds');
+              },
+            );
+            debugPrint('✅ Camera preview resumed successfully');
+          } catch (timeoutError) {
+            debugPrint('⏱️ Resume timed out, will reinitialize: $timeoutError');
+            rethrow;
+          }
+        } else {
+          debugPrint('ℹ️ Camera preview already running');
         }
       } catch (e) {
-        debugPrint('Error resuming camera preview: $e');
+        debugPrint('❌ Error resuming camera preview: $e');
+        debugPrint('Stack trace: ${StackTrace.current}');
         
         // Check if it's a timeout error
         if (e.toString().contains('TimeoutException') || e.toString().contains('is not done within')) {
-          debugPrint('Camera timeout detected, waiting before retry');
+          debugPrint('⏱️ Camera timeout detected, waiting before retry');
           // Wait a bit longer before trying to reinitialize
           await Future.delayed(const Duration(seconds: 1));
         }
         
         // If resume fails, try reinitializing as fallback
+        debugPrint('🔄 Attempting camera reinitialization as fallback');
         try {
           await _initializeCamera();
+          debugPrint('✅ Camera reinitialized successfully');
         } catch (reinitError) {
-          debugPrint('Failed to reinitialize camera: $reinitError');
+          debugPrint('❌ Failed to reinitialize camera: $reinitError');
           state = state.copyWith(
             errorMessage: 'Failed to resume camera. Please restart the app.',
           );
         }
       }
     } else if (!state.isInitialized) {
+      debugPrint('📷 Camera not initialized, initializing now');
       // Initialize camera if not already initialized
       await _initializeCamera();
+    } else {
+      debugPrint('⚠️ Unexpected state - controller: ${state.controller}, initialized: ${state.isInitialized}');
     }
   }
   

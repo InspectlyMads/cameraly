@@ -169,20 +169,59 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         case AppLifecycleState.paused:
         case AppLifecycleState.inactive:
           _isInForeground = false;
+          debugPrint('📱 App going to background (state: $state)');
           // Stop recording if in progress
           if (cameraState.isRecording) {
             cameraController.stopVideoRecording();
           }
-          // App is going to background, dispose camera to free resources
-          cameraController.pauseCamera();
+          // On Android, dispose camera completely to avoid timeout issues
+          if (Theme.of(context).platform == TargetPlatform.android) {
+            debugPrint('🔄 Android: Disposing camera completely');
+            cameraController.disposeCamera();
+          } else {
+            // On iOS, pause is usually sufficient
+            debugPrint('🔄 iOS: Pausing camera preview');
+            cameraController.pauseCamera();
+          }
           break;
         case AppLifecycleState.resumed:
           _isInForeground = true;
-          // Add a small delay to let the UI settle before resuming camera
-          Future.delayed(const Duration(milliseconds: 300), () {
+          debugPrint('🔄 App resumed - attempting to resume camera');
+          
+          // On Android, we need longer delay and full reinitialization
+          final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+          final delay = isAndroid ? const Duration(milliseconds: 800) : const Duration(milliseconds: 300);
+          
+          Future.delayed(delay, () async {
             if (mounted) {
-              // App is back in foreground, reinitialize camera
-              cameraController.resumeCamera();
+              debugPrint('🔄 Starting camera resume after delay (Android: $isAndroid)');
+              
+              if (isAndroid) {
+                // On Android, always reinitialize since we disposed the camera
+                debugPrint('🔄 Android: Full camera reinitialization');
+                try {
+                  await _initializeWithMode();
+                  debugPrint('✅ Camera reinitialized successfully');
+                } catch (e) {
+                  debugPrint('❌ Error reinitializing camera: $e');
+                  if (mounted) {
+                    widget.onError?.call('Failed to restart camera. Please try again.');
+                  }
+                }
+              } else {
+                // On iOS, try to resume first
+                try {
+                  await cameraController.resumeCamera();
+                  debugPrint('✅ Camera resumed successfully');
+                } catch (e) {
+                  debugPrint('❌ Error resuming camera: $e');
+                  // Fallback to full initialization
+                  if (mounted) {
+                    debugPrint('🔄 iOS: Falling back to full reinitialization');
+                    await _initializeWithMode();
+                  }
+                }
+              }
             }
           });
           break;
@@ -190,12 +229,19 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           break;
         case AppLifecycleState.hidden:
           _isInForeground = false;
+          debugPrint('📱 App hidden (state: $state)');
           // Stop recording if in progress
           if (cameraState.isRecording) {
             cameraController.stopVideoRecording();
           }
-          // On iOS, hidden state is similar to paused
-          cameraController.pauseCamera();
+          // Use same logic as paused state
+          if (Theme.of(context).platform == TargetPlatform.android) {
+            debugPrint('🔄 Android: Disposing camera completely (hidden)');
+            cameraController.disposeCamera();
+          } else {
+            debugPrint('🔄 iOS: Pausing camera preview (hidden)');
+            cameraController.pauseCamera();
+          }
           break;
       }
     } catch (e) {
