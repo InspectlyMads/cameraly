@@ -270,8 +270,9 @@ class OrientationService {
     
     try {
       // Monitor accelerometer for device orientation
+      // Optimized sampling rate: 150ms reduces CPU usage while maintaining accuracy
       _accelerometerSubscription = accelerometerEventStream(
-        samplingPeriod: const Duration(milliseconds: 100),
+        samplingPeriod: const Duration(milliseconds: 150),
       ).listen(
         (AccelerometerEvent event) {
           _lastAccelerometerEvent = event;
@@ -286,8 +287,9 @@ class OrientationService {
     
     try {
       // Monitor gyroscope for rotation detection
+      // Gyroscope doesn't need frequent updates: 250ms is sufficient for orientation
       _gyroscopeSubscription = gyroscopeEventStream(
-        samplingPeriod: const Duration(milliseconds: 100),
+        samplingPeriod: const Duration(milliseconds: 250),
       ).listen(
         (GyroscopeEvent event) {
           _lastGyroscopeEvent = event;

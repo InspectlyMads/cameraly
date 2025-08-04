@@ -31,6 +31,7 @@ class CameraState {
   final double minZoom;
   final double maxZoom;
   final bool isTransitioning;
+  final bool isPreparing; // Indicates orientation change detected, preparing to transition
 
   const CameraState({
     this.controller,
@@ -48,6 +49,7 @@ class CameraState {
     this.minZoom = 1.0,
     this.maxZoom = 1.0,
     this.isTransitioning = false,
+    this.isPreparing = false,
   });
 
   CameraState copyWith({
@@ -66,6 +68,7 @@ class CameraState {
     double? minZoom,
     double? maxZoom,
     bool? isTransitioning,
+    bool? isPreparing,
   }) {
     return CameraState(
       controller: controller ?? this.controller,
@@ -83,6 +86,7 @@ class CameraState {
       minZoom: minZoom ?? this.minZoom,
       maxZoom: maxZoom ?? this.maxZoom,
       isTransitioning: isTransitioning ?? this.isTransitioning,
+      isPreparing: isPreparing ?? this.isPreparing,
     );
   }
 
@@ -104,7 +108,8 @@ class CameraState {
         other.currentZoom == currentZoom &&
         other.minZoom == minZoom &&
         other.maxZoom == maxZoom &&
-        other.isTransitioning == isTransitioning;
+        other.isTransitioning == isTransitioning &&
+        other.isPreparing == isPreparing;
   }
 
   @override
@@ -125,6 +130,7 @@ class CameraState {
       minZoom,
       maxZoom,
       isTransitioning,
+      isPreparing,
     );
   }
 }
@@ -134,6 +140,9 @@ class CameraService {
   
   final OrientationService _orientationService = OrientationService();
   
+  // Cache for camera descriptions to avoid repeated queries
+  List<camera.CameraDescription>? _cachedCameras;
+  
   /// Initialize the camera service
   Future<void> initialize() async {
     await _orientationService.initialize();
@@ -141,8 +150,14 @@ class CameraService {
 
   /// Initialize available cameras
   Future<List<camera.CameraDescription>> getAvailableCameras() async {
+    // Return cached cameras if available
+    if (_cachedCameras != null) {
+      return _cachedCameras!;
+    }
+    
     try {
       final cameras = await camera.availableCameras();
+      _cachedCameras = cameras; // Cache for future use
 
       for (final cameraDesc in cameras) {
 

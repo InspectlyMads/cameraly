@@ -152,14 +152,22 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           _cameraPreviewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       
       if (boundary != null) {
-        final ui.Image image = await boundary.toImage(pixelRatio: 1.0);
+        // Capture at lower resolution for faster processing
+        // 0.3 pixelRatio = 30% resolution, much faster and sufficient for transition
+        final ui.Image image = await boundary.toImage(pixelRatio: 0.3);
         
         // Dispose old image if exists
         _lastCameraFrame?.dispose();
         
-        setState(() {
-          _lastCameraFrame = image;
-        });
+        // Only update state if still mounted
+        if (mounted) {
+          setState(() {
+            _lastCameraFrame = image;
+          });
+        } else {
+          // Dispose immediately if widget is no longer mounted
+          image.dispose();
+        }
       }
     } catch (e) {
       debugPrint('Failed to capture last frame: $e');
@@ -290,7 +298,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _orientationDebounceTimer?.cancel();
     
     // Debounce orientation changes to prevent multiple reinitializations
-    _orientationDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+    // Reduced from 500ms to 250ms for faster response while still preventing bouncing
+    _orientationDebounceTimer = Timer(const Duration(milliseconds: 250), () async {
       if (!mounted || !_isInForeground) return;
       
       try {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
@@ -615,9 +616,14 @@ class CameraController extends _$CameraController {
       isInitialized: false,
     );
     
-    // Now dispose the old controller
+    // Now dispose the old controller - must complete before initializing new one
     if (oldController != null) {
       await ref.read(cameraServiceProvider).disposeCamera(oldController);
+    }
+    
+    // Small delay to ensure Android surface is ready
+    if (Platform.isAndroid) {
+      await Future.delayed(const Duration(milliseconds: 100));
     }
 
     await _initializeCamera();
@@ -813,12 +819,13 @@ class CameraController extends _$CameraController {
         photoFlashMode: photoFlashMode,
         videoFlashMode: videoFlashMode,
         isTransitioning: false,
+        isPreparing: false,
       );
       
     } catch (e) {
       debugPrint('Error updating camera orientation: $e');
       // Clear transition state on error
-      state = state.copyWith(isTransitioning: false);
+      state = state.copyWith(isTransitioning: false, isPreparing: false);
     }
   }
   
@@ -837,6 +844,11 @@ class CameraController extends _$CameraController {
       await handleCameraDisconnection();
       return false;
     }
+  }
+  
+  /// Set preparing state for immediate visual feedback
+  void setPreparing(bool preparing) {
+    state = state.copyWith(isPreparing: preparing);
   }
 }
 
