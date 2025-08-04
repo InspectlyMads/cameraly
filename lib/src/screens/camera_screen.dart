@@ -93,6 +93,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   // Track if app is in foreground to prevent orientation handling during app resume
   bool _isInForeground = true;
   
+  // Track if we're reinitializing camera after Android background
+  bool _isReinitializingAfterBackground = false;
+  
   // For capturing last frame during transitions
   final GlobalKey _cameraPreviewKey = GlobalKey();
   ui.Image? _lastCameraFrame;
@@ -177,6 +180,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           // On Android, dispose camera completely to avoid timeout issues
           if (Theme.of(context).platform == TargetPlatform.android) {
             debugPrint('🔄 Android: Disposing camera completely');
+            setState(() {
+              _isReinitializingAfterBackground = true;
+            });
             cameraController.disposeCamera();
           } else {
             // On iOS, pause is usually sufficient
@@ -202,9 +208,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 try {
                   await _initializeWithMode();
                   debugPrint('✅ Camera reinitialized successfully');
+                  if (mounted) {
+                    setState(() {
+                      _isReinitializingAfterBackground = false;
+                    });
+                  }
                 } catch (e) {
                   debugPrint('❌ Error reinitializing camera: $e');
                   if (mounted) {
+                    setState(() {
+                      _isReinitializingAfterBackground = false;
+                    });
                     widget.onError?.call('Failed to restart camera. Please try again.');
                   }
                 }
@@ -237,6 +251,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           // Use same logic as paused state
           if (Theme.of(context).platform == TargetPlatform.android) {
             debugPrint('🔄 Android: Disposing camera completely (hidden)');
+            setState(() {
+              _isReinitializingAfterBackground = true;
+            });
             cameraController.disposeCamera();
           } else {
             debugPrint('🔄 iOS: Pausing camera preview (hidden)');
@@ -522,13 +539,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   // Camera preview - safely handle controller state
                   Builder(
                     builder: (context) {
-                      // During transitions after initial load, show last frame
-                      if (isTransitioning && _hasBeenInitializedOnce && _lastCameraFrame != null) {
-                        return _buildLastFramePreview();
+                      // During transitions or Android reinitialization, show last frame or loading
+                      if ((isTransitioning || _isReinitializingAfterBackground) && _hasBeenInitializedOnce) {
+                        if (_lastCameraFrame != null) {
+                          return _buildLastFramePreview();
+                        }
+                        return Container(color: Colors.black);
                       }
                       
-                      // Show camera preview if controller is available
-                      if (cameraState.controller != null) {
+                      // Show camera preview if controller is available and initialized
+                      if (cameraState.controller != null && cameraState.isInitialized && !_isReinitializingAfterBackground) {
                         return _buildCameraPreview(cameraState.controller!);
                       }
                       
@@ -541,16 +561,31 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                     },
                   ),
                   
-                  // Show subtle loading indicator during transitions
-                  if (isTransitioning && _hasBeenInitializedOnce)
-                    const Center(
-                      child: SizedBox(
-                        width: 50,
-                        height: 50,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
-                        ),
+                  // Show subtle loading indicator during transitions or Android reinitialization
+                  if ((isTransitioning || _isReinitializingAfterBackground) && _hasBeenInitializedOnce)
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(
+                            width: 50,
+                            height: 50,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+                            ),
+                          ),
+                          if (_isReinitializingAfterBackground) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              'Restarting camera...',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.7),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
 
@@ -706,8 +741,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildCameraPreview(camera.CameraController controller) {
-    // Check if controller is properly initialized
-    if (!controller.value.isInitialized) {
+    // Check if controller is properly initialized and not disposed
+    try {
+      if (!controller.value.isInitialized) {
+        return Container(color: Colors.black);
+      }
+    } catch (e) {
+      // Controller is disposed, return black container
+      debugPrint('⚠️ Camera controller is disposed, showing black screen');
       return Container(color: Colors.black);
     }
     
@@ -741,15 +782,21 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ? 1 / targetAspectRatio
         : targetAspectRatio;
 
-    Widget preview = Center(
-      child: AspectRatio(
-        aspectRatio: adjustedAspectRatio,
-        child: RepaintBoundary(
-          key: _cameraPreviewKey,
-          child: camera.CameraPreview(controller),
+    Widget preview;
+    try {
+      preview = Center(
+        child: AspectRatio(
+          aspectRatio: adjustedAspectRatio,
+          child: RepaintBoundary(
+            key: _cameraPreviewKey,
+            child: camera.CameraPreview(controller),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('⚠️ Error building camera preview: $e');
+      return Container(color: Colors.black);
+    }
 
     // Mirror the preview for front camera on Android only
     // iOS handles this automatically
