@@ -125,15 +125,22 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Remove observer before accessing ref
     WidgetsBinding.instance.removeObserver(this);
     
-    // Stop recording if in progress - check if widget is still mounted
+    // Stop recording if in progress and dispose camera - check if widget is still mounted
     try {
+      final cameraController = ref.read(cameraControllerProvider.notifier);
       final cameraState = ref.read(cameraControllerProvider);
+      
       if (cameraState.isRecording) {
         // Stop recording without saving
-        ref.read(cameraControllerProvider.notifier).stopVideoRecording();
+        cameraController.stopVideoRecording();
       }
+      
+      // Explicitly dispose the camera to prevent ImageReader buffer issues
+      debugPrint('🔄 CameraScreen dispose: disposing camera controller');
+      cameraController.disposeCamera();
     } catch (e) {
       // Widget already disposed, ignore
+      debugPrint('⚠️ Error during camera disposal: $e');
     }
     
     super.dispose();

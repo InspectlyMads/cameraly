@@ -626,12 +626,20 @@ class CameraController extends _$CameraController {
   /// Private method to dispose camera
   Future<void> _disposeCamera() async {
     if (state.controller != null) {
-      await ref.read(cameraServiceProvider).disposeCamera(state.controller);
+      // Store reference and immediately null it in state to prevent further use
+      final controllerToDispose = state.controller;
+      
+      // Clear state first to prevent any operations on disposing controller
       state = state.copyWith(
         controller: null,
         isInitialized: false,
         isRecording: false,
+        isLoading: false,
+        isTransitioning: false,
       );
+      
+      // Now dispose the controller
+      await ref.read(cameraServiceProvider).disposeCamera(controllerToDispose);
     }
   }
   

@@ -308,9 +308,27 @@ class CameraService {
 
   /// Dispose camera controller
   Future<void> disposeCamera(camera.CameraController? controller) async {
-    if (controller != null && controller.value.isInitialized) {
-
-      await controller.dispose();
+    if (controller != null) {
+      try {
+        // Stop any ongoing image stream
+        if (controller.value.isStreamingImages) {
+          await controller.stopImageStream();
+        }
+        
+        // Pause preview if running
+        if (!controller.value.isPreviewPaused) {
+          await controller.pausePreview();
+        }
+        
+        // Dispose the controller
+        if (controller.value.isInitialized) {
+          debugPrint('📷 Disposing camera controller');
+          await controller.dispose();
+          debugPrint('✅ Camera controller disposed successfully');
+        }
+      } catch (e) {
+        debugPrint('❌ Error disposing camera controller: $e');
+      }
     }
   }
 
