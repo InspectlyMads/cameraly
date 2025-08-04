@@ -530,12 +530,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   // Camera preview - safely handle controller state
                   Builder(
                     builder: (context) {
-                      // During transitions or Android reinitialization, show last frame or loading
-                      if ((isTransitioning || _isReinitializingAfterBackground) && _hasBeenInitializedOnce) {
-                        if (_lastCameraFrame != null) {
-                          return _buildLastFramePreview();
-                        }
-                        return Container(color: Colors.black);
+                      // Always prefer last frame during any transition or reinitialization
+                      if (_lastCameraFrame != null && (isTransitioning || _isReinitializingAfterBackground)) {
+                        return _buildLastFramePreview();
                       }
 
                       // Show camera preview if controller is available and initialized
@@ -551,19 +548,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                       return Container(color: Colors.black);
                     },
                   ),
-
-                  // Show subtle loading indicator during transitions or Android reinitialization
-                  if ((isTransitioning || _isReinitializingAfterBackground) && _hasBeenInitializedOnce)
-                    const Center(
-                      child: SizedBox(
-                        width: 50,
-                        height: 50,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
-                        ),
-                      ),
-                    ),
 
                   // Grid overlay
                   if (cameraState.showGrid)
