@@ -328,7 +328,9 @@ class CameraController extends _$CameraController {
         return camera.XFile(savedPath);
       }
 
-      return imageFile;
+      // Save failed - don't return temp file as it may not exist
+      debugPrint('❌ Failed to save photo to app directory');
+      return null;
     } catch (e) {
       final service = ref.read(cameraServiceProvider);
       state = state.copyWith(

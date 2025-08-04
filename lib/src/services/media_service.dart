@@ -313,7 +313,20 @@ class MediaService {
 
       // Copy file directly (much faster than readAsBytes)
       final sourceFile = File(sourcePath);
+      if (!await sourceFile.exists()) {
+        debugPrint('❌ Source file does not exist: $sourcePath');
+        return null;
+      }
+      
       await sourceFile.copy(targetPath);
+      
+      // Verify the file was actually copied
+      final targetFile = File(targetPath);
+      if (!await targetFile.exists()) {
+        debugPrint('❌ Failed to copy file to: $targetPath');
+        return null;
+      }
+      
       debugPrint('📷 Photo saved to: $targetPath');
 
       // Queue EXIF metadata writing for background processing

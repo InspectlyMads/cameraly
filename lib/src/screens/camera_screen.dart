@@ -1416,6 +1416,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           capturedAt: DateTime.now(),
         );
         widget.onMediaCaptured?.call(mediaItem);
+      } else if (imageFile == null && mounted) {
+        // Photo capture succeeded but save failed
+        widget.onError?.call('Failed to save photo');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(cameralyL10n.errorCaptureFailed),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
       // Error is logged in the camera provider, no need for UI notification
