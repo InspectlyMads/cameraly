@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
@@ -96,9 +95,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   // Track if we're reinitializing camera after Android background
   bool _isReinitializingAfterBackground = false;
 
-  // For capturing last frame during transitions
-  final GlobalKey _cameraPreviewKey = GlobalKey();
-  ui.Image? _lastCameraFrame;
 
   @override
   void initState() {
@@ -119,8 +115,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _photoTimer?.cancel();
     _orientationDebounceTimer?.cancel();
 
-    // Dispose captured frame
-    _lastCameraFrame?.dispose();
 
     // Remove observer before accessing ref
     WidgetsBinding.instance.removeObserver(this);
@@ -130,32 +124,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     super.dispose();
   }
 
-  Future<void> _captureLastFrame() async {
-    try {
-      final RenderRepaintBoundary? boundary = _cameraPreviewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-
-      if (boundary != null) {
-        // Capture at lower resolution for faster processing
-        // 0.3 pixelRatio = 30% resolution, much faster and sufficient for transition
-        final ui.Image image = await boundary.toImage(pixelRatio: 0.3);
-
-        // Dispose old image if exists
-        _lastCameraFrame?.dispose();
-
-        // Only update state if still mounted
-        if (mounted) {
-          setState(() {
-            _lastCameraFrame = image;
-          });
-        } else {
-          // Dispose immediately if widget is no longer mounted
-          image.dispose();
-        }
-      }
-    } catch (e) {
-      debugPrint('Failed to capture last frame: $e');
-    }
-  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -303,8 +271,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           if (Theme.of(context).platform == TargetPlatform.android) {
             debugPrint('🔄 Handling orientation change for Android');
 
-            // Capture current frame before transition
-            await _captureLastFrame();
 
             // This will reinitialize the camera to handle surface recreation
             await cameraController.updateCameraOrientation();
@@ -530,9 +496,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   // Camera preview - safely handle controller state
                   Builder(
                     builder: (context) {
-                      // Always prefer last frame during any transition or reinitialization
-                      if (_lastCameraFrame != null && (isTransitioning || _isReinitializingAfterBackground)) {
-                        return _buildLastFramePreview();
+                      // During transitions or Android reinitialization, show black screen
+                      if ((isTransitioning || _isReinitializingAfterBackground)) {
+                        return Container(color: Colors.black);
                       }
 
                       // Show camera preview if controller is available and initialized
@@ -540,14 +506,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                         return _buildCameraPreview(cameraState.controller!);
                       }
 
-                      // Default to last frame if available, otherwise black
-                      if (_lastCameraFrame != null && _hasBeenInitializedOnce) {
-                        return _buildLastFramePreview();
-                      }
-
                       return Container(color: Colors.black);
                     },
                   ),
+
+                  // Show loading indicator during transitions or Android reinitialization
+                  if ((isTransitioning || _isReinitializingAfterBackground))
+                    const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+                      ),
+                    ),
 
                   // Grid overlay
                   if (cameraState.showGrid)
@@ -731,10 +701,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       preview = Center(
         child: AspectRatio(
           aspectRatio: adjustedAspectRatio,
-          child: RepaintBoundary(
-            key: _cameraPreviewKey,
-            child: camera.CameraPreview(controller),
-          ),
+          child: camera.CameraPreview(controller),
         ),
       );
     } catch (e) {
@@ -755,19 +722,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     return preview;
   }
 
-  Widget _buildLastFramePreview() {
-    if (_lastCameraFrame == null) {
-      return Container(color: Colors.black);
-    }
-
-    // Fill the entire available space with the captured frame
-    return SizedBox.expand(
-      child: RawImage(
-        image: _lastCameraFrame,
-        fit: BoxFit.cover,
-      ),
-    );
-  }
 
   Widget _buildTopControls(Orientation orientation) {
     final safeArea = MediaQuery.of(context).padding;
