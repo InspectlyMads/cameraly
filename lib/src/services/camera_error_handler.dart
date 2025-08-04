@@ -1,5 +1,4 @@
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 
 enum CameraErrorType {
   permissionDenied,
@@ -27,7 +26,6 @@ class CameraErrorInfo {
 }
 
 class CameraErrorHandler {
-  static const _logTag = 'CameraErrorHandler';
 
   /// Analyze error and return detailed error info
   static CameraErrorInfo analyzeError(Object error) {

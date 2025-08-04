@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 import '../models/photo_metadata.dart';
+import '../utils/debug_logger.dart';
 
 /// Service for capturing comprehensive metadata for photos
 class MetadataService {
@@ -36,38 +37,38 @@ class MetadataService {
   Future<void> initialize({bool captureLocation = true}) async {
     // Prevent re-initialization
     if (_isInitialized) {
-      print('📍 MetadataService already initialized, skipping');
+      DebugLogger.info('MetadataService already initialized, skipping', tag: 'MetadataService');
       return;
     }
     
     _captureLocationEnabled = captureLocation;
-    print('📍 MetadataService.initialize: captureLocation=$captureLocation');
+    DebugLogger.info('initialize: captureLocation=$captureLocation', tag: 'MetadataService');
     
     if (captureLocation) {
       // Check location permission
       var permission = await Geolocator.checkPermission();
-      print('📍 Location permission status: $permission');
+      DebugLogger.info('Location permission status: $permission', tag: 'MetadataService');
       
       // Request permission if not granted
       if (permission == LocationPermission.denied) {
-        print('📍 Requesting location permission...');
+        DebugLogger.info('Requesting location permission...', tag: 'MetadataService');
         permission = await Geolocator.requestPermission();
-        print('📍 Location permission after request: $permission');
+        DebugLogger.info('Location permission after request: $permission', tag: 'MetadataService');
       }
       
       // Only proceed if permission is granted
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        print('📍 Location permission granted, getting initial location...');
+        DebugLogger.info('Location permission granted, getting initial location...', tag: 'MetadataService');
         // Get initial location
         await _updateLocation();
         
         // Start listening to location updates
         _startLocationUpdates();
       } else {
-        print('📍 Location permission denied or restricted');
+        DebugLogger.warning('Location permission denied or restricted', tag: 'MetadataService');
       }
     } else {
-      print('📍 Location capture disabled by user');
+      DebugLogger.info('Location capture disabled by user', tag: 'MetadataService');
     }
     
     _isInitialized = true;
@@ -104,10 +105,10 @@ class MetadataService {
     
     // Ensure we have recent location data if enabled
     if (_captureLocationEnabled && _shouldUpdateLocation()) {
-      print('📍 Updating location before capture...');
+      DebugLogger.info('Updating location before capture...', tag: 'MetadataService');
       await _updateLocation();
     }
-    print('📍 Current location: lat=${_lastPosition?.latitude}, lon=${_lastPosition?.longitude}, enabled=$_captureLocationEnabled');
+    DebugLogger.info('Current location: lat=${_lastPosition?.latitude}, lon=${_lastPosition?.longitude}, enabled=$_captureLocationEnabled', tag: 'MetadataService');
     
     // Get device info
     final deviceInfo = await _getDeviceInfo();
@@ -184,11 +185,11 @@ class MetadataService {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('📍 Location services disabled on device');
+        DebugLogger.warning('Location services disabled on device', tag: 'MetadataService');
         return;
       }
       
-      print('📍 Getting current position...');
+      DebugLogger.info('Getting current position...', tag: 'MetadataService');
       _lastPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -196,9 +197,9 @@ class MetadataService {
         ),
       );
       _lastLocationUpdate = DateTime.now();
-      print('📍 Got position: lat=${_lastPosition?.latitude}, lon=${_lastPosition?.longitude}');
+      DebugLogger.info('Got position: lat=${_lastPosition?.latitude}, lon=${_lastPosition?.longitude}', tag: 'MetadataService');
     } catch (e) {
-      print('📍 Error getting location: $e');
+      DebugLogger.error('Error getting location', tag: 'MetadataService', error: e);
       // Silently fail if location cannot be obtained
     }
   }

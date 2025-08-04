@@ -1,8 +1,6 @@
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 
 class CameraInfoService {
-  static const String _logTag = 'CameraInfoService';
   
   /// Analyze camera characteristics to determine physical capabilities
   static CameraCharacteristics analyzeCameras(List<CameraDescription> cameras) {

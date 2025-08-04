@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:collection';
 import 'dart:async';
 import 'dart:isolate';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -27,14 +26,6 @@ class ExifWriteTask {
     required this.filePath,
     required this.metadata,
   }) : queuedAt = DateTime.now();
-}
-
-/// Data class for isolate communication
-class _IsolateData {
-  final RootIsolateToken rootIsolateToken;
-  final ExifWriteTask task;
-  
-  _IsolateData({required this.rootIsolateToken, required this.task});
 }
 
 /// Background EXIF write queue that processes metadata writes in an isolate
@@ -123,7 +114,7 @@ class ExifWriteQueue {
                 await tempFile.delete();
               }
             } catch (_) {}
-            throw e;
+            rethrow;
           }
         });
       } catch (e) {
@@ -212,7 +203,7 @@ class ExifWriteQueue {
       
     } catch (e) {
       debugPrint('❌ Error writing EXIF in isolate: $e');
-      throw e;
+      rethrow;
     }
   }
   

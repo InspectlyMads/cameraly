@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cameraly/cameraly.dart';
-import 'package:camera/camera.dart';
 
 /// Demo showing how the race condition fix prevents thumbnail corruption
 class RaceConditionDemo extends ConsumerWidget {

@@ -136,8 +136,6 @@ class CameraState {
 }
 
 class CameraService {
-  static const String _logTag = 'CameraService';
-  
   final OrientationService _orientationService = OrientationService();
   
   // Cache for camera descriptions to avoid repeated queries
@@ -159,14 +157,9 @@ class CameraService {
       final cameras = await camera.availableCameras();
       _cachedCameras = cameras; // Cache for future use
 
-      for (final cameraDesc in cameras) {
-
-
-
-      }
       return cameras;
     } catch (e) {
-
+      debugPrint('CameraService: Failed to get available cameras - $e');
       return [];
     }
   }
@@ -473,9 +466,10 @@ class CameraService {
       await controller.setExposurePoint(null);
       await controller.setFocusPoint(null);
       
-
+      debugPrint('CameraService: Focus/exposure reset to auto');
     } catch (e) {
-
+      // Some devices may not support focus/exposure reset
+      debugPrint('CameraService: Failed to reset focus/exposure - $e');
     }
   }
   

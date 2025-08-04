@@ -144,7 +144,8 @@ class CameraController extends _$CameraController {
       try {
         await _initializeCamera();
       } catch (recoveryError) {
-
+        // Recovery failed, error already logged
+        debugPrint('Camera recovery failed: $recoveryError');
       }
     }
   }
@@ -171,7 +172,8 @@ class CameraController extends _$CameraController {
       );
 
     } catch (e) {
-
+      // Ignore errors during refresh - flash mode is not critical
+      debugPrint('Error setting flash mode: $e');
     }
   }
 
@@ -379,7 +381,8 @@ class CameraController extends _$CameraController {
       );
 
     } catch (e) {
-
+      // Focus errors are non-critical
+      debugPrint('Failed to set focus point: $e');
     }
   }
 
@@ -414,7 +417,8 @@ class CameraController extends _$CameraController {
       state = state.copyWith(currentZoom: zoom);
 
     } catch (e) {
-
+      // Zoom errors are non-critical
+      debugPrint('Failed to set zoom level: $e');
     }
   }
 
@@ -430,7 +434,7 @@ class CameraController extends _$CameraController {
       debugPrint('  Controller max zoom: $controllerMaxZoom');
       
       // Get device-specific zoom capabilities
-      final deviceCapabilities = await ZoomHelper.getDeviceZoomCapabilities();
+      await ZoomHelper.getDeviceZoomCapabilities();
 
 
       

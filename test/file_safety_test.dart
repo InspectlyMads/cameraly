@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cameraly/src/services/media_service.dart';
-import 'package:cameraly/src/models/photo_metadata.dart';
 
 void main() {
   group('File Safety Tests', () {

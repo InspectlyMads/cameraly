@@ -6,7 +6,6 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
-import '../models/media_item.dart';
 import '../models/orientation_data.dart';
 import '../models/photo_metadata.dart';
 
@@ -51,12 +50,10 @@ class MediaServiceMemoryOptimized {
   static Future<void> _writeExifMetadataStreaming(String imagePath, PhotoMetadata metadata) async {
     // For large images, create a temporary file
     final tempPath = '$imagePath.tmp';
-    final sourceFile = File(imagePath);
     final tempFile = File(tempPath);
     
     try {
       // Read file in chunks and process
-      final input = sourceFile.openRead();
       final output = tempFile.openWrite();
       
       // Note: For full streaming EXIF implementation, we'd need a specialized

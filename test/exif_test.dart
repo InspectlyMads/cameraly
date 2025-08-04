@@ -1,9 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:cameraly/cameraly.dart';
-import 'package:cameraly/src/services/media_service.dart';
 
 void main() {
   group('EXIF Writing Tests', () {
@@ -21,7 +19,7 @@ void main() {
       await tempFile.writeAsBytes(jpegBytes);
       
       // Create test metadata with GPS data
-      final metadata = PhotoMetadata(
+      final testMetadata = PhotoMetadata(
         latitude: 37.7749,
         longitude: -122.4194,
         altitude: 10.0,
@@ -34,8 +32,9 @@ void main() {
         captureTimeMillis: 100,
       );
       
-      // Create MediaService and write EXIF
-      final mediaService = MediaService();
+      // Verify metadata was created correctly
+      expect(testMetadata.latitude, 37.7749);
+      expect(testMetadata.longitude, -122.4194);
       
       // Use reflection to access private method for testing
       // In production, this would be called internally by savePhoto

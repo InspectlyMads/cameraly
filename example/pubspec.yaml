@@ -48,6 +48,8 @@ dependencies:
   # For reading EXIF in debug mode
   native_exif: ^0.5.0
 
+  flutter_riverpod: any
+  permission_handler: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

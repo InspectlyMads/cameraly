@@ -11,7 +11,6 @@ import '../models/orientation_data.dart';
 
 /// Comprehensive orientation service for handling device orientation across all Android devices
 class OrientationService {
-  static const _logTag = 'OrientationService';
   
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
   
@@ -85,7 +84,8 @@ class OrientationService {
     try {
       _startSensorMonitoring();
     } catch (e) {
-
+      // Sensors may not be available in test environment
+      debugPrint('OrientationService: Failed to start sensors - $e');
     }
   }
 
@@ -278,11 +278,12 @@ class OrientationService {
           _lastAccelerometerEvent = event;
         },
         onError: (error) {
-
+          debugPrint('OrientationService: Accelerometer error - $error');
         },
       );
     } catch (e) {
-
+      // Accelerometer not available on this device
+      debugPrint('OrientationService: Accelerometer not available - $e');
     }
     
     try {
@@ -295,12 +296,13 @@ class OrientationService {
           _lastGyroscopeEvent = event;
         },
         onError: (error) {
-
           // Gyroscope not available on all devices, this is okay
+          debugPrint('OrientationService: Gyroscope not available on this device');
         },
       );
     } catch (e) {
-
+      // Gyroscope initialization failed
+      debugPrint('OrientationService: Gyroscope initialization error - $e');
     }
   }
 
@@ -336,7 +338,8 @@ class OrientationService {
         );
       }
     } catch (e) {
-
+      // Error getting device info, return default
+      debugPrint('OrientationService: Failed to get device info - $e');
     }
     
     return const DeviceInfo(
