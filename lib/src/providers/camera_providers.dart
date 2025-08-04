@@ -648,8 +648,13 @@ class CameraController extends _$CameraController {
         isTransitioning: false,
       );
       
-      // Now dispose the controller
-      await ref.read(cameraServiceProvider).disposeCamera(controllerToDispose);
+      // Now dispose the controller - use try/catch to handle disposal errors
+      try {
+        await ref.read(cameraServiceProvider).disposeCamera(controllerToDispose);
+      } catch (e) {
+        // Provider might already be disposed, ignore errors
+        debugPrint('Camera disposal error (likely provider already disposed): $e');
+      }
     }
   }
   
@@ -659,12 +664,18 @@ class CameraController extends _$CameraController {
       // Dispose metadata service (which handles GPS and sensors)
       final metadataService = ref.read(metadataServiceProvider);
       metadataService.dispose();
-      
+    } catch (e) {
+      // Provider might already be disposed, ignore errors
+      debugPrint('Metadata service disposal error: $e');
+    }
+    
+    try {
       // Dispose camera service (which includes orientation service)
       final cameraService = ref.read(cameraServiceProvider);
       cameraService.dispose();
     } catch (e) {
-      // Ignore disposal errors
+      // Provider might already be disposed, ignore errors
+      debugPrint('Camera service disposal error: $e');
     }
   }
 
