@@ -90,6 +90,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   // Track if camera has been initialized at least once
   bool _hasBeenInitializedOnce = false;
   
+  // Track if app is in foreground to prevent orientation handling during app resume
+  bool _isInForeground = true;
+  
   // For capturing last frame during transitions
   final GlobalKey _cameraPreviewKey = GlobalKey();
   ui.Image? _lastCameraFrame;
@@ -165,6 +168,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       switch (state) {
         case AppLifecycleState.paused:
         case AppLifecycleState.inactive:
+          _isInForeground = false;
           // Stop recording if in progress
           if (cameraState.isRecording) {
             cameraController.stopVideoRecording();
@@ -173,12 +177,19 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           cameraController.pauseCamera();
           break;
         case AppLifecycleState.resumed:
-          // App is back in foreground, reinitialize camera
-          cameraController.resumeCamera();
+          _isInForeground = true;
+          // Add a small delay to let the UI settle before resuming camera
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              // App is back in foreground, reinitialize camera
+              cameraController.resumeCamera();
+            }
+          });
           break;
         case AppLifecycleState.detached:
           break;
         case AppLifecycleState.hidden:
+          _isInForeground = false;
           // Stop recording if in progress
           if (cameraState.isRecording) {
             cameraController.stopVideoRecording();
@@ -199,12 +210,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Handle orientation changes to fix camera surface issues
     if (!mounted) return;
     
+    // Skip if app is not in foreground (prevents interference with app resume)
+    if (!_isInForeground) {
+      debugPrint('📱 Skipping metrics change - app not in foreground');
+      return;
+    }
+    
     // Cancel any pending orientation change
     _orientationDebounceTimer?.cancel();
     
     // Debounce orientation changes to prevent multiple reinitializations
     _orientationDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
-      if (!mounted) return;
+      if (!mounted || !_isInForeground) return;
       
       try {
         final cameraState = ref.read(cameraControllerProvider);
@@ -934,39 +951,45 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildPhotoButton() {
-    return GestureDetector(
-      onTapDown: (_) {
-        if (!_isCapturing) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: _isCapturing ? null : _takePhoto,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Outer ring
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _isCapturing ? Colors.white54 : Colors.white,
-                width: 4,
+    final cameraState = ref.watch(cameraControllerProvider);
+    final isDisabled = _isCapturing || cameraState.isTransitioning;
+    
+    return Opacity(
+      opacity: isDisabled ? 0.5 : 1.0,
+      child: GestureDetector(
+        onTapDown: (_) {
+          if (!isDisabled) {
+            HapticFeedback.lightImpact();
+          }
+        },
+        onTap: isDisabled ? null : _takePhoto,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Outer ring
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isDisabled ? Colors.white54 : Colors.white,
+                  width: 4,
+                ),
               ),
             ),
-          ),
-          // Inner circle
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            width: _isCapturing ? 48 : 56,
-            height: _isCapturing ? 48 : 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _isCapturing ? Colors.white54 : Colors.white,
+            // Inner circle
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              width: _isCapturing ? 48 : 56,
+              height: _isCapturing ? 48 : 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isDisabled ? Colors.white54 : Colors.white,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1228,6 +1251,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Prevent multiple captures
     if (_isCapturing) return;
     
+    // Check if camera is transitioning
+    final cameraState = ref.read(cameraControllerProvider);
+    if (cameraState.isTransitioning) return;
+    
     // Check if photo timer is set
     final timerSeconds = widget.settings?.photoTimerSeconds;
     if (timerSeconds != null && timerSeconds > 0) {
@@ -1261,6 +1288,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Future<void> _capturePhotoNow() async {
     // Prevent multiple captures
     if (_isCapturing) return;
+    
+    // Check if camera is transitioning
+    final cameraState = ref.read(cameraControllerProvider);
+    if (cameraState.isTransitioning) return;
     
     setState(() {
       _isCapturing = true;

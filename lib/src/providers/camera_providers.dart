@@ -253,7 +253,7 @@ class CameraController extends _$CameraController {
 
   /// Take picture
   Future<camera.XFile?> takePicture() async {
-    if (!state.isInitialized || state.controller == null) {
+    if (!state.isInitialized || state.controller == null || state.isTransitioning) {
       return null;
     }
 
@@ -670,16 +670,45 @@ class CameraController extends _$CameraController {
 
   /// Resume camera (for app lifecycle management)
   Future<void> resumeCamera() async {
+    // Prevent concurrent operations
+    if (state.isLoading || state.isTransitioning) {
+      debugPrint('Camera is already in transition, skipping resume');
+      return;
+    }
+    
     if (state.controller != null && state.isInitialized) {
       try {
+        // Check if controller is still valid
+        if (!state.controller!.value.isInitialized) {
+          debugPrint('Camera controller not initialized, reinitializing');
+          await _initializeCamera();
+          return;
+        }
+        
         // Resume the preview if it was paused
         if (state.controller!.value.isPreviewPaused) {
+          debugPrint('Resuming camera preview');
           await state.controller!.resumePreview();
         }
       } catch (e) {
         debugPrint('Error resuming camera preview: $e');
+        
+        // Check if it's a timeout error
+        if (e.toString().contains('TimeoutException') || e.toString().contains('is not done within')) {
+          debugPrint('Camera timeout detected, waiting before retry');
+          // Wait a bit longer before trying to reinitialize
+          await Future.delayed(const Duration(seconds: 1));
+        }
+        
         // If resume fails, try reinitializing as fallback
-        await _initializeCamera();
+        try {
+          await _initializeCamera();
+        } catch (reinitError) {
+          debugPrint('Failed to reinitialize camera: $reinitError');
+          state = state.copyWith(
+            errorMessage: 'Failed to resume camera. Please restart the app.',
+          );
+        }
       }
     } else if (!state.isInitialized) {
       // Initialize camera if not already initialized
