@@ -311,9 +311,9 @@ class CameraController extends _$CameraController {
       
       // Save the image to app directory
       final mediaService = ref.read(mediaServiceProvider);
-      final imageBytes = await imageFile.readAsBytes();
-      final savedPath = await mediaService.savePhoto(
-        imageBytes,
+      // Use direct file copy instead of readAsBytes for better performance
+      final savedPath = await mediaService.savePhotoFile(
+        imageFile.path,
         orientationData: orientationData,
         metadata: metadata,
       );

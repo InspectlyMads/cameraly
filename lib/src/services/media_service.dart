@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:collection';
 import 'dart:async';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
@@ -26,11 +27,10 @@ class ExifWriteTask {
   }) : queuedAt = DateTime.now();
 }
 
-/// Background EXIF write queue that processes metadata writes asynchronously
+/// Background EXIF write queue that processes metadata writes in an isolate
 class ExifWriteQueue {
   static final Queue<ExifWriteTask> _queue = Queue<ExifWriteTask>();
   static bool _isProcessing = false;
-  static Timer? _processTimer;
   
   /// Add a task to the queue
   static void addTask(String filePath, PhotoMetadata metadata) {
@@ -39,6 +39,8 @@ class ExifWriteQueue {
       metadata: metadata,
     ));
     
+    debugPrint('📝 Added EXIF task to queue. Queue size: ${_queue.length}');
+    
     // Start processing if not already running
     if (!_isProcessing) {
       _startProcessing();
@@ -46,35 +48,115 @@ class ExifWriteQueue {
   }
   
   /// Start processing the queue
-  static void _startProcessing() {
+  static void _startProcessing() async {
     if (_isProcessing) return;
     
     _isProcessing = true;
-    _processTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      _processNextTask();
-    });
-  }
-  
-  /// Process the next task in the queue
-  static Future<void> _processNextTask() async {
-    if (_queue.isEmpty) {
-      _processTimer?.cancel();
-      _isProcessing = false;
-      return;
+    debugPrint('🚀 Starting EXIF processing...');
+    
+    // Process tasks one by one
+    while (_queue.isNotEmpty) {
+      final task = _queue.removeFirst();
+      await _processTask(task);
     }
     
-    final task = _queue.removeFirst();
-    
+    _isProcessing = false;
+    debugPrint('✅ EXIF processing complete');
+  }
+  
+  /// Process a single task in an isolate
+  static Future<void> _processTask(ExifWriteTask task) async {
     try {
-      // Check if file still exists (might have been deleted)
+      // Check if file still exists
       final file = File(task.filePath);
-      if (await file.exists()) {
-        await MediaService._writeExifMetadataStatic(task.filePath, task.metadata);
-        debugPrint('✅ Background EXIF write completed for ${task.filePath}');
+      if (!await file.exists()) {
+        debugPrint('⚠️ File no longer exists: ${task.filePath}');
+        return;
       }
+      
+      // Process in isolate to avoid blocking UI
+      await Isolate.run(() async {
+        final tempPath = '${task.filePath}.exif_tmp';
+        
+        try {
+          // Copy original to temp file
+          await File(task.filePath).copy(tempPath);
+          debugPrint('📄 Created temp file for EXIF processing: $tempPath');
+          
+          // Write EXIF metadata to temp file
+          await _writeExifMetadataInIsolate(tempPath, task.metadata);
+          
+          // Atomically replace original with EXIF-enhanced version
+          // This prevents corruption if app is reading the file
+          final tempFile = File(tempPath);
+          if (await tempFile.exists()) {
+            await tempFile.rename(task.filePath);
+            debugPrint('✅ EXIF metadata written successfully to ${task.filePath}');
+          }
+        } catch (e) {
+          debugPrint('❌ EXIF processing failed: $e');
+          // Clean up temp file if it exists
+          try {
+            final tempFile = File(tempPath);
+            if (await tempFile.exists()) {
+              await tempFile.delete();
+            }
+          } catch (_) {}
+          throw e;
+        }
+      });
     } catch (e) {
       debugPrint('❌ Background EXIF write failed: $e');
       // Don't re-queue failed tasks to avoid infinite loops
+    }
+  }
+  
+  /// Write EXIF metadata (static version for isolate)
+  static Future<void> _writeExifMetadataInIsolate(String imagePath, PhotoMetadata metadata) async {
+    // This is a copy of MediaService._writeExifMetadataStatic
+    // but made static for isolate use
+    
+    debugPrint('📍 Writing EXIF metadata to $imagePath');
+    debugPrint('📍 GPS data: lat=${metadata.latitude}, lon=${metadata.longitude}');
+    
+    try {
+      // Use native_exif for writing GPS data
+      final exif = await Exif.fromPath(imagePath);
+      
+      // Set basic metadata
+      await exif.writeAttributes({
+        'Make': metadata.deviceManufacturer,
+        'Model': metadata.deviceModel,
+        'Software': 'Cameraly ${metadata.osVersion}',
+        'DateTime': metadata.capturedAt.toIso8601String().replaceAll('T', ' ').substring(0, 19),
+      });
+      
+      // Set GPS data if available
+      if (metadata.latitude != null && metadata.longitude != null) {
+        debugPrint('📍 Writing GPS coordinates using native_exif');
+        
+        // Write GPS coordinates
+        await exif.writeAttributes({
+          'GPSLatitude': metadata.latitude!.abs().toString(),
+          'GPSLatitudeRef': metadata.latitude! >= 0 ? 'N' : 'S',
+          'GPSLongitude': metadata.longitude!.abs().toString(),
+          'GPSLongitudeRef': metadata.longitude! >= 0 ? 'E' : 'W',
+        });
+        
+        if (metadata.altitude != null) {
+          await exif.writeAttribute('GPSAltitude', metadata.altitude!.abs().toString());
+          await exif.writeAttribute('GPSAltitudeRef', metadata.altitude! >= 0 ? '0' : '1');
+        }
+        
+        debugPrint('✅ GPS data written with native_exif');
+      }
+      
+      await exif.close();
+      debugPrint('✅ EXIF metadata written successfully');
+      
+    } catch (e) {
+      debugPrint('❌ Error writing EXIF: $e');
+      throw e;
     }
   }
   
@@ -84,7 +166,6 @@ class ExifWriteQueue {
   /// Clear the queue (useful for cleanup)
   static void clear() {
     _queue.clear();
-    _processTimer?.cancel();
     _isProcessing = false;
   }
 }
@@ -218,6 +299,34 @@ class MediaService {
       return filePath;
     } catch (e) {
 
+      return null;
+    }
+  }
+  
+  /// Save captured photo file directly (optimized version)
+  Future<String?> savePhotoFile(String sourcePath, {String? fileName, OrientationData? orientationData, PhotoMetadata? metadata}) async {
+    try {
+      final mediaDir = await getMediaDirectory();
+      final timestamp = DateTime.now().microsecondsSinceEpoch;
+      final finalFileName = fileName ?? 'capture_$timestamp.jpg';
+      final targetPath = path.join(mediaDir.path, finalFileName);
+
+      // Copy file directly (much faster than readAsBytes)
+      final sourceFile = File(sourcePath);
+      await sourceFile.copy(targetPath);
+      debugPrint('📷 Photo saved to: $targetPath');
+
+      // Queue EXIF metadata writing for background processing
+      if (metadata != null) {
+        debugPrint('📍 Queuing EXIF metadata for background writing...');
+        ExifWriteQueue.addTask(targetPath, metadata);
+      } else {
+        debugPrint('⚠️ No metadata provided to savePhotoFile');
+      }
+
+      return targetPath;
+    } catch (e) {
+      debugPrint('❌ Error saving photo file: $e');
       return null;
     }
   }
@@ -373,7 +482,7 @@ class MediaService {
     return '${size.toStringAsFixed(1)} ${units[unitIndex]}';
   }
 
-  /// Write EXIF metadata to image file
+  /// Write EXIF metadata to image file (keeping for potential non-isolate use)
   static Future<void> _writeExifMetadataStatic(String imagePath, PhotoMetadata metadata) async {
     debugPrint('📍 Writing EXIF metadata to $imagePath');
     debugPrint('📍 GPS data: lat=${metadata.latitude}, lon=${metadata.longitude}');

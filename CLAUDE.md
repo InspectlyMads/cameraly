@@ -130,6 +130,19 @@ If encountering memory issues, check:
 2. Camera controllers are disposed when screen is closed
 3. Temporary files are cleaned up in MediaService
 
+## Performance Optimizations
+
+### Photo Capture Performance
+- **File Operations**: Uses `File.copy()` instead of `readAsBytes()` for better performance
+- **Race Condition Fix**: EXIF writes to temp files, preventing corruption during thumbnail generation
+- **Isolate Processing**: EXIF metadata processed in background isolate to prevent UI blocking
+
+### EXIF Processing
+- Background queue processes EXIF without blocking UI
+- Temp file approach prevents corruption if app reads image during EXIF writing
+- Original image preserved if EXIF writing fails or app is killed
+- Static queue survives CameraView disposal - continues processing in background
+
 ## Dependencies
 Key dependencies to be aware of:
 - `camera: ^0.11.0` - Core camera functionality
