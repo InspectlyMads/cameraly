@@ -8,9 +8,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/media_item.dart';
+import '../localization/cameraly_localizations.dart';
 import '../models/camera_custom_widgets.dart';
 import '../models/camera_settings.dart';
+import '../models/media_item.dart';
 import '../providers/camera_providers.dart';
 import '../providers/permission_providers.dart';
 import '../services/camera_service.dart';
@@ -19,7 +20,6 @@ import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
 import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
 import '../widgets/focus_indicator.dart';
-import '../localization/cameraly_localizations.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final CameraMode initialMode;
@@ -28,16 +28,16 @@ class CameraScreen extends ConsumerStatefulWidget {
   final bool showCheckButton;
   final bool captureLocationMetadata;
   final bool autoSaveToGallery;
-  
+
   /// Custom widgets configuration
   final CameraCustomWidgets? customWidgets;
-  
+
   /// Optional video duration limit in seconds
   final int? videoDurationLimit;
-  
+
   /// Camera settings for quality, aspect ratio, etc.
   final CameraSettings? settings;
-  
+
   final Function(MediaItem)? onMediaCaptured;
   final Function()? onGalleryPressed;
   final Function()? onCheckPressed;
@@ -76,26 +76,26 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   int _recordingSeconds = 0;
   Timer? _photoTimer;
   int _photoTimerCountdown = 0;
-  
+
   // Capture throttling
   bool _isCapturing = false;
-  
+
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
-  
+
   // Orientation handling
   DateTime? _lastOrientationChange;
   Timer? _orientationDebounceTimer;
-  
+
   // Track if camera has been initialized at least once
   bool _hasBeenInitializedOnce = false;
-  
+
   // Track if app is in foreground to prevent orientation handling during app resume
   bool _isInForeground = true;
-  
+
   // Track if we're reinitializing camera after Android background
   bool _isReinitializingAfterBackground = false;
-  
+
   // For capturing last frame during transitions
   final GlobalKey _cameraPreviewKey = GlobalKey();
   ui.Image? _lastCameraFrame;
@@ -118,47 +118,30 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _videoCountdownTimer?.cancel();
     _photoTimer?.cancel();
     _orientationDebounceTimer?.cancel();
-    
+
     // Dispose captured frame
     _lastCameraFrame?.dispose();
-    
+
     // Remove observer before accessing ref
     WidgetsBinding.instance.removeObserver(this);
-    
-    // Stop recording if in progress and dispose camera - check if widget is still mounted
-    try {
-      final cameraController = ref.read(cameraControllerProvider.notifier);
-      final cameraState = ref.read(cameraControllerProvider);
-      
-      if (cameraState.isRecording) {
-        // Stop recording without saving
-        cameraController.stopVideoRecording();
-      }
-      
-      // Explicitly dispose the camera to prevent ImageReader buffer issues
-      debugPrint('🔄 CameraScreen dispose: disposing camera controller');
-      cameraController.disposeCamera();
-    } catch (e) {
-      // Widget already disposed, ignore
-      debugPrint('⚠️ Error during camera disposal: $e');
-    }
-    
+
+    debugPrint('🔄 CameraScreen dispose: widget cleanup complete');
+
     super.dispose();
   }
-  
+
   Future<void> _captureLastFrame() async {
     try {
-      final RenderRepaintBoundary? boundary = 
-          _cameraPreviewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      
+      final RenderRepaintBoundary? boundary = _cameraPreviewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+
       if (boundary != null) {
         // Capture at lower resolution for faster processing
         // 0.3 pixelRatio = 30% resolution, much faster and sufficient for transition
         final ui.Image image = await boundary.toImage(pixelRatio: 0.3);
-        
+
         // Dispose old image if exists
         _lastCameraFrame?.dispose();
-        
+
         // Only update state if still mounted
         if (mounted) {
           setState(() {
@@ -178,7 +161,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Check if widget is still mounted before accessing ref
     if (!mounted) return;
-    
+
     try {
       final cameraController = ref.read(cameraControllerProvider.notifier);
       final cameraState = ref.read(cameraControllerProvider);
@@ -208,15 +191,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         case AppLifecycleState.resumed:
           _isInForeground = true;
           debugPrint('🔄 App resumed - attempting to resume camera');
-          
+
           // On Android, we need longer delay and full reinitialization
           final isAndroid = Theme.of(context).platform == TargetPlatform.android;
           final delay = isAndroid ? const Duration(milliseconds: 800) : const Duration(milliseconds: 300);
-          
+
           Future.delayed(delay, () async {
             if (mounted) {
               debugPrint('🔄 Starting camera resume after delay (Android: $isAndroid)');
-              
+
               if (isAndroid) {
                 // On Android, always reinitialize since we disposed the camera
                 debugPrint('🔄 Android: Full camera reinitialization');
@@ -280,55 +263,49 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       // Widget disposed, ignore
     }
   }
-  
+
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    
+
     // Handle orientation changes to fix camera surface issues
     if (!mounted) return;
-    
+
     // Skip if app is not in foreground (prevents interference with app resume)
     if (!_isInForeground) {
       debugPrint('📱 Skipping metrics change - app not in foreground');
       return;
     }
-    
+
     // Cancel any pending orientation change
     _orientationDebounceTimer?.cancel();
-    
+
     // Debounce orientation changes to prevent multiple reinitializations
     // Reduced from 500ms to 250ms for faster response while still preventing bouncing
     _orientationDebounceTimer = Timer(const Duration(milliseconds: 250), () async {
       if (!mounted || !_isInForeground) return;
-      
+
       try {
         final cameraState = ref.read(cameraControllerProvider);
         final cameraController = ref.read(cameraControllerProvider.notifier);
-        
+
         // Only handle if camera is initialized and not recording or transitioning
-        if (cameraState.isInitialized && 
-            !cameraState.isRecording && 
-            !cameraState.isLoading &&
-            !cameraState.isTransitioning &&
-            cameraState.controller != null) {
-          
+        if (cameraState.isInitialized && !cameraState.isRecording && !cameraState.isLoading && !cameraState.isTransitioning && cameraState.controller != null) {
           // Check if enough time has passed since last orientation change
           final now = DateTime.now();
-          if (_lastOrientationChange != null &&
-              now.difference(_lastOrientationChange!).inMilliseconds < 1000) {
+          if (_lastOrientationChange != null && now.difference(_lastOrientationChange!).inMilliseconds < 1000) {
             return;
           }
-          
+
           _lastOrientationChange = now;
-          
+
           // For Android, we need to handle surface changes during orientation
           if (Theme.of(context).platform == TargetPlatform.android) {
             debugPrint('🔄 Handling orientation change for Android');
-            
+
             // Capture current frame before transition
             await _captureLastFrame();
-            
+
             // This will reinitialize the camera to handle surface recreation
             await cameraController.updateCameraOrientation();
           }
@@ -346,18 +323,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       debugPrint('⚠️ CameraScreen: Already ${cameraState.isLoading ? "initializing" : "initialized"}, skipping duplicate call');
       return;
     }
-    
+
     setState(() {
       _hasInitializationFailed = false;
     });
 
     debugPrint('🚀 CameraScreen: Initializing with mode: ${widget.initialMode}');
-    
+
     final cameraController = ref.read(cameraControllerProvider.notifier);
     await cameraController.switchMode(widget.initialMode);
-    
+
     debugPrint('🚀 CameraScreen: Mode switched, now initializing camera');
-    
+
     await cameraController.initializeCamera(
       captureLocationMetadata: widget.captureLocationMetadata,
       settings: widget.settings,
@@ -388,10 +365,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     // Retry initialization
     await _initializeWithMode();
   }
-  
+
   Future<void> _handleBackPress() async {
     final cameraState = ref.read(cameraControllerProvider);
-    
+
     // If recording, show confirmation dialog
     if (cameraState.isRecording) {
       final shouldStop = await showDialog<bool>(
@@ -412,7 +389,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           ],
         ),
       );
-      
+
       if (shouldStop == true) {
         // Stop recording without saving
         await ref.read(cameraControllerProvider.notifier).stopVideoRecording();
@@ -435,7 +412,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     return WillPopScope(
       onWillPop: () async {
         final cameraState = ref.read(cameraControllerProvider);
-        
+
         // If recording, show confirmation dialog
         if (cameraState.isRecording) {
           final shouldStop = await showDialog<bool>(
@@ -456,7 +433,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               ],
             ),
           );
-          
+
           if (shouldStop == true) {
             // Stop recording without saving
             await ref.read(cameraControllerProvider.notifier).stopVideoRecording();
@@ -467,7 +444,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           }
           return false; // Prevent pop
         }
-        
+
         return true; // Allow pop when not recording
       },
       child: Scaffold(
@@ -511,7 +488,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     }
 
     final cameraState = ref.watch(cameraControllerProvider);
-    
+
     return OrientationBuilder(
       builder: (context, orientation) {
         return Stack(
@@ -521,8 +498,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               behavior: HitTestBehavior.opaque,
               onTapDown: (details) {
                 // Only process tap if not pinching and enough time has passed since last scale
-                if (!_isPinching && (_lastScaleUpdateTime == null || 
-                    DateTime.now().difference(_lastScaleUpdateTime!).inMilliseconds > 300)) {
+                if (!_isPinching && (_lastScaleUpdateTime == null || DateTime.now().difference(_lastScaleUpdateTime!).inMilliseconds > 300)) {
                   _handleTapToFocus(details.localPosition, cameraState);
                 }
               },
@@ -538,9 +514,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                     _isPinching = true;
                     _zoomControlKey.currentState?.showSlider();
                   }
-                  
-                  final newZoom = (_baseZoom * details.scale)
-                      .clamp(cameraState.minZoom, cameraState.maxZoom);
+
+                  final newZoom = (_baseZoom * details.scale).clamp(cameraState.minZoom, cameraState.maxZoom);
                   ref.read(cameraControllerProvider.notifier).setZoomLevel(newZoom);
                 }
               },
@@ -562,21 +537,21 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                         }
                         return Container(color: Colors.black);
                       }
-                      
+
                       // Show camera preview if controller is available and initialized
                       if (cameraState.controller != null && cameraState.isInitialized && !_isReinitializingAfterBackground) {
                         return _buildCameraPreview(cameraState.controller!);
                       }
-                      
+
                       // Default to last frame if available, otherwise black
                       if (_lastCameraFrame != null && _hasBeenInitializedOnce) {
                         return _buildLastFramePreview();
                       }
-                      
+
                       return Container(color: Colors.black);
                     },
                   ),
-                  
+
                   // Show subtle loading indicator during transitions or Android reinitialization
                   if ((isTransitioning || _isReinitializingAfterBackground) && _hasBeenInitializedOnce)
                     const Center(
@@ -596,7 +571,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                       gridType: GridType.ruleOfThirds,
                       opacity: 0.3,
                     ),
-                  
+
                   // Focus indicator
                   if (_focusPoint != null)
                     FocusIndicator(
@@ -610,13 +585,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 ],
               ),
             ),
-            
+
             // UI overlay - outside of GestureDetector
             _buildOrientationSpecificUI(orientation, cameraState),
-            
+
             // Photo timer countdown overlay
-            if (_photoTimerCountdown > 0)
-              _buildPhotoTimerOverlay(),
+            if (_photoTimerCountdown > 0) _buildPhotoTimerOverlay(),
           ],
         );
       },
@@ -633,7 +607,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         children: [
           // Top controls (back button and torch during recording)
           _buildTopControls(orientation),
-          
+
           // Main controls
           if (orientation == Orientation.landscape)
             // Landscape video controls
@@ -645,20 +619,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   // Gallery button - hide during recording
-                  if (!cameraState.isRecording) 
-                    _buildGalleryButton()
-                  else
-                    const SizedBox(height: 60), // Maintain spacing
-                  
-                  
+                  if (!cameraState.isRecording) _buildGalleryButton() else const SizedBox(height: 60), // Maintain spacing
+
                   // Video record button
                   _buildVideoRecordButton(cameraState),
-                  
+
                   // Check button - hide during recording
-                  if (!cameraState.isRecording) 
-                    _buildCheckFab()
-                  else
-                    const SizedBox(height: 60), // Maintain spacing
+                  if (!cameraState.isRecording) _buildCheckFab() else const SizedBox(height: 60), // Maintain spacing
                 ],
               ),
             )
@@ -672,11 +639,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   // Gallery button - hide during recording
-                  if (!cameraState.isRecording) 
-                    _buildGalleryButton() 
-                  else 
-                    const SizedBox(width: 60),
-                  
+                  if (!cameraState.isRecording) _buildGalleryButton() else const SizedBox(width: 60),
+
                   // Column for countdown and record button
                   Column(
                     mainAxisSize: MainAxisSize.min,
@@ -686,21 +650,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                         _buildVideoCountdown(),
                         const SizedBox(height: 8),
                       ],
-                      
+
                       // Video record button
                       _buildVideoRecordButton(cameraState),
                     ],
                   ),
-                  
+
                   // Check button - hide during recording
-                  if (!cameraState.isRecording) 
-                    _buildCheckFab() 
-                  else 
-                    const SizedBox(width: 60),
+                  if (!cameraState.isRecording) _buildCheckFab() else const SizedBox(width: 60),
                 ],
               ),
             ),
-          
+
           // Flash and camera controls on left side (always visible in landscape)
           if (orientation == Orientation.landscape)
             Positioned(
@@ -715,7 +676,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 ],
               ),
             ),
-          
+
           // Timer during recording - positioned above center
           if (orientation == Orientation.landscape && cameraState.isRecording)
             Positioned(
@@ -723,7 +684,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               top: screenSize.height / 2 - 100, // Above center
               child: _buildVideoCountdown(),
             ),
-          
+
           // Zoom control for video mode
           _buildZoomControl(cameraState),
         ],
@@ -752,7 +713,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       debugPrint('⚠️ Camera controller is disposed, showing black screen');
       return Container(color: Colors.black);
     }
-    
+
     final orientation = MediaQuery.of(context).orientation;
     final cameraAspectRatio = controller.value.aspectRatio;
     final cameraState = ref.read(cameraControllerProvider);
@@ -779,9 +740,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     }
 
     // Invert aspect ratio for portrait orientation
-    final adjustedAspectRatio = orientation == Orientation.portrait
-        ? 1 / targetAspectRatio
-        : targetAspectRatio;
+    final adjustedAspectRatio = orientation == Orientation.portrait ? 1 / targetAspectRatio : targetAspectRatio;
 
     Widget preview;
     try {
@@ -801,8 +760,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     // Mirror the preview for front camera on Android only
     // iOS handles this automatically
-    if (defaultTargetPlatform == TargetPlatform.android && 
-        cameraState.lensDirection == CameraLensDirection.front) {
+    if (defaultTargetPlatform == TargetPlatform.android && cameraState.lensDirection == CameraLensDirection.front) {
       preview = Transform(
         alignment: Alignment.center,
         transform: Matrix4.identity()..scale(-1.0, 1.0),
@@ -812,12 +770,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     return preview;
   }
-  
+
   Widget _buildLastFramePreview() {
     if (_lastCameraFrame == null) {
       return Container(color: Colors.black);
     }
-    
+
     // Fill the entire available space with the captured frame
     return SizedBox.expand(
       child: RawImage(
@@ -843,18 +801,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           children: [
             // Back button - use custom if provided
             widget.customWidgets?.backButton ??
-              CircleAvatar(
-                backgroundColor: Colors.black54,
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: () => _handleBackPress(),
+                CircleAvatar(
+                  backgroundColor: Colors.black54,
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => _handleBackPress(),
+                  ),
                 ),
-              ),
             // Torch control only in portrait mode (landscape has it on the left side)
-            if (orientation == Orientation.portrait || cameraState.mode != CameraMode.video)
-              _buildFlashControl()
-            else
-              const SizedBox.shrink(),
+            if (orientation == Orientation.portrait || cameraState.mode != CameraMode.video) _buildFlashControl() else const SizedBox.shrink(),
           ],
         ),
       );
@@ -870,13 +825,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         children: [
           // Back button - use custom if provided
           widget.customWidgets?.backButton ??
-            CircleAvatar(
-              backgroundColor: Colors.black54,
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+              CircleAvatar(
+                backgroundColor: Colors.black54,
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
-            ),
 
           // Right side controls - only show in portrait mode
           if (OrientationUIHelper.isPortrait(orientation)) _buildRightControlsColumn(),
@@ -908,7 +863,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       ],
     );
   }
-
 
   Widget _buildFlashControl() {
     final hasFlash = ref.watch(cameraHasFlashProvider);
@@ -1048,7 +1002,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Widget _buildPhotoButton() {
     final cameraState = ref.watch(cameraControllerProvider);
     final isDisabled = _isCapturing || cameraState.isTransitioning;
-    
+
     return Opacity(
       opacity: isDisabled ? 0.5 : 1.0,
       child: GestureDetector(
@@ -1263,9 +1217,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
             const SizedBox(height: 16),
             Text(
-              widget.initialMode == CameraMode.photo 
-                ? 'Camera Permission Required'
-                : 'Camera & Microphone Required',
+              widget.initialMode == CameraMode.photo ? 'Camera Permission Required' : 'Camera & Microphone Required',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
@@ -1274,9 +1226,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
             const SizedBox(height: 8),
             Text(
-              widget.initialMode == CameraMode.photo
-                ? 'Please grant camera permission to take photos'
-                : 'Please grant camera and microphone permissions',
+              widget.initialMode == CameraMode.photo ? 'Please grant camera permission to take photos' : 'Please grant camera and microphone permissions',
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 24),
@@ -1345,11 +1295,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   Future<void> _takePhoto() async {
     // Prevent multiple captures
     if (_isCapturing) return;
-    
+
     // Check if camera is transitioning
     final cameraState = ref.read(cameraControllerProvider);
     if (cameraState.isTransitioning) return;
-    
+
     // Check if photo timer is set
     final timerSeconds = widget.settings?.photoTimerSeconds;
     if (timerSeconds != null && timerSeconds > 0) {
@@ -1357,18 +1307,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       setState(() {
         _photoTimerCountdown = timerSeconds;
       });
-      
+
       _photoTimer?.cancel();
       _photoTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         setState(() {
           _photoTimerCountdown--;
         });
-        
+
         // Play countdown sound if enabled
         if (widget.settings?.enableSounds ?? true) {
           HapticFeedback.lightImpact();
         }
-        
+
         if (_photoTimerCountdown <= 0) {
           timer.cancel();
           _capturePhotoNow();
@@ -1379,19 +1329,19 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       _capturePhotoNow();
     }
   }
-  
+
   Future<void> _capturePhotoNow() async {
     // Prevent multiple captures
     if (_isCapturing) return;
-    
+
     // Check if camera is transitioning
     final cameraState = ref.read(cameraControllerProvider);
     if (cameraState.isTransitioning) return;
-    
+
     setState(() {
       _isCapturing = true;
     });
-    
+
     try {
       // Check storage space first (5MB should be enough for a photo)
       final hasSpace = await StorageService.hasEnoughSpace(requiredMB: 5);
@@ -1407,7 +1357,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         }
         return;
       }
-      
+
       final cameraController = ref.read(cameraControllerProvider.notifier);
 
       // Haptic feedback
@@ -1416,7 +1366,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       }
 
       final imageFile = await cameraController.takePicture();
-      
+
       // Reset capture flag immediately after camera has taken the photo
       // This allows for faster consecutive captures
       if (mounted) {
@@ -1471,7 +1421,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       }
       return;
     }
-    
+
     final cameraController = ref.read(cameraControllerProvider.notifier);
 
     try {
@@ -1494,13 +1444,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       HapticFeedback.mediumImpact();
 
       await cameraController.startVideoRecording();
-      
+
       // Reset recording seconds
       setState(() {
         _recordingSeconds = 0;
         _remainingSeconds = widget.videoDurationLimit ?? 0;
       });
-      
+
       // Start countdown timer that updates every second (for all recordings)
       _videoCountdownTimer?.cancel();
       _videoCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -1511,11 +1461,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           }
         });
       });
-      
+
       // Start duration timer if limit is set
       if (widget.videoDurationLimit != null && widget.videoDurationLimit! > 0) {
         _videoDurationTimer?.cancel();
-        
+
         // Main timer that stops recording
         _videoDurationTimer = Timer(Duration(seconds: widget.videoDurationLimit!), () {
           // Auto-stop recording when duration limit is reached
@@ -1541,12 +1491,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       _videoDurationTimer = null;
       _videoCountdownTimer?.cancel();
       _videoCountdownTimer = null;
-      
+
       setState(() {
         _remainingSeconds = 0;
         _recordingSeconds = 0;
       });
-      
+
       // Haptic feedback
       HapticFeedback.mediumImpact();
 
@@ -1585,7 +1535,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
         // Mode selector for combined mode (bottom-center)
         if (cameraState.mode == CameraMode.combined) _buildLandscapeModeSelector(screenSize, safeArea),
-        
+
         // Video timer during recording - positioned above the center
         if (cameraState.isRecording && cameraState.mode == CameraMode.video)
           Positioned(
@@ -1593,7 +1543,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             top: screenSize.height / 2 - 100, // Above center
             child: _buildVideoCountdown(),
           ),
-        
+
         // Zoom control
         _buildZoomControl(cameraState),
       ],
@@ -1719,10 +1669,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
         // Mode selector for combined mode (above bottom controls)
         if (cameraState.mode == CameraMode.combined) _buildPortraitModeSelector(screenSize, safeArea),
-        
+
         // Zoom control
         _buildZoomControl(cameraState),
-        
+
         // Custom left side widget (if provided)
         if (widget.customWidgets?.leftSideWidget != null)
           Positioned(
@@ -1778,11 +1728,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     if (widget.customWidgets?.galleryButton != null) {
       return widget.customWidgets!.galleryButton!;
     }
-    
+
     if (!widget.showGalleryButton) {
       return const SizedBox(width: 60);
     }
-    
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.black54,
@@ -1812,11 +1762,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     if (widget.customWidgets?.checkButton != null) {
       return widget.customWidgets!.checkButton!;
     }
-    
+
     if (!widget.showCheckButton) {
       return const SizedBox(width: 60);
     }
-    
+
     return CircleAvatar(
       backgroundColor: Colors.green,
       radius: 30,
@@ -1836,17 +1786,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       ),
     );
   }
-  
+
   Widget _buildVideoCountdown() {
     // Format elapsed time as MM:SS
     final minutes = _recordingSeconds ~/ 60;
     final seconds = _recordingSeconds % 60;
     final elapsedTime = cameralyL10n.recordingDuration('${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}');
-    
+
     // Check if we should show countdown
     final hasLimit = widget.videoDurationLimit != null && widget.videoDurationLimit! > 0;
     final showCountdown = hasLimit && _remainingSeconds <= 10;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -1887,7 +1837,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       ),
     );
   }
-  
+
   Widget _buildPhotoTimerOverlay() {
     return Positioned.fill(
       child: Container(
@@ -1920,27 +1870,27 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       ),
     );
   }
-  
+
   Widget _buildZoomControl(CameraState cameraState) {
     if (!cameraState.isInitialized || cameraState.controller == null) {
       return const SizedBox.shrink();
     }
-    
+
     final orientation = MediaQuery.of(context).orientation;
     final safeArea = MediaQuery.of(context).padding;
-    
+
     // Position zoom control based on orientation
     if (orientation == Orientation.portrait) {
       // Portrait: above capture button, adjusted for different modes
       double bottomOffset;
       if (cameraState.mode == CameraMode.combined) {
-        bottomOffset = 200 + safeArea.bottom;  // Higher to avoid mode selector
+        bottomOffset = 200 + safeArea.bottom; // Higher to avoid mode selector
       } else if (cameraState.mode == CameraMode.video && cameraState.isRecording) {
-        bottomOffset = 180 + safeArea.bottom;  // Higher to avoid timer overlap
+        bottomOffset = 180 + safeArea.bottom; // Higher to avoid timer overlap
       } else {
-        bottomOffset = 140 + safeArea.bottom;  // Normal position
+        bottomOffset = 140 + safeArea.bottom; // Normal position
       }
-          
+
       return Positioned(
         bottom: bottomOffset,
         left: 0,
