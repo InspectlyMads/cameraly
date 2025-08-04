@@ -563,29 +563,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   
                   // Show subtle loading indicator during transitions or Android reinitialization
                   if ((isTransitioning || _isReinitializingAfterBackground) && _hasBeenInitializedOnce)
-                    Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const SizedBox(
-                            width: 50,
-                            height: 50,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
-                            ),
-                          ),
-                          if (_isReinitializingAfterBackground) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                              'Restarting camera...',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.7),
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ],
+                    const Center(
+                      child: SizedBox(
+                        width: 50,
+                        height: 50,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+                        ),
                       ),
                     ),
 
