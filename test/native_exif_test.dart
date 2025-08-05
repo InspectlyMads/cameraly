@@ -36,13 +36,8 @@ void main() {
         
         // Read back and verify
         final readExif = await Exif.fromPath(tempFile.path);
-        final attributes = await readExif.getAttributes();
+        await readExif.getAttributes();
         await readExif.close();
-        
-        print('✅ Written GPS attributes:');
-        print('   Latitude: ${attributes?['GPSLatitude']} ${attributes?['GPSLatitudeRef']}');
-        print('   Longitude: ${attributes?['GPSLongitude']} ${attributes?['GPSLongitudeRef']}');
-        print('   Altitude: ${attributes?['GPSAltitude']} (ref: ${attributes?['GPSAltitudeRef']})');
         
         // Native EXIF only works on mobile platforms, so we can't test in unit tests
         // This is more of a verification that the API calls are correct

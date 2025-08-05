@@ -74,7 +74,7 @@ void main() {
           expect(verifyImage?.exif.gpsIfd['GPSLatitude'], isNotNull);
           expect(verifyImage?.exif.gpsIfd['GPSLongitude'], isNotNull);
           
-          print('✅ EXIF GPS data successfully written and verified');
+          // ✅ EXIF GPS data successfully written and verified
         }
       } finally {
         // Cleanup

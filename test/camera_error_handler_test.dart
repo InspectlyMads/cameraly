@@ -288,12 +288,9 @@ void main() {
       });
       
       test('throws after max attempts', () async {
-        var attempts = 0;
-        
         expect(
           () async => await CameraErrorHandler.retryWithBackoff(
             operation: () async {
-              attempts++;
               throw CameraException('cameraInitializationFailed', 'Test error');
             },
             maxAttempts: 3,

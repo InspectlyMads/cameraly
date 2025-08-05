@@ -70,6 +70,9 @@ class CameraController extends _$CameraController {
         );
       }
       
+      // Dispose services
+      _disposeServices();
+      
       // Schedule camera disposal to happen after provider disposal
       if (controllerToDispose != null) {
         // Use a delayed microtask to ensure disposal happens after all providers are disposed
@@ -542,34 +545,18 @@ class CameraController extends _$CameraController {
     var hasPermissions = await permissionService.hasRequiredPermissionsForMode(state.mode);
 
     if (!hasPermissions) {
-      // Debug: Log what permissions we're about to request
-      debugPrint('🔐 Requesting permissions for mode: ${state.mode}');
+      // Don't automatically request permissions - just report the error
+      // The UI will handle showing the permission dialog
+      debugPrint('🔐 Permissions not granted for mode: ${state.mode}');
       
-      // Request permissions based on mode
-      final granted = await permissionService.requestPermissionsForMode(state.mode);
-      
-      if (!granted) {
-        final errorMessage = state.mode == CameraMode.photo 
-          ? 'Camera permission is required'
-          : 'Camera and microphone permissions are required';
-        state = state.copyWith(
-          errorMessage: errorMessage,
-        );
-        return;
-      }
-      
-      // Check again after requesting
-      hasPermissions = await permissionService.hasRequiredPermissionsForMode(state.mode);
-      
-      if (!hasPermissions) {
-        final errorMessage = state.mode == CameraMode.photo 
-          ? 'Camera permission is required'
-          : 'Camera and microphone permissions are required';
-        state = state.copyWith(
-          errorMessage: errorMessage,
-        );
-        return;
-      }
+      final errorMessage = state.mode == CameraMode.photo 
+        ? 'Camera permission is required'
+        : 'Camera and microphone permissions are required';
+      state = state.copyWith(
+        errorMessage: errorMessage,
+        isLoading: false,
+      );
+      return;
     }
 
     state = state.copyWith(isLoading: true);

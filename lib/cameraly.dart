@@ -33,3 +33,5 @@ export 'src/utils/zoom_helper.dart';
 export 'src/widgets/camera_grid_overlay.dart';
 export 'src/widgets/camera_zoom_control.dart';
 export 'src/widgets/focus_indicator.dart';
+export 'src/widgets/permission_dialog.dart';
+export 'src/widgets/permission_prompt.dart';

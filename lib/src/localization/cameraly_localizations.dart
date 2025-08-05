@@ -18,6 +18,8 @@ class CameralyLocalizations {
   String get permissionLocationRequired => 'Location permission is required for geotagging';
   String get permissionDenied => 'Permission denied';
   String get permissionPermanentlyDenied => 'Permission permanently denied. Please enable in settings.';
+  String get permissionPermanentlyDeniedMessage => 'You have denied permission. To continue, please enable it in your device settings.';
+  String get permissionRequesting => 'Requesting permission...';
   
   // Errors
   String get errorCameraNotFound => 'No camera found on this device';
@@ -40,6 +42,7 @@ class CameralyLocalizations {
   String get buttonGoBack => 'Go Back';
   String get buttonGrantPermissions => 'Grant Permissions';
   String get buttonRequestPermissions => 'Request Permissions';
+  String get buttonCancel => 'Cancel';
   
   // Recording
   String recordingDuration(String duration) => duration;
@@ -91,6 +94,80 @@ class CameralyLocalizations {
   String get dialogStopRecordingMessage => 'You are currently recording. Do you want to stop and discard the video?';
   String get dialogContinueRecording => 'Continue Recording';
   String get dialogStopAndDiscard => 'Stop & Discard';
+  
+  // Permission dialog specific strings
+  String get permissionGalleryRequired => 'Gallery Access Needed';
+  String get permissionCameraMessage => 'Please allow camera access to continue.';
+  String get permissionMicrophoneMessage => 'Microphone access is required to record video. Please allow microphone access to continue.';
+  String get permissionGalleryMessage => 'Please allow gallery access to select photos.';
+  String get permissionCameraAndMicrophoneMessage => 'Camera and Microphone access are required to record video. Please allow both permissions to continue.';
+  String get permissionWarningIOS => 'Unsaved work will be lost!';
+  String get permissionHowToEnable => 'How to enable:';
+  String get permissionOpenSettings => 'Open Settings';
+  String get permissionContinueWithoutMic => 'Continue without microphone';
+  String get permissionGenericInstructions => 'Please enable the required permission in your device settings.';
+  
+  // Permission steps for different platforms
+  List<String> get permissionStepsCameraAndroid => [
+    'Open device Settings',
+    'Go to Apps or Application Manager',
+    'Find this app',
+    'Tap Permissions',
+    'Enable Camera',
+  ];
+  
+  List<String> get permissionStepsCameraIOS => [
+    'Open device Settings',
+    'Scroll down and find this app',
+    'Tap on the app name',
+    'Enable Camera access',
+  ];
+  
+  List<String> get permissionStepsMicrophoneAndroid => [
+    'Open device Settings',
+    'Go to Apps or Application Manager',
+    'Find this app',
+    'Tap Permissions',
+    'Enable Microphone',
+  ];
+  
+  List<String> get permissionStepsMicrophoneIOS => [
+    'Open device Settings',
+    'Scroll down and find this app',
+    'Tap on the app name',
+    'Enable Microphone access',
+  ];
+  
+  List<String> get permissionStepsGalleryAndroid => [
+    'Open device Settings',
+    'Go to Apps or Application Manager',
+    'Find this app',
+    'Tap Permissions',
+    'Enable Gallery access',
+  ];
+  
+  List<String> get permissionStepsGalleryIOS => [
+    'Open device Settings',
+    'Scroll down and find this app',
+    'Tap on the app name',
+    'Tap Photos',
+    'Select \'All Photos\' or \'Add Photos Only\'',
+  ];
+  
+  List<String> get permissionStepsCameraAndMicrophoneAndroid => [
+    'Open device Settings',
+    'Go to Apps or Application Manager',
+    'Find this app',
+    'Tap Permissions',
+    'Enable Camera & Microphone',
+  ];
+  
+  List<String> get permissionStepsCameraAndMicrophoneIOS => [
+    'Open device Settings',
+    'Scroll down and find this app',
+    'Tap on the app name',
+    'Enable Camera access & Microphone access',
+  ];
   
   // Default instance
   static CameralyLocalizations _instance = CameralyLocalizations();

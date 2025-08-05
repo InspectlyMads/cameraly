@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../localization/cameraly_localizations.dart';
 import '../models/camera_custom_widgets.dart';
@@ -19,6 +19,7 @@ import '../utils/orientation_ui_helper.dart';
 import '../widgets/camera_grid_overlay.dart';
 import '../widgets/camera_zoom_control.dart' show CameraZoomControl, CameraZoomControlState;
 import '../widgets/focus_indicator.dart';
+import '../widgets/permission_dialog.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
   final CameraMode initialMode;
@@ -94,6 +95,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
   // Track if we're reinitializing camera after Android background
   bool _isReinitializingAfterBackground = false;
+  
+  // Track if permission dialog is showing
+  bool _isShowingPermissionDialog = false;
+  bool _wentToSettings = false;
 
 
   @override
@@ -160,6 +165,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         case AppLifecycleState.resumed:
           _isInForeground = true;
           debugPrint('🔄 App resumed - attempting to resume camera');
+          
+          // Check if we're returning from settings
+          if (_wentToSettings) {
+            _wentToSettings = false;
+            // Just reinitialize which will check permissions automatically
+            Future(() async {
+              await _initializeWithMode();
+            });
+            return;
+          }
 
           // On Android, we need longer delay and full reinitialization
           final isAndroid = Theme.of(context).platform == TargetPlatform.android;
@@ -297,6 +312,35 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     debugPrint('🚀 CameraScreen: Initializing with mode: ${widget.initialMode}');
 
+    // Check permissions before initializing camera
+    final permissionService = ref.read(permissionServiceProvider);
+    final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
+    
+    if (!hasPermissions && mounted) {
+      debugPrint('🚀 CameraScreen: Permissions not granted, checking if permanently denied');
+      
+      // Check if permissions are permanently denied first
+      final isPermanentlyDenied = await permissionService.arePermissionsPermanentlyDeniedForMode(widget.initialMode);
+      
+      if (isPermanentlyDenied) {
+        debugPrint('🚀 CameraScreen: Permissions permanently denied, showing settings dialog');
+        // Show dialog for permanently denied permissions
+        _showPermissionDialog();
+        return;
+      }
+      
+      debugPrint('🚀 CameraScreen: Requesting permissions automatically');
+      // Request permissions automatically
+      final granted = await permissionService.requestPermissionsForMode(widget.initialMode);
+      
+      if (!granted && mounted) {
+        debugPrint('🚀 CameraScreen: Permissions denied after request, showing dialog');
+        // If still not granted after request, show dialog
+        _showPermissionDialog();
+        return;
+      }
+    }
+
     final cameraController = ref.read(cameraControllerProvider.notifier);
     await cameraController.switchMode(widget.initialMode);
 
@@ -317,19 +361,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Future<void> _retryInitialization() async {
-    // Check permissions first based on mode
-    final permissionService = ref.read(permissionServiceProvider);
-    final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
-
-    if (!hasPermissions) {
-      // Try to request permissions based on mode
-      final granted = await permissionService.requestPermissionsForMode(widget.initialMode);
-      if (!granted) {
-        return;
-      }
-    }
-
-    // Retry initialization
+    // Just retry initialization - let the initialization handle permission checks
     await _initializeWithMode();
   }
 
@@ -1094,6 +1126,38 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   }
 
   Widget _buildErrorState(String errorMessage) {
+    // Permission errors are now handled proactively in _initializeWithMode
+    // so we shouldn't see them here, but just in case:
+    if (errorMessage.toLowerCase().contains('permission') || 
+        errorMessage.contains('Camera access') ||
+        errorMessage.contains('Microphone access')) {
+      // Just retry initialization which will handle permissions
+      _initializeWithMode();
+      
+      // Return a loading screen while retrying
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                cameralyL10n.permissionRequesting,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white54,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // For non-permission errors, show the error UI
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -1144,50 +1208,27 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final cameraState = ref.watch(cameraControllerProvider);
 
     // Show different states based on the situation
-    if (_hasInitializationFailed || (cameraState.errorMessage != null && cameraState.errorMessage!.contains('permissions'))) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.camera_alt_outlined,
-              size: 64,
-              color: Colors.white54,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.initialMode == CameraMode.photo ? 'Camera Permission Required' : 'Camera & Microphone Required',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+    if (_hasInitializationFailed || (cameraState.errorMessage != null && cameraState.errorMessage!.contains('permission'))) {
+      // For permission issues, we handle them in _initializeWithMode
+      // Just show a loading state here
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.initialMode == CameraMode.photo ? 'Please grant camera permission to take photos' : 'Please grant camera and microphone permissions',
-              style: const TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                final permissionService = ref.read(permissionServiceProvider);
-                final granted = await permissionService.requestPermissionsForMode(widget.initialMode);
-                if (granted) {
-                  await _retryInitialization();
-                }
-              },
-              child: Text(cameralyL10n.buttonGrantPermissions),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                cameralyL10n.buttonGoBack,
-                style: const TextStyle(color: Colors.white70),
+              const SizedBox(height: 16),
+              Text(
+                cameralyL10n.permissionRequesting,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white54,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -1865,6 +1906,64 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
         ),
       );
     }
+  }
+
+  Future<void> _showPermissionDialog() async {
+    if (_isShowingPermissionDialog || !mounted) return;
+    
+    setState(() {
+      _isShowingPermissionDialog = true;
+    });
+
+    // Clear any existing error before showing dialog
+    ref.read(cameraControllerProvider.notifier).clearError();
+
+    final permissionType = widget.initialMode == CameraMode.video 
+        ? PermissionType.cameraAndMicrophone 
+        : PermissionType.camera;
+
+    final permissionService = ref.read(permissionServiceProvider);
+    
+    // Check mounted before showing dialog
+    if (!mounted) {
+      _isShowingPermissionDialog = false;
+      return;
+    }
+    
+    // Show dialog only for permanently denied permissions
+    // For normal denials, we've already requested automatically
+    final dialogResult = await showCameralyPermissionDialog(
+      context: context,
+      permissionType: permissionType,
+      showRequestButton: false, // Never show manual request button
+      onOpenSettings: () {
+        // Mark that we're going to settings
+        _wentToSettings = true;
+        // Don't await openAppSettings, just open it
+        openAppSettings();
+        // Close the dialog immediately
+        if (mounted) {
+          Navigator.of(context).pop('settings');
+        }
+      },
+    );
+    
+    // Handle dialog result
+    if (dialogResult == 'dismissed' && mounted) {
+      // User explicitly closed the dialog, navigate back
+      Navigator.of(context).pop();
+      return;
+    }
+
+    // Check mounted after dialog closes
+    if (!mounted) return;
+    
+    setState(() {
+      _isShowingPermissionDialog = false;
+    });
+    
+    // If user went to settings, the app lifecycle handler will take care of reinitializing
+    // when the app resumes, so we don't need to do anything here
   }
 }
 

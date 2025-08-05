@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:convert';
 import 'dart:collection';
 import 'dart:async';
 import 'dart:isolate';
@@ -9,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
-import 'package:image/image.dart' as img;
 import 'package:native_exif/native_exif.dart';
 
 import '../models/media_item.dart';
@@ -588,128 +586,9 @@ class MediaService {
       
     } catch (e) {
       debugPrint('❌ Error writing EXIF with native_exif: $e');
-      
-      // Fallback to image package method (keeping original code for non-GPS data)
-      await _writeExifWithImagePackage(imagePath, metadata);
+      debugPrint('⚠️ Skipping EXIF metadata to preserve image quality');
+      // Skip EXIF writing to preserve original image quality
     }
   }
   
-  /// Fallback method using image package for non-GPS EXIF data
-  static Future<void> _writeExifWithImagePackage(String imagePath, PhotoMetadata metadata) async {
-    debugPrint('📍 Fallback: Writing non-GPS EXIF metadata with image package');
-    
-    final file = File(imagePath);
-    final bytes = await file.readAsBytes();
-    
-    // Decode the image
-    final decoder = img.JpegDecoder();
-    final image = decoder.decode(bytes);
-    if (image == null) {
-      debugPrint('❌ Failed to decode image for EXIF writing');
-      return;
-    }
-    
-    // Preserve existing EXIF or create new
-    if (image.exif.isEmpty) {
-      image.exif = img.ExifData();
-    }
-    
-    // Set basic EXIF tags
-    image.exif.imageIfd['Make'] = metadata.deviceManufacturer;
-    image.exif.imageIfd['Model'] = metadata.deviceModel;
-    image.exif.imageIfd['Software'] = 'Cameraly ${metadata.osVersion}';
-    
-    // Set date/time
-    final dateTimeStr = metadata.capturedAt.toIso8601String().replaceAll('T', ' ').substring(0, 19);
-    image.exif.imageIfd['DateTime'] = dateTimeStr;
-    image.exif.exifIfd['DateTimeOriginal'] = dateTimeStr;
-    image.exif.exifIfd['DateTimeDigitized'] = dateTimeStr;
-    
-    // Set GPS data if available
-    if (metadata.latitude != null && metadata.longitude != null) {
-      debugPrint('📍 Writing GPS coordinates to EXIF');
-      debugPrint('📍 Latitude: ${metadata.latitude}, Longitude: ${metadata.longitude}');
-      
-      image.exif.gpsIfd['GPSLatitudeRef'] = metadata.latitude! >= 0 ? 'N' : 'S';
-      image.exif.gpsIfd['GPSLatitude'] = _convertToGPSRationals(metadata.latitude!);
-      image.exif.gpsIfd['GPSLongitudeRef'] = metadata.longitude! >= 0 ? 'E' : 'W';
-      image.exif.gpsIfd['GPSLongitude'] = _convertToGPSRationals(metadata.longitude!);
-      
-      if (metadata.altitude != null) {
-        image.exif.gpsIfd['GPSAltitudeRef'] = metadata.altitude! >= 0 ? 0 : 1;
-        image.exif.gpsIfd['GPSAltitude'] = [metadata.altitude!.abs().toInt(), 1];
-        debugPrint('📍 Altitude: ${metadata.altitude}');
-      }
-      
-      if (metadata.speed != null) {
-        // Convert m/s to km/h
-        final speedKmh = metadata.speed! * 3.6;
-        image.exif.gpsIfd['GPSSpeed'] = [(speedKmh * 100).toInt(), 100];
-        image.exif.gpsIfd['GPSSpeedRef'] = 'K'; // K for km/h
-        debugPrint('📍 Speed: ${metadata.speed} m/s ($speedKmh km/h)');
-      }
-      
-      // Set GPS timestamp
-      final gpsTimeStr = metadata.capturedAt.toIso8601String().split('T')[1].substring(0, 8);
-      image.exif.gpsIfd['GPSTimeStamp'] = gpsTimeStr;
-      image.exif.gpsIfd['GPSDateStamp'] = metadata.capturedAt.toIso8601String().split('T')[0];
-      
-      debugPrint('📍 GPS EXIF data prepared, writing to image...');
-    } else {
-      debugPrint('⚠️ No GPS data available - lat: ${metadata.latitude}, lon: ${metadata.longitude}');
-    }
-    
-    // Custom data as user comment
-    final customComment = jsonEncode({
-      'cameraly_metadata': {
-        'zoom_level': metadata.zoomLevel,
-        'flash_mode': metadata.flashMode,
-        'lens_direction': metadata.lensDirection,
-        'device_tilt': {
-          'x': metadata.deviceTiltX,
-          'y': metadata.deviceTiltY,
-          'z': metadata.deviceTiltZ,
-        },
-        'capture_time_millis': metadata.captureTimeMillis,
-      }
-    });
-    
-    image.exif.exifIfd['UserComment'] = customComment;
-    
-    // Additional camera settings if available
-    if (metadata.zoomLevel != null) {
-      image.exif.exifIfd['DigitalZoomRatio'] = [(metadata.zoomLevel! * 100).toInt(), 100];
-    }
-    
-    // Encode back to JPEG with EXIF using the encoder that preserves EXIF
-    final encoder = img.JpegEncoder(quality: 95);
-    final newBytes = encoder.encode(image);
-    await file.writeAsBytes(newBytes);
-    
-    debugPrint('✅ EXIF metadata written successfully');
-    
-    // Verify GPS data was written (for debugging)
-    final verifyDecoder = img.JpegDecoder();
-    final verifyImage = verifyDecoder.decode(newBytes);
-    if (verifyImage?.exif.gpsIfd['GPSLatitude'] != null) {
-      debugPrint('✅ Verified: GPS data exists in written image');
-    } else {
-      debugPrint('❌ Warning: GPS data not found in written image');
-      debugPrint('📋 EXIF GPS IFD keys: ${verifyImage?.exif.gpsIfd.keys.toList()}');
-    }
-  }
-  
-  /// Convert decimal degrees to GPS rationals
-  static List<List<int>> _convertToGPSRationals(double decimal) {
-    final absDecimal = decimal.abs();
-    final degrees = absDecimal.floor();
-    final minutes = ((absDecimal - degrees) * 60).floor();
-    final seconds = ((absDecimal - degrees - minutes / 60) * 3600 * 100).round();
-    
-    return [
-      [degrees, 1],
-      [minutes, 1],
-      [seconds, 100],
-    ];
-  }
 }

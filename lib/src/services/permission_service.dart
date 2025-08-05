@@ -103,6 +103,18 @@ class PermissionService {
       return await requestCameraAndMicrophonePermissions();
     }
   }
+  
+  /// Check if permissions are permanently denied for the given mode
+  Future<bool> arePermissionsPermanentlyDeniedForMode(CameraMode mode) async {
+    final cameraStatus = await Permission.camera.status;
+    
+    if (mode == CameraMode.photo) {
+      return cameraStatus.isPermanentlyDenied;
+    } else {
+      final microphoneStatus = await Permission.microphone.status;
+      return cameraStatus.isPermanentlyDenied || microphoneStatus.isPermanentlyDenied;
+    }
+  }
 
   /// Check if both permissions are granted with retry mechanism
   /// This helps handle race conditions where permissions are just granted
@@ -155,6 +167,41 @@ class PermissionService {
   /// Open app settings if permissions are permanently denied
   Future<bool> openAppSettingsScreen() async {
     return await openAppSettings();
+  }
+  
+  /// Smart permission request that handles the entire flow
+  /// Returns true if permissions are granted, false otherwise
+  Future<bool> smartRequestPermissionsForMode(CameraMode mode) async {
+    // First check if we already have permissions
+    final hasPermissions = await hasRequiredPermissionsForMode(mode);
+    if (hasPermissions) {
+      DebugLogger.info('Permissions already granted for mode: $mode', tag: 'PermissionService');
+      return true;
+    }
+    
+    // Check if permanently denied
+    final isPermanentlyDenied = await arePermissionsPermanentlyDeniedForMode(mode);
+    if (isPermanentlyDenied) {
+      DebugLogger.info('Permissions permanently denied for mode: $mode', tag: 'PermissionService');
+      return false;
+    }
+    
+    // Request permissions
+    DebugLogger.info('Requesting permissions for mode: $mode', tag: 'PermissionService');
+    final granted = await requestPermissionsForMode(mode);
+    
+    // If granted, verify with retry to handle race conditions
+    if (granted) {
+      final verified = await hasRequiredPermissionsForMode(mode);
+      if (!verified) {
+        // Try once more with a small delay
+        await Future.delayed(const Duration(milliseconds: 200));
+        return await hasRequiredPermissionsForMode(mode);
+      }
+      return verified;
+    }
+    
+    return false;
   }
 }
 
