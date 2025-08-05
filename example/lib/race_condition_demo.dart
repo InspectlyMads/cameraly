@@ -17,15 +17,15 @@ class RaceConditionDemo extends ConsumerWidget {
               initialMode: CameraMode.photo,
               onMediaCaptured: (MediaItem mediaItem) async {
                 // Immediately generate thumbnail - no race condition!
-                print('📸 Photo saved to: ${mediaItem.path}');
-                print('✅ Safe to generate thumbnail immediately');
+                debugPrint('📸 Photo saved to: ${mediaItem.path}');
+                debugPrint('✅ Safe to generate thumbnail immediately');
                 
                 // Simulate thumbnail generation
-                print('🖼️ Generating thumbnail...');
+                debugPrint('🖼️ Generating thumbnail...');
                 // Your thumbnail generation code here
                 // The file is safe to read - EXIF writes to temp file
                 
-                print('📍 EXIF will be added in background');
+                debugPrint('📍 EXIF will be added in background');
               },
             ),
           ),

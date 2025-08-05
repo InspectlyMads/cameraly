@@ -328,9 +328,7 @@ class CameraService {
           await controller.pausePreview();
         }
         
-        // Add a small delay to allow ImageReader buffers to be released
-        // This prevents "Unable to acquire a buffer item" warnings on Android
-        await Future.delayed(const Duration(milliseconds: 100));
+        // No delay - we're disposing in background now
         
         // Dispose the controller
         if (controller.value.isInitialized) {

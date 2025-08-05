@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -82,9 +81,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   // Add a key to access zoom control state
   final GlobalKey<CameraZoomControlState> _zoomControlKey = GlobalKey();
 
-  // Orientation handling
-  DateTime? _lastOrientationChange;
-  Timer? _orientationDebounceTimer;
 
   // Track if camera has been initialized at least once
   bool _hasBeenInitializedOnce = false;
@@ -113,7 +109,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _videoDurationTimer?.cancel();
     _videoCountdownTimer?.cancel();
     _photoTimer?.cancel();
-    _orientationDebounceTimer?.cancel();
 
     // Remove observer
     WidgetsBinding.instance.removeObserver(this);
@@ -246,35 +241,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       return;
     }
 
-    // Cancel any pending orientation change
-    _orientationDebounceTimer?.cancel();
-
-    // Debounce orientation changes to prevent multiple reinitializations
-    // Reduced from 500ms to 250ms for faster response while still preventing bouncing
-    _orientationDebounceTimer = Timer(const Duration(milliseconds: 250), () async {
-      if (!mounted || !_isInForeground) return;
-
+    // Handle orientation change immediately - no debounce
+    // Store platform check before async operation
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    
+    // Use Future to handle async operation
+    Future(() async {
       try {
         final cameraState = ref.read(cameraControllerProvider);
         final cameraController = ref.read(cameraControllerProvider.notifier);
 
-        // Only handle if camera is initialized and not recording or transitioning
-        if (cameraState.isInitialized && !cameraState.isRecording && !cameraState.isLoading && !cameraState.isTransitioning && cameraState.controller != null) {
-          // Check if enough time has passed since last orientation change
-          final now = DateTime.now();
-          if (_lastOrientationChange != null && now.difference(_lastOrientationChange!).inMilliseconds < 1000) {
-            return;
-          }
-
-          _lastOrientationChange = now;
-
+        // Only handle if camera is initialized and not recording
+        if (cameraState.isInitialized && !cameraState.isRecording && cameraState.controller != null) {
           // For Android, we need to handle surface changes during orientation
-          if (Theme.of(context).platform == TargetPlatform.android) {
-            debugPrint('🔄 Handling orientation change for Android');
+          if (isAndroid) {
+            debugPrint('🔄 Handling orientation change for Android - INSTANT');
 
-
-            // This will reinitialize the camera to handle surface recreation
-            await cameraController.updateCameraOrientation();
+            // Use dedicated fast orientation reinitialization
+            await cameraController.reinitializeForOrientation();
           }
         }
       } catch (e) {

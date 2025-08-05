@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:cameraly/cameraly.dart';
@@ -74,7 +75,7 @@ void main() {
           expect(verifyImage?.exif.gpsIfd['GPSLatitude'], isNotNull);
           expect(verifyImage?.exif.gpsIfd['GPSLongitude'], isNotNull);
           
-          print('✅ EXIF GPS data successfully written and verified');
+          debugPrint('✅ EXIF GPS data successfully written and verified');
         }
       } finally {
         // Cleanup

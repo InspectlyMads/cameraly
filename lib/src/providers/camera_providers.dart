@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
@@ -654,16 +653,19 @@ class CameraController extends _$CameraController {
       isInitialized: false,
     );
     
-    // Now dispose the old controller - must complete before initializing new one
+    // Dispose old controller in the background without waiting
     if (oldController != null) {
-      await ref.read(cameraServiceProvider).disposeCamera(oldController);
+      // Fire and forget - don't wait for disposal
+      Future.microtask(() async {
+        try {
+          await oldController.dispose();
+        } catch (e) {
+          debugPrint('Background disposal error: $e');
+        }
+      });
     }
     
-    // Small delay to ensure Android surface is ready
-    if (Platform.isAndroid) {
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
+    // No delay - initialize immediately
     await _initializeCamera();
   }
 
@@ -691,32 +693,36 @@ class CameraController extends _$CameraController {
       }
     }
   }
-  
-  /// Private method to dispose services
-  Future<void> _disposeServices() async {
-    try {
-      // Dispose metadata service (which handles GPS and sensors)
-      final metadataService = ref.read(metadataServiceProvider);
-      metadataService.dispose();
-    } catch (e) {
-      // Provider might already be disposed, ignore errors
-      debugPrint('Metadata service disposal error: $e');
-    }
-    
-    try {
-      // Dispose camera service (which includes orientation service)
-      final cameraService = ref.read(cameraServiceProvider);
-      cameraService.dispose();
-    } catch (e) {
-      // Provider might already be disposed, ignore errors
-      debugPrint('Camera service disposal error: $e');
-    }
-  }
 
   /// Dispose camera completely (for Android background handling)
   Future<void> disposeCamera() async {
     debugPrint('📱 disposeCamera called - disposing camera completely');
     await _disposeCamera();
+  }
+  
+  /// Ultra-fast reinitialization for orientation changes
+  Future<void> reinitializeForOrientation() async {
+    debugPrint('🔄 Fast orientation reinitialization');
+    
+    // Store old controller
+    final oldController = state.controller;
+    
+    // Clear state immediately
+    state = state.copyWith(
+      controller: null,
+      isInitialized: false,
+      isLoading: true,
+    );
+    
+    // Dispose in background
+    if (oldController != null) {
+      oldController.dispose().catchError((e) {
+        debugPrint('Background disposal: $e');
+      });
+    }
+    
+    // Initialize immediately (same as first open)
+    await _initializeCamera();
   }
 
   /// Pause camera (for app lifecycle management)
@@ -855,7 +861,6 @@ class CameraController extends _$CameraController {
       }
       
       // Reinitialize the camera to handle surface changes
-      // This is necessary because the surface has been destroyed during orientation change
       await _reinitializeCamera();
       
       // Restore zoom level after reinitialization
@@ -877,6 +882,7 @@ class CameraController extends _$CameraController {
       state = state.copyWith(isTransitioning: false, isPreparing: false);
     }
   }
+  
   
   /// Check camera health periodically
   Future<bool> checkCameraHealth() async {
