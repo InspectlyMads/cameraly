@@ -115,27 +115,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     _photoTimer?.cancel();
     _orientationDebounceTimer?.cancel();
 
-    // Remove observer before accessing ref
+    // Remove observer
     WidgetsBinding.instance.removeObserver(this);
 
-    // Dispose camera controller to free up resources
-    // This needs to happen before super.dispose()
-    try {
-      final cameraController = ref.read(cameraControllerProvider.notifier);
-      final cameraState = ref.read(cameraControllerProvider);
-      
-      // Stop recording if in progress
-      if (cameraState.isRecording) {
-        cameraController.stopVideoRecording();
-      }
-      
-      // Explicitly dispose the camera
-      cameraController.disposeCamera();
-      debugPrint('🔄 CameraScreen dispose: camera disposed');
-    } catch (e) {
-      debugPrint('⚠️ Error disposing camera: $e');
-    }
-
+    // Note: Camera disposal is handled by the provider's own lifecycle
+    // We don't access ref here to avoid "Cannot use ref after widget was disposed" errors
     debugPrint('🔄 CameraScreen dispose: widget cleanup complete');
 
     super.dispose();

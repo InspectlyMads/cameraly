@@ -55,8 +55,37 @@ class CameraController extends _$CameraController {
     // Auto-dispose camera and services when provider is disposed
     ref.onDispose(() {
       _retryTimer?.cancel();
-      _disposeCamera();
-      _disposeServices();
+      
+      // Store controller reference before clearing state
+      final controllerToDispose = state.controller;
+      
+      // Clear state immediately
+      if (state.controller != null) {
+        state = state.copyWith(
+          controller: null,
+          isInitialized: false,
+          isRecording: false,
+          isLoading: false,
+          isTransitioning: false,
+        );
+      }
+      
+      // Schedule camera disposal to happen after provider disposal
+      if (controllerToDispose != null) {
+        // Use a delayed microtask to ensure disposal happens after all providers are disposed
+        Future.delayed(Duration.zero, () async {
+          try {
+            // Direct disposal without accessing providers
+            await controllerToDispose.stopImageStream().catchError((_) {});
+            await controllerToDispose.pausePreview().catchError((_) {});
+            await Future.delayed(const Duration(milliseconds: 100)); // Buffer cleanup
+            await controllerToDispose.dispose();
+            debugPrint('✅ Camera controller disposed from provider');
+          } catch (e) {
+            debugPrint('Camera disposal error from provider: $e');
+          }
+        });
+      }
     });
 
     return const CameraState();
@@ -551,9 +580,14 @@ class CameraController extends _$CameraController {
       // Initialize the camera service (including orientation service)
       await service.initialize();
       
-      // Initialize metadata service for GPS and sensor data
+      // Initialize metadata service for GPS and sensor data in the background
+      // Don't await this - let GPS initialize while camera starts up
       final metadataService = ref.read(metadataServiceProvider);
-      await metadataService.initialize(captureLocation: _captureLocationMetadata);
+      metadataService.initialize(captureLocation: _captureLocationMetadata).then((_) {
+        debugPrint('📍 GPS initialization completed in background');
+      }).catchError((e) {
+        debugPrint('⚠️ GPS initialization error (non-blocking): $e');
+      });
 
       // Get available cameras
       final cameras = await service.getAvailableCameras();

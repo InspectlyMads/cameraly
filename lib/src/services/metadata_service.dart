@@ -59,8 +59,12 @@ class MetadataService {
       // Only proceed if permission is granted
       if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
         DebugLogger.info('Location permission granted, getting initial location...', tag: 'MetadataService');
-        // Get initial location
-        await _updateLocation();
+        // Get initial location in background - don't block initialization
+        _updateLocation().then((_) {
+          DebugLogger.info('Initial location obtained', tag: 'MetadataService');
+        }).catchError((e) {
+          DebugLogger.warning('Failed to get initial location: $e', tag: 'MetadataService');
+        });
         
         // Start listening to location updates
         _startLocationUpdates();
