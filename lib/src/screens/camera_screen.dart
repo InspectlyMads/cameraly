@@ -99,6 +99,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   // Track if permission dialog is showing
   bool _isShowingPermissionDialog = false;
   bool _wentToSettings = false;
+  bool _isReinitializingAfterSettings = false;
 
 
   @override
@@ -174,10 +175,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             // Clear any error state first
             ref.read(cameraControllerProvider.notifier).clearError();
             
-            // Reset the initialization flags
+            // Reset the initialization flags and mark that we're reinitializing
             setState(() {
               _hasInitializationFailed = false;
-              _hasBeenInitializedOnce = true; // Mark as initialized to show proper UI
+              _isReinitializingAfterSettings = true;
+              // Don't set _hasBeenInitializedOnce here - let it be set naturally when camera initializes
             });
             
             // Check permissions and reinitialize with a delay
@@ -189,8 +191,17 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                 if (hasPermissions) {
                   debugPrint('✅ Permissions granted, initializing camera...');
                   await _initializeWithMode();
+                  // Clear the reinitializing flag after successful initialization
+                  if (mounted) {
+                    setState(() {
+                      _isReinitializingAfterSettings = false;
+                    });
+                  }
                 } else {
                   debugPrint('❌ Permissions still denied, showing dialog...');
+                  setState(() {
+                    _isReinitializingAfterSettings = false;
+                  });
                   _showPermissionDialog();
                 }
               }
@@ -378,6 +389,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     if (updatedCameraState.errorMessage != null && updatedCameraState.errorMessage!.contains('permissions')) {
       setState(() {
         _hasInitializationFailed = true;
+        _isReinitializingAfterSettings = false; // Clear the flag on error
+      });
+    } else if (updatedCameraState.isInitialized) {
+      // Clear the reinitializing flag on successful initialization
+      setState(() {
+        _isReinitializingAfterSettings = false;
       });
     }
   }
@@ -494,7 +511,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       _hasBeenInitializedOnce = true;
     }
 
-    if (isLoading && !_hasBeenInitializedOnce) {
+    if ((isLoading && !_hasBeenInitializedOnce) || _isReinitializingAfterSettings) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -1943,8 +1960,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final permissionType = widget.initialMode == CameraMode.video 
         ? PermissionType.cameraAndMicrophone 
         : PermissionType.camera;
-
-    final permissionService = ref.read(permissionServiceProvider);
     
     // Check mounted before showing dialog
     if (!mounted) {
