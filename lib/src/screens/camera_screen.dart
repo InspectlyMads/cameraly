@@ -169,9 +169,31 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           // Check if we're returning from settings
           if (_wentToSettings) {
             _wentToSettings = false;
-            // Just reinitialize which will check permissions automatically
-            Future(() async {
-              await _initializeWithMode();
+            debugPrint('🔄 Returning from settings, checking permissions...');
+            
+            // Clear any error state first
+            ref.read(cameraControllerProvider.notifier).clearError();
+            
+            // Reset the initialization flags
+            setState(() {
+              _hasInitializationFailed = false;
+              _hasBeenInitializedOnce = true; // Mark as initialized to show proper UI
+            });
+            
+            // Check permissions and reinitialize with a delay
+            Future.delayed(const Duration(milliseconds: 500), () async {
+              if (mounted) {
+                final permissionService = ref.read(permissionServiceProvider);
+                final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
+                
+                if (hasPermissions) {
+                  debugPrint('✅ Permissions granted, initializing camera...');
+                  await _initializeWithMode();
+                } else {
+                  debugPrint('❌ Permissions still denied, showing dialog...');
+                  _showPermissionDialog();
+                }
+              }
             });
             return;
           }
