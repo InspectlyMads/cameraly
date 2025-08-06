@@ -45,32 +45,37 @@ class MetadataService {
     DebugLogger.info('initialize: captureLocation=$captureLocation', tag: 'MetadataService');
     
     if (captureLocation) {
-      // Check location permission
-      var permission = await Geolocator.checkPermission();
-      DebugLogger.info('Location permission status: $permission', tag: 'MetadataService');
-      
-      // Request permission if not granted
-      if (permission == LocationPermission.denied) {
-        DebugLogger.info('Requesting location permission...', tag: 'MetadataService');
-        permission = await Geolocator.requestPermission();
-        DebugLogger.info('Location permission after request: $permission', tag: 'MetadataService');
-      }
-      
-      // Only proceed if permission is granted
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        DebugLogger.info('Location permission granted, getting initial location...', tag: 'MetadataService');
-        // Get initial location in background - don't block initialization
-        _updateLocation().then((_) {
-          DebugLogger.info('Initial location obtained', tag: 'MetadataService');
-        }).catchError((e) {
-          DebugLogger.warning('Failed to get initial location: $e', tag: 'MetadataService');
-        });
-        
-        // Start listening to location updates
-        _startLocationUpdates();
-      } else {
-        DebugLogger.warning('Location permission denied or restricted', tag: 'MetadataService');
-      }
+      // Check location permission WITHOUT requesting - do this asynchronously
+      // This prevents blocking camera initialization when returning from settings
+      Future.microtask(() async {
+        try {
+          var permission = await Geolocator.checkPermission();
+          DebugLogger.info('Location permission status: $permission', tag: 'MetadataService');
+          
+          // DO NOT request permission here - let the app handle it separately
+          // This prevents interfering with camera initialization
+          if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+            DebugLogger.info('Location permission not granted, skipping location capture', tag: 'MetadataService');
+            return;
+          }
+          
+          // Only proceed if permission is already granted
+          if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+            DebugLogger.info('Location permission already granted, getting initial location...', tag: 'MetadataService');
+            // Get initial location in background - don't block initialization
+            _updateLocation().then((_) {
+              DebugLogger.info('Initial location obtained', tag: 'MetadataService');
+            }).catchError((e) {
+              DebugLogger.warning('Failed to get initial location: $e', tag: 'MetadataService');
+            });
+            
+            // Start listening to location updates
+            _startLocationUpdates();
+          }
+        } catch (e) {
+          DebugLogger.warning('Error checking location permission: $e', tag: 'MetadataService');
+        }
+      });
     } else {
       DebugLogger.info('Location capture disabled by user', tag: 'MetadataService');
     }

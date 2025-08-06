@@ -184,7 +184,12 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             
             // Use longer delay for production apps and add retry mechanism
             // Initial delay is longer to ensure app is fully resumed
-            Future.delayed(const Duration(milliseconds: 1500), () async {
+            // Even longer delay for Android to handle complex permission scenarios
+            final delayDuration = Theme.of(context).platform == TargetPlatform.android 
+                ? const Duration(milliseconds: 2500) 
+                : const Duration(milliseconds: 1500);
+            
+            Future.delayed(delayDuration, () async {
               if (mounted) {
                 final permissionService = ref.read(permissionServiceProvider);
                 final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
@@ -207,6 +212,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                       final cameraState = ref.read(cameraControllerProvider);
                       if (cameraState.isInitialized && cameraState.controller != null) {
                         debugPrint('✅ Camera initialized successfully after ${retryCount + 1} attempt(s)');
+                        debugPrint('   Controller: ${cameraState.controller != null}');
+                        debugPrint('   IsInitialized: ${cameraState.isInitialized}');
+                        debugPrint('   IsLoading: ${cameraState.isLoading}');
+                        debugPrint('   ErrorMessage: ${cameraState.errorMessage}');
+                        
+                        // Double-check controller is valid
+                        try {
+                          final isValid = cameraState.controller!.value.isInitialized;
+                          debugPrint('   Controller.value.isInitialized: $isValid');
+                          
+                          if (!isValid) {
+                            throw Exception('Controller not fully initialized');
+                          }
+                        } catch (e) {
+                          debugPrint('   Controller validation error: $e');
+                          throw Exception('Controller validation failed: $e');
+                        }
+                        
                         if (mounted) {
                           setState(() {
                             _isReinitializingAfterSettings = false;
@@ -214,6 +237,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                         }
                         break;
                       } else {
+                        debugPrint('⚠️ Camera not fully initialized:');
+                        debugPrint('   Controller: ${cameraState.controller != null}');
+                        debugPrint('   IsInitialized: ${cameraState.isInitialized}');
+                        debugPrint('   IsLoading: ${cameraState.isLoading}');
+                        debugPrint('   ErrorMessage: ${cameraState.errorMessage}');
                         throw Exception('Camera not fully initialized');
                       }
                     } catch (e) {
