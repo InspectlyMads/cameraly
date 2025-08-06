@@ -58,9 +58,6 @@ class CameralyLocalizations {
   
   // Aspect ratios
   String get aspectRatio4_3 => '4:3';
-  String get aspectRatio16_9 => '16:9';
-  String get aspectRatio1_1 => '1:1';
-  String get aspectRatioFull => 'Full';
   
   // Quality
   String get qualityLow => 'Low';

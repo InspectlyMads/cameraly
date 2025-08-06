@@ -240,25 +240,6 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           
-          // Square Aspect Ratio
-          _ExampleCard(
-            title: 'Square Photos (1:1)',
-            description: 'Instagram-style square photos',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => CameraScreen(
-                  initialMode: CameraMode.photo,
-                  settings: const CameraSettings(
-                    aspectRatio: CameraAspectRatio.ratio_1_1,
-                  ),
-                  onMediaCaptured: (media) {
-                    // Photo captured
-                  },
-                ),
-              ),
-            ),
-          ),
           
           // Without Location
           _ExampleCard(

@@ -8,7 +8,6 @@ void main() {
       
       expect(settings.photoQuality, PhotoQuality.high);
       expect(settings.videoQuality, VideoQuality.fullHd);
-      expect(settings.aspectRatio, CameraAspectRatio.ratio_4_3);
       expect(settings.photoTimerSeconds, isNull);
       expect(settings.enableSounds, isTrue);
       expect(settings.enableHaptics, isTrue);

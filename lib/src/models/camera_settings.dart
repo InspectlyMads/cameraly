@@ -27,17 +27,8 @@ enum VideoQuality {
 
 /// Camera aspect ratio options
 enum CameraAspectRatio {
-  /// 4:3 ratio (classic)
+  /// 4:3 ratio (native camera aspect ratio)
   ratio_4_3,
-  
-  /// 16:9 ratio (widescreen)
-  ratio_16_9,
-  
-  /// 1:1 ratio (square)
-  ratio_1_1,
-  
-  /// Full sensor ratio (device specific)
-  full,
 }
 
 /// Camera configuration settings
@@ -48,8 +39,6 @@ class CameraSettings {
   /// Video recording quality
   final VideoQuality videoQuality;
   
-  /// Camera preview and capture aspect ratio
-  final CameraAspectRatio aspectRatio;
   
   /// Timer delay for photo capture (in seconds)
   final int? photoTimerSeconds;
@@ -69,7 +58,6 @@ class CameraSettings {
   const CameraSettings({
     this.photoQuality = PhotoQuality.high,
     this.videoQuality = VideoQuality.fullHd,
-    this.aspectRatio = CameraAspectRatio.ratio_4_3,
     this.photoTimerSeconds,
     this.enableSounds = true,
     this.enableHaptics = true,
@@ -80,7 +68,6 @@ class CameraSettings {
   CameraSettings copyWith({
     PhotoQuality? photoQuality,
     VideoQuality? videoQuality,
-    CameraAspectRatio? aspectRatio,
     int? photoTimerSeconds,
     bool? enableSounds,
     bool? enableHaptics,
@@ -90,7 +77,6 @@ class CameraSettings {
     return CameraSettings(
       photoQuality: photoQuality ?? this.photoQuality,
       videoQuality: videoQuality ?? this.videoQuality,
-      aspectRatio: aspectRatio ?? this.aspectRatio,
       photoTimerSeconds: photoTimerSeconds ?? this.photoTimerSeconds,
       enableSounds: enableSounds ?? this.enableSounds,
       enableHaptics: enableHaptics ?? this.enableHaptics,

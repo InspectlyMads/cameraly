@@ -182,20 +182,57 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               // Don't set _hasBeenInitializedOnce here - let it be set naturally when camera initializes
             });
             
-            // Check permissions and reinitialize with a delay
-            Future.delayed(const Duration(milliseconds: 500), () async {
+            // Use longer delay for production apps and add retry mechanism
+            // Initial delay is longer to ensure app is fully resumed
+            Future.delayed(const Duration(milliseconds: 1500), () async {
               if (mounted) {
                 final permissionService = ref.read(permissionServiceProvider);
                 final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
                 
                 if (hasPermissions) {
                   debugPrint('✅ Permissions granted, initializing camera...');
-                  await _initializeWithMode();
-                  // Clear the reinitializing flag after successful initialization
-                  if (mounted) {
-                    setState(() {
-                      _isReinitializingAfterSettings = false;
-                    });
+                  
+                  // Try to initialize with retry mechanism
+                  int retryCount = 0;
+                  const maxRetries = 3;
+                  
+                  while (retryCount < maxRetries && mounted) {
+                    try {
+                      await _initializeWithMode();
+                      
+                      // Wait a bit to ensure camera is ready
+                      await Future.delayed(const Duration(milliseconds: 300));
+                      
+                      // Check if camera is actually initialized
+                      final cameraState = ref.read(cameraControllerProvider);
+                      if (cameraState.isInitialized && cameraState.controller != null) {
+                        debugPrint('✅ Camera initialized successfully after ${retryCount + 1} attempt(s)');
+                        if (mounted) {
+                          setState(() {
+                            _isReinitializingAfterSettings = false;
+                          });
+                        }
+                        break;
+                      } else {
+                        throw Exception('Camera not fully initialized');
+                      }
+                    } catch (e) {
+                      retryCount++;
+                      debugPrint('⚠️ Camera initialization attempt $retryCount failed: $e');
+                      
+                      if (retryCount < maxRetries) {
+                        // Wait before retrying, with increasing delays
+                        await Future.delayed(Duration(milliseconds: 500 * retryCount));
+                      } else {
+                        // Max retries reached, clear flag and show error
+                        debugPrint('❌ Failed to initialize camera after $maxRetries attempts');
+                        if (mounted) {
+                          setState(() {
+                            _isReinitializingAfterSettings = false;
+                          });
+                        }
+                      }
+                    }
                   }
                 } else {
                   debugPrint('❌ Permissions still denied, showing dialog...');
@@ -211,7 +248,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
           // On Android, we need longer delay and full reinitialization
           final isAndroid = Theme.of(context).platform == TargetPlatform.android;
-          final delay = isAndroid ? const Duration(milliseconds: 800) : const Duration(milliseconds: 300);
+          // Use even longer delays for production apps
+          final delay = isAndroid ? const Duration(milliseconds: 1200) : const Duration(milliseconds: 500);
 
           Future.delayed(delay, () async {
             if (mounted) {
@@ -568,22 +606,33 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                   // Camera preview - safely handle controller state
                   Builder(
                     builder: (context) {
-                      // During transitions or Android reinitialization, show black screen
-                      if ((isTransitioning || _isReinitializingAfterBackground)) {
+                      // During transitions, Android reinitialization, or settings return, show black screen
+                      if ((isTransitioning || _isReinitializingAfterBackground || _isReinitializingAfterSettings)) {
                         return Container(color: Colors.black);
                       }
 
-                      // Show camera preview if controller is available and initialized
-                      if (cameraState.controller != null && cameraState.isInitialized && !_isReinitializingAfterBackground) {
-                        return _buildCameraPreview(cameraState.controller!);
+                      // Show camera preview only if controller is available, initialized, and not reinitializing
+                      if (cameraState.controller != null && 
+                          cameraState.isInitialized && 
+                          !_isReinitializingAfterBackground &&
+                          !_isReinitializingAfterSettings &&
+                          !cameraState.isLoading) {
+                        // Additional safety check - verify controller is still valid
+                        try {
+                          if (cameraState.controller!.value.isInitialized) {
+                            return _buildCameraPreview(cameraState.controller!);
+                          }
+                        } catch (e) {
+                          debugPrint('⚠️ Camera controller check failed: $e');
+                        }
                       }
 
                       return Container(color: Colors.black);
                     },
                   ),
 
-                  // Show loading indicator during transitions or Android reinitialization
-                  if ((isTransitioning || _isReinitializingAfterBackground))
+                  // Show loading indicator during transitions, Android reinitialization, or settings return
+                  if ((isTransitioning || _isReinitializingAfterBackground || _isReinitializingAfterSettings))
                     const Center(
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
@@ -744,29 +793,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     final cameraAspectRatio = controller.value.aspectRatio;
     final cameraState = ref.read(cameraControllerProvider);
 
-    // Calculate aspect ratio based on settings
-    double targetAspectRatio;
-    if (widget.settings?.aspectRatio != null) {
-      switch (widget.settings!.aspectRatio) {
-        case CameraAspectRatio.ratio_4_3:
-          targetAspectRatio = 4 / 3;
-          break;
-        case CameraAspectRatio.ratio_16_9:
-          targetAspectRatio = 16 / 9;
-          break;
-        case CameraAspectRatio.ratio_1_1:
-          targetAspectRatio = 1.0;
-          break;
-        case CameraAspectRatio.full:
-          targetAspectRatio = cameraAspectRatio;
-          break;
-      }
-    } else {
-      targetAspectRatio = cameraAspectRatio;
-    }
-
-    // Invert aspect ratio for portrait orientation
-    final adjustedAspectRatio = orientation == Orientation.portrait ? 1 / targetAspectRatio : targetAspectRatio;
+    // Always use the native camera aspect ratio (no stretching)
+    final adjustedAspectRatio = orientation == Orientation.portrait ? 1 / cameraAspectRatio : cameraAspectRatio;
 
     Widget preview;
     try {
