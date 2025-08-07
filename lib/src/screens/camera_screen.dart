@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/foundation.dart';
@@ -87,19 +88,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   DateTime? _lastOrientationChange;
   Timer? _orientationDebounceTimer;
 
-  // Track if camera has been initialized at least once
-  bool _hasBeenInitializedOnce = false;
-
-  // Track if app is in foreground to prevent orientation handling during app resume
+  // Simplified state tracking
   bool _isInForeground = true;
-
-  // Track if we're reinitializing camera after Android background
-  bool _isReinitializingAfterBackground = false;
-  
-  // Track if permission dialog is showing
+  bool _hasBeenInitializedOnce = false;
   bool _isShowingPermissionDialog = false;
-  bool _wentToSettings = false;
-  bool _isReinitializingAfterSettings = false;
 
 
   @override
@@ -154,7 +146,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           if (Theme.of(context).platform == TargetPlatform.android) {
             debugPrint('🔄 Android: Disposing camera completely');
             setState(() {
-              _isReinitializingAfterBackground = true;
             });
             cameraController.disposeCamera();
           } else {
@@ -167,155 +158,35 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           _isInForeground = true;
           debugPrint('🔄 App resumed - attempting to resume camera');
           
-          // Check if we're returning from settings
-          if (_wentToSettings) {
-            _wentToSettings = false;
-            debugPrint('🔄 Returning from settings, checking permissions...');
+          
+          // Simple delay then check and initialize
+          Future.delayed(const Duration(milliseconds: 1500), () async {
+            if (!mounted) return;
             
-            // Clear any error state first
-            ref.read(cameraControllerProvider.notifier).clearError();
+            debugPrint('🔄 App resumed - checking camera state');
             
-            // Reset the initialization flags and mark that we're reinitializing
-            setState(() {
-              _hasInitializationFailed = false;
-              _isReinitializingAfterSettings = true;
-              // Don't set _hasBeenInitializedOnce here - let it be set naturally when camera initializes
-            });
+            // Check permissions
+            final permissionService = ref.read(permissionServiceProvider);
+            final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
             
-            // Use longer delay for production apps and add retry mechanism
-            // Initial delay is longer to ensure app is fully resumed
-            // Even longer delay for Android to handle complex permission scenarios
-            final delayDuration = Theme.of(context).platform == TargetPlatform.android 
-                ? const Duration(milliseconds: 2500) 
-                : const Duration(milliseconds: 1500);
+            if (!hasPermissions) {
+              debugPrint('❌ No permissions on resume');
+              return; // Don't do anything, wait for user action
+            }
             
-            Future.delayed(delayDuration, () async {
-              if (mounted) {
-                final permissionService = ref.read(permissionServiceProvider);
-                final hasPermissions = await permissionService.hasRequiredPermissionsForMode(widget.initialMode);
-                
-                if (hasPermissions) {
-                  debugPrint('✅ Permissions granted, initializing camera...');
-                  
-                  // Try to initialize with retry mechanism
-                  int retryCount = 0;
-                  const maxRetries = 3;
-                  
-                  while (retryCount < maxRetries && mounted) {
-                    try {
-                      await _initializeWithMode();
-                      
-                      // Wait a bit to ensure camera is ready
-                      await Future.delayed(const Duration(milliseconds: 300));
-                      
-                      // Check if camera is actually initialized
-                      final cameraState = ref.read(cameraControllerProvider);
-                      if (cameraState.isInitialized && cameraState.controller != null) {
-                        debugPrint('✅ Camera initialized successfully after ${retryCount + 1} attempt(s)');
-                        debugPrint('   Controller: ${cameraState.controller != null}');
-                        debugPrint('   IsInitialized: ${cameraState.isInitialized}');
-                        debugPrint('   IsLoading: ${cameraState.isLoading}');
-                        debugPrint('   ErrorMessage: ${cameraState.errorMessage}');
-                        
-                        // Double-check controller is valid
-                        try {
-                          final isValid = cameraState.controller!.value.isInitialized;
-                          debugPrint('   Controller.value.isInitialized: $isValid');
-                          
-                          if (!isValid) {
-                            throw Exception('Controller not fully initialized');
-                          }
-                        } catch (e) {
-                          debugPrint('   Controller validation error: $e');
-                          throw Exception('Controller validation failed: $e');
-                        }
-                        
-                        if (mounted) {
-                          setState(() {
-                            _isReinitializingAfterSettings = false;
-                          });
-                        }
-                        break;
-                      } else {
-                        debugPrint('⚠️ Camera not fully initialized:');
-                        debugPrint('   Controller: ${cameraState.controller != null}');
-                        debugPrint('   IsInitialized: ${cameraState.isInitialized}');
-                        debugPrint('   IsLoading: ${cameraState.isLoading}');
-                        debugPrint('   ErrorMessage: ${cameraState.errorMessage}');
-                        throw Exception('Camera not fully initialized');
-                      }
-                    } catch (e) {
-                      retryCount++;
-                      debugPrint('⚠️ Camera initialization attempt $retryCount failed: $e');
-                      
-                      if (retryCount < maxRetries) {
-                        // Wait before retrying, with increasing delays
-                        await Future.delayed(Duration(milliseconds: 500 * retryCount));
-                      } else {
-                        // Max retries reached, clear flag and show error
-                        debugPrint('❌ Failed to initialize camera after $maxRetries attempts');
-                        if (mounted) {
-                          setState(() {
-                            _isReinitializingAfterSettings = false;
-                          });
-                        }
-                      }
-                    }
-                  }
-                } else {
-                  debugPrint('❌ Permissions still denied, showing dialog...');
-                  setState(() {
-                    _isReinitializingAfterSettings = false;
-                  });
-                  _showPermissionDialog();
-                }
-              }
-            });
-            return;
-          }
-
-          // On Android, we need longer delay and full reinitialization
-          final isAndroid = Theme.of(context).platform == TargetPlatform.android;
-          // Use even longer delays for production apps
-          final delay = isAndroid ? const Duration(milliseconds: 1200) : const Duration(milliseconds: 500);
-
-          Future.delayed(delay, () async {
-            if (mounted) {
-              debugPrint('🔄 Starting camera resume after delay (Android: $isAndroid)');
-
-              if (isAndroid) {
-                // On Android, always reinitialize since we disposed the camera
-                debugPrint('🔄 Android: Full camera reinitialization');
-                try {
-                  await _initializeWithMode();
-                  debugPrint('✅ Camera reinitialized successfully');
-                  if (mounted) {
-                    setState(() {
-                      _isReinitializingAfterBackground = false;
-                    });
-                  }
-                } catch (e) {
-                  debugPrint('❌ Error reinitializing camera: $e');
-                  if (mounted) {
-                    setState(() {
-                      _isReinitializingAfterBackground = false;
-                    });
-                    widget.onError?.call('Failed to restart camera. Please try again.');
-                  }
-                }
-              } else {
-                // On iOS, try to resume first
-                try {
-                  await cameraController.resumeCamera();
-                  debugPrint('✅ Camera resumed successfully');
-                } catch (e) {
-                  debugPrint('❌ Error resuming camera: $e');
-                  // Fallback to full initialization
-                  if (mounted) {
-                    debugPrint('🔄 iOS: Falling back to full reinitialization');
-                    await _initializeWithMode();
-                  }
-                }
+            debugPrint('✅ Permissions OK on resume');
+            
+            // Always reinitialize on Android, resume on iOS
+            if (Platform.isAndroid) {
+              debugPrint('🤖 Android: Full reinitialization');
+              await _initializeWithMode();
+            } else {
+              try {
+                debugPrint('🍎 iOS: Attempting resume');
+                await cameraController.resumeCamera();
+              } catch (e) {
+                debugPrint('❌ iOS resume failed, reinitializing: $e');
+                await _initializeWithMode();
               }
             }
           });
@@ -333,7 +204,6 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
           if (Theme.of(context).platform == TargetPlatform.android) {
             debugPrint('🔄 Android: Disposing camera completely (hidden)');
             setState(() {
-              _isReinitializingAfterBackground = true;
             });
             cameraController.disposeCamera();
           } else {
@@ -455,12 +325,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
     if (updatedCameraState.errorMessage != null && updatedCameraState.errorMessage!.contains('permissions')) {
       setState(() {
         _hasInitializationFailed = true;
-        _isReinitializingAfterSettings = false; // Clear the flag on error
       });
     } else if (updatedCameraState.isInitialized) {
       // Clear the reinitializing flag on successful initialization
       setState(() {
-        _isReinitializingAfterSettings = false;
       });
     }
   }
@@ -577,9 +445,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       _hasBeenInitializedOnce = true;
     }
 
-    if ((isLoading && !_hasBeenInitializedOnce) || _isReinitializingAfterSettings) {
+    if (isLoading && !_hasBeenInitializedOnce) {
       return const Center(child: CircularProgressIndicator());
     }
+    
 
     if (errorMessage != null) {
       return _buildErrorState(errorMessage);
@@ -631,36 +500,30 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               },
               child: Stack(
                 children: [
-                  // Camera preview - safely handle controller state
+                  // Camera preview - simplified
                   Builder(
                     builder: (context) {
-                      // During transitions, Android reinitialization, or settings return, show black screen
-                      if ((isTransitioning || _isReinitializingAfterBackground || _isReinitializingAfterSettings)) {
-                        return Container(color: Colors.black);
-                      }
-
-                      // Show camera preview only if controller is available, initialized, and not reinitializing
+                      // Show preview if camera is ready
                       if (cameraState.controller != null && 
                           cameraState.isInitialized && 
-                          !_isReinitializingAfterBackground &&
-                          !_isReinitializingAfterSettings &&
-                          !cameraState.isLoading) {
-                        // Additional safety check - verify controller is still valid
+                          !cameraState.isLoading &&
+                          !isTransitioning) {
                         try {
                           if (cameraState.controller!.value.isInitialized) {
                             return _buildCameraPreview(cameraState.controller!);
                           }
                         } catch (e) {
-                          debugPrint('⚠️ Camera controller check failed: $e');
+                          debugPrint('Camera preview error: $e');
                         }
                       }
-
+                      
+                      // Show black screen while loading
                       return Container(color: Colors.black);
                     },
                   ),
 
-                  // Show loading indicator during transitions, Android reinitialization, or settings return
-                  if ((isTransitioning || _isReinitializingAfterBackground || _isReinitializingAfterSettings))
+                  // Show loading indicator during transitions or loading
+                  if (isTransitioning || cameraState.isLoading)
                     const Center(
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
@@ -2010,53 +1873,54 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       _isShowingPermissionDialog = true;
     });
 
-    // Clear any existing error before showing dialog
-    ref.read(cameraControllerProvider.notifier).clearError();
+    try {
+      // Clear any existing error before showing dialog
+      ref.read(cameraControllerProvider.notifier).clearError();
 
-    final permissionType = widget.initialMode == CameraMode.video 
-        ? PermissionType.cameraAndMicrophone 
-        : PermissionType.camera;
-    
-    // Check mounted before showing dialog
-    if (!mounted) {
-      _isShowingPermissionDialog = false;
-      return;
-    }
-    
-    // Show dialog only for permanently denied permissions
-    // For normal denials, we've already requested automatically
-    final dialogResult = await showCameralyPermissionDialog(
-      context: context,
-      permissionType: permissionType,
-      showRequestButton: false, // Never show manual request button
-      onOpenSettings: () {
-        // Mark that we're going to settings
-        _wentToSettings = true;
-        // Don't await openAppSettings, just open it
-        openAppSettings();
-        // Close the dialog immediately
-        if (mounted) {
+      final permissionType = widget.initialMode == CameraMode.video 
+          ? PermissionType.cameraAndMicrophone 
+          : PermissionType.camera;
+      
+      // Check mounted before showing dialog
+      if (!mounted) {
+        _isShowingPermissionDialog = false;
+        return;
+      }
+      
+      // Show dialog only for permanently denied permissions
+      final dialogResult = await showCameralyPermissionDialog(
+        context: context,
+        permissionType: permissionType,
+        showRequestButton: false,
+        onOpenSettings: () {
+          // Open settings and close dialog
+          openAppSettings();
           Navigator.of(context).pop('settings');
-        }
-      },
-    );
-    
-    // Handle dialog result
-    if (dialogResult == 'dismissed' && mounted) {
-      // User explicitly closed the dialog, navigate back
-      Navigator.of(context).pop();
-      return;
+        },
+      );
+      
+      // Dialog closed
+      if (!mounted) return;
+      
+      setState(() {
+        _isShowingPermissionDialog = false;
+      });
+      
+      // Handle dialog result
+      if (dialogResult == 'dismissed' || dialogResult == null) {
+        // User closed the dialog without going to settings
+        Navigator.of(context).pop();
+      }
+      // If user went to settings, lifecycle handler will take care of reinitializing
+    } catch (e) {
+      debugPrint('Error showing permission dialog: $e');
+      if (mounted) {
+        setState(() {
+          _isShowingPermissionDialog = false;
+        });
+        Navigator.of(context).pop();
+      }
     }
-
-    // Check mounted after dialog closes
-    if (!mounted) return;
-    
-    setState(() {
-      _isShowingPermissionDialog = false;
-    });
-    
-    // If user went to settings, the app lifecycle handler will take care of reinitializing
-    // when the app resumes, so we don't need to do anything here
   }
 }
 
